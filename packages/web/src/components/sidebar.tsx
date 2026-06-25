@@ -1,8 +1,12 @@
 "use client"
 
 import { Key, LayoutDashboard, ScrollText, Settings } from "lucide-react"
+import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+
+const LOGO_URL =
+	"https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png"
 
 const nav = [
 	{
@@ -25,11 +29,14 @@ export function Sidebar() {
 	return (
 		<aside className="fixed left-0 top-0 h-full w-56 border-r border-border/50 bg-background flex flex-col">
 			<div className="p-4 border-b border-border/50 flex items-center gap-2.5">
-				<div className="size-7 bg-gradient-to-br from-neon-purple to-neon-cyan glow-purple flex items-center justify-center">
-					<span className="font-mono text-[10px] font-bold text-white">
-						K
-					</span>
-				</div>
+				<Image
+					src={LOGO_URL}
+					alt="Kiro"
+					width={28}
+					height={28}
+					className="size-7"
+					unoptimized
+				/>
 				<span className="font-mono text-sm font-semibold tracking-tight">
 					Kiro Gateway
 				</span>

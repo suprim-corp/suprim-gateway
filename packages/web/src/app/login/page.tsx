@@ -2,10 +2,14 @@
 
 import { useRouter } from "next/navigation"
 import { type FormEvent, useState } from "react"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { apiFetch } from "@/lib/api"
+
+const LOGO_URL =
+	"https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png"
 
 export default function LoginPage() {
 	const router = useRouter()
@@ -38,11 +42,14 @@ export default function LoginPage() {
 		<div className="flex-1 flex items-center justify-center p-4">
 			<div className="w-full max-w-sm space-y-6">
 				<div className="flex flex-col items-center gap-3">
-					<div className="size-10 bg-gradient-to-br from-neon-purple to-neon-cyan glow-purple flex items-center justify-center">
-						<span className="font-mono text-sm font-bold text-white">
-							K
-						</span>
-					</div>
+					<Image
+						src={LOGO_URL}
+						alt="Kiro"
+						width={40}
+						height={40}
+						className="size-10"
+						unoptimized
+					/>
 					<h1 className="font-mono text-lg font-semibold tracking-tight">
 						Kiro Gateway
 					</h1>
