@@ -13,6 +13,7 @@ interface Stats {
 interface LogEntry {
 	id: string
 	virtualKeyId: string | null
+	virtualKeyName: string | null
 	model: string
 	requestedModel: string | null
 	status: number

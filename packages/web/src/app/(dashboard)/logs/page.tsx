@@ -20,7 +20,11 @@ function StatusBadge({ status }: { status: number }) {
 
 function formatTimestamp(ts: number): string {
 	const d = new Date(ts)
-	return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+	const year = d.getFullYear()
+	const month = String(d.getMonth() + 1).padStart(2, "0")
+	const day = String(d.getDate()).padStart(2, "0")
+	const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+	return `${year}-${month}-${day} ${time}`
 }
 
 function LogsContent() {
@@ -125,7 +129,7 @@ function LogsContent() {
 									</span>
 								</td>
 								<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
-									{log.virtualKeyId?.slice(0, 8) ?? "—"}
+									{log.virtualKeyName ?? "—"}
 								</td>
 								<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
 									{formatTimestamp(log.createdAt)}

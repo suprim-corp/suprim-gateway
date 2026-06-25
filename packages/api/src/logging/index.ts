@@ -1,6 +1,6 @@
 import { desc, eq, sql } from "drizzle-orm"
 import { db } from "../db/index"
-import { requestLogs } from "../db/schema"
+import { requestLogs, virtualKeys } from "../db/schema"
 
 export interface LogEntry {
 	virtualKeyId?: string
@@ -51,6 +51,7 @@ export interface LogQuery {
 export interface LogRow {
 	id: string
 	virtualKeyId: string | null
+	virtualKeyName: string | null
 	accountId: string | null
 	model: string
 	requestedModel: string | null
@@ -69,7 +70,27 @@ export function queryLogs(query: LogQuery): { data: LogRow[]; total: number } {
 	const limit = query.limit ?? 50
 	const offset = query.offset ?? 0
 
-	let base = db.select().from(requestLogs).$dynamic()
+	let base = db
+		.select({
+			id: requestLogs.id,
+			virtualKeyId: requestLogs.virtualKeyId,
+			virtualKeyName: virtualKeys.name,
+			accountId: requestLogs.accountId,
+			model: requestLogs.model,
+			requestedModel: requestLogs.requestedModel,
+			status: requestLogs.status,
+			promptTokens: requestLogs.promptTokens,
+			completionTokens: requestLogs.completionTokens,
+			totalTokens: requestLogs.totalTokens,
+			latencyMs: requestLogs.latencyMs,
+			firstTokenMs: requestLogs.firstTokenMs,
+			streaming: requestLogs.streaming,
+			errorMessage: requestLogs.errorMessage,
+			createdAt: requestLogs.createdAt,
+		})
+		.from(requestLogs)
+		.leftJoin(virtualKeys, eq(requestLogs.virtualKeyId, virtualKeys.id))
+		.$dynamic()
 
 	if (query.virtualKeyId) {
 		base = base.where(eq(requestLogs.virtualKeyId, query.virtualKeyId))
