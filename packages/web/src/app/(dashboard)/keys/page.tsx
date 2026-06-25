@@ -65,7 +65,7 @@ function KeysContent() {
 						type="button"
 						onClick={handleCreate}
 						disabled={createKey.isPending || !newKeyName.trim()}
-						className="flex items-center gap-1.5 rounded-lg bg-neon-purple/20 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-purple transition-colors hover:bg-neon-purple/30 disabled:opacity-50 cursor-pointer"
+						className="flex items-center gap-1.5 rounded-lg bg-neon-purple/20 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-purple transition-colors hover:bg-neon-purple/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
 					>
 						<Plus className="size-3" />
 						Create
