@@ -3,33 +3,7 @@
 import { Monitor, Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
 import { AuthGuard } from "@/components/auth-guard"
-
-function ThemeButton({
-	active,
-	onClick,
-	icon: Icon,
-	label,
-}: {
-	active: boolean
-	onClick: () => void
-	icon: React.ElementType
-	label: string
-}) {
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			className={`cursor-pointer flex items-center gap-2 rounded-lg border px-3 py-2 font-mono text-xs transition-colors ${
-				active
-					? "border-primary bg-primary/10 text-foreground"
-					: "border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-border"
-			}`}
-		>
-			<Icon className="size-3.5" />
-			{label}
-		</button>
-	)
-}
+import { Button } from "@/components/ui/button"
 
 function SettingsContent() {
 	const { theme, setTheme } = useTheme()
@@ -45,9 +19,15 @@ function SettingsContent() {
 						Theme
 					</span>
 					<div className="mt-2 flex gap-2">
-						<ThemeButton active={theme === "light"} onClick={() => setTheme("light")} icon={Sun} label="Light" />
-						<ThemeButton active={theme === "dark"} onClick={() => setTheme("dark")} icon={Moon} label="Dark" />
-						<ThemeButton active={theme === "system"} onClick={() => setTheme("system")} icon={Monitor} label="System" />
+						<Button variant={theme === "light" ? "default" : "outline"} size="sm" onClick={() => setTheme("light")}>
+							<Sun className="size-3.5" /> Light
+						</Button>
+						<Button variant={theme === "dark" ? "default" : "outline"} size="sm" onClick={() => setTheme("dark")}>
+							<Moon className="size-3.5" /> Dark
+						</Button>
+						<Button variant={theme === "system" ? "default" : "outline"} size="sm" onClick={() => setTheme("system")}>
+							<Monitor className="size-3.5" /> System
+						</Button>
 					</div>
 				</div>
 				<div className="border-t border-border/30 pt-4">

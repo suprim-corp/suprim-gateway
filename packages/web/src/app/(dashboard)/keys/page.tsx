@@ -4,6 +4,7 @@ import { formatDistanceToNow } from "date-fns"
 import { Copy, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { AuthGuard } from "@/components/auth-guard"
+import { Button } from "@/components/ui/button"
 import {
 	useCreateKey,
 	useDeleteKey,
@@ -61,31 +62,31 @@ function KeysContent() {
 						className="w-24 rounded-lg border border-border/60 bg-background px-3 py-1.5 font-mono text-xs text-foreground outline-none focus:border-neon-purple/50"
 						title="Rate limit/min"
 					/>
-					<button
-						type="button"
+					<Button
+						variant="default"
+						size="sm"
 						onClick={handleCreate}
 						disabled={createKey.isPending || !newKeyName.trim()}
-						className="flex items-center gap-1.5 rounded-lg bg-neon-purple/20 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-purple transition-colors hover:bg-neon-purple/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
 					>
 						<Plus className="size-3" />
 						Create
-					</button>
+					</Button>
 				</div>
 				{createdKey && (
 					<div className="rounded-lg border border-neon-green/30 bg-neon-green/5 p-3 flex items-center justify-between">
 						<code className="font-mono text-xs text-neon-green">
 							{createdKey}
 						</code>
-						<button
-							type="button"
+						<Button
+							variant="ghost"
+							size="icon-xs"
 							onClick={() => {
 								navigator.clipboard.writeText(createdKey)
 							}}
-							className="text-muted-foreground hover:text-foreground cursor-pointer"
 							title="Copy to clipboard"
 						>
 							<Copy className="size-4" />
-						</button>
+						</Button>
 					</div>
 				)}
 			</div>
@@ -168,32 +169,34 @@ function KeysContent() {
 										: "Never"}
 								</td>
 								<td className="px-4 py-2.5">
-									<button
-										type="button"
+									<Button
+										variant={key.enabled ? "ghost" : "ghost"}
+										size="xs"
 										onClick={() =>
 											toggleKey.mutate({
 												id: key.id,
 												enabled: key.enabled,
 											})
 										}
-										className={`font-mono text-[10px] px-2 py-0.5 rounded-md cursor-pointer ${
+										className={
 											key.enabled
 												? "bg-neon-green/10 text-neon-green"
 												: "bg-muted/30 text-muted-foreground"
-										}`}
+										}
 									>
 										{key.enabled ? "Active" : "Disabled"}
-									</button>
+									</Button>
 								</td>
 								<td className="px-4 py-2.5">
-									<button
-										type="button"
+									<Button
+										variant="ghost"
+										size="icon-xs"
 										onClick={() => deleteKey.mutate(key.id)}
-										className="text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
+										className="text-muted-foreground hover:text-destructive"
 										title="Delete key"
 									>
 										<Trash2 className="size-3.5" />
-									</button>
+									</Button>
 								</td>
 							</tr>
 						))}
