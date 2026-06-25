@@ -105,4 +105,23 @@ export function useToggleKey() {
 	})
 }
 
-export type { KeysResponse, LogEntry, LogsResponse, Stats, VirtualKey }
+interface TimeSeriesPoint {
+	time: string
+	requests: number
+	tokens: number
+	errors: number
+}
+
+interface TimeSeriesResponse {
+	data: TimeSeriesPoint[]
+}
+
+export function useTimeSeries(hours = 24) {
+	return useQuery<TimeSeriesResponse>({
+		queryKey: ["timeseries", hours],
+		queryFn: () => apiFetch(`/admin/stats/timeseries?hours=${hours}`),
+		refetchInterval: 10000,
+	})
+}
+
+export type { KeysResponse, LogEntry, LogsResponse, Stats, TimeSeriesPoint, VirtualKey }

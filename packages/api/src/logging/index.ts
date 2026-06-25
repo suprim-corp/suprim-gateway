@@ -116,6 +116,54 @@ export function queryLogs(query: LogQuery): { data: LogRow[]; total: number } {
 	return { data, total }
 }
 
+export interface TimeSeriesPoint {
+	time: string
+	requests: number
+	tokens: number
+	errors: number
+}
+
+export function getTimeSeries(hours = 24): TimeSeriesPoint[] {
+	const now = Date.now()
+	const since = now - hours * 60 * 60 * 1000
+	const bucketMs = hours <= 24 ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+
+	const rows = db
+		.select({
+			createdAt: requestLogs.createdAt,
+			totalTokens: requestLogs.totalTokens,
+			status: requestLogs.status,
+		})
+		.from(requestLogs)
+		.where(sql`${requestLogs.createdAt} >= ${since}`)
+		.all()
+
+	const buckets = new Map<number, { requests: number; tokens: number; errors: number }>()
+
+	for (const row of rows) {
+		const bucket = Math.floor(row.createdAt / bucketMs) * bucketMs
+		const entry = buckets.get(bucket) ?? { requests: 0, tokens: 0, errors: 0 }
+		entry.requests++
+		entry.tokens += row.totalTokens ?? 0
+		if (row.status >= 400) entry.errors++
+		buckets.set(bucket, entry)
+	}
+
+	const points: TimeSeriesPoint[] = []
+	let cursor = Math.floor(since / bucketMs) * bucketMs
+	while (cursor <= now) {
+		const entry = buckets.get(cursor) ?? { requests: 0, tokens: 0, errors: 0 }
+		const d = new Date(cursor)
+		const label = hours <= 24
+			? `${String(d.getHours()).padStart(2, "0")}:00`
+			: `${d.getMonth() + 1}/${d.getDate()}`
+		points.push({ time: label, ...entry })
+		cursor += bucketMs
+	}
+
+	return points
+}
+
 export function getStats(): {
 	totalRequests: number
 	totalTokens: number

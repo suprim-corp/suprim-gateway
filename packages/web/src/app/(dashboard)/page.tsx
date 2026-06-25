@@ -1,8 +1,19 @@
 "use client"
 
 import { Activity, Key, ScrollText, Zap } from "lucide-react"
+import {
+	Area,
+	AreaChart,
+	Bar,
+	BarChart,
+	CartesianGrid,
+	ResponsiveContainer,
+	Tooltip,
+	XAxis,
+	YAxis,
+} from "recharts"
 import { AuthGuard } from "@/components/auth-guard"
-import { useStats } from "@/hooks/use-admin"
+import { useStats, useTimeSeries } from "@/hooks/use-admin"
 
 function StatCard({
 	label,
@@ -50,6 +61,7 @@ function formatUptime(seconds: number): string {
 
 function DashboardContent() {
 	const { data, isLoading, error } = useStats()
+	const { data: tsData } = useTimeSeries(24)
 
 	if (error) {
 		return (
@@ -86,6 +98,8 @@ function DashboardContent() {
 		)
 	}
 
+	const chartData = tsData?.data ?? []
+
 	return (
 		<div className="space-y-6">
 			<h1 className="font-mono text-lg font-semibold tracking-tight">
@@ -118,6 +132,45 @@ function DashboardContent() {
 					color="bg-neon-yellow/10 text-neon-yellow"
 					sub={`Uptime: ${formatUptime(data.uptimeSeconds ?? 0)}`}
 				/>
+			</div>
+
+			<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+				<div className="rounded-xl border border-border/60 bg-card/40 p-4 backdrop-blur-sm">
+					<h2 className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-4">
+						Requests (24h)
+					</h2>
+					<ResponsiveContainer width="100%" height={200}>
+						<AreaChart data={chartData}>
+							<defs>
+								<linearGradient id="reqGrad" x1="0" y1="0" x2="0" y2="1">
+									<stop offset="0%" stopColor="#a78bfa" stopOpacity={0.3} />
+									<stop offset="100%" stopColor="#a78bfa" stopOpacity={0} />
+								</linearGradient>
+							</defs>
+							<CartesianGrid strokeDasharray="3 3" stroke="#333" strokeOpacity={0.5} />
+							<XAxis dataKey="time" tick={{ fontSize: 10, fill: "#888" }} />
+							<YAxis tick={{ fontSize: 10, fill: "#888" }} allowDecimals={false} />
+							<Tooltip contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", borderRadius: 8, fontSize: 11 }} labelStyle={{ color: "#eee" }} formatter={(value: number) => value.toLocaleString()} />
+							<Area type="monotone" dataKey="requests" stroke="#a78bfa" fill="url(#reqGrad)" strokeWidth={2} />
+							<Area type="monotone" dataKey="errors" stroke="#f87171" fill="none" strokeWidth={1.5} strokeDasharray="4 2" />
+						</AreaChart>
+					</ResponsiveContainer>
+				</div>
+
+				<div className="rounded-xl border border-border/60 bg-card/40 p-4 backdrop-blur-sm">
+					<h2 className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-4">
+						Tokens (24h)
+					</h2>
+					<ResponsiveContainer width="100%" height={200}>
+						<BarChart data={chartData}>
+							<CartesianGrid strokeDasharray="3 3" stroke="#333" strokeOpacity={0.5} />
+							<XAxis dataKey="time" tick={{ fontSize: 10, fill: "#888" }} />
+							<YAxis tick={{ fontSize: 10, fill: "#888" }} tickFormatter={(v: number) => v.toLocaleString()} />
+							<Tooltip contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", borderRadius: 8, fontSize: 11 }} labelStyle={{ color: "#eee" }} formatter={(value: number) => value.toLocaleString()} />
+							<Bar dataKey="tokens" fill="#22d3ee" radius={[4, 4, 0, 0]} opacity={0.8} />
+						</BarChart>
+					</ResponsiveContainer>
+				</div>
 			</div>
 		</div>
 	)
