@@ -1,0 +1,23 @@
+{
+	"name": "kiro-gateway",
+	"private": true,
+	"workspaces": [
+		"packages/*"
+	],
+	"scripts": {
+		"dev": "turbo dev",
+		"dev:api": "turbo dev --filter=@kiro-gateway/api",
+		"dev:web": "turbo dev --filter=@kiro-gateway/web",
+		"build": "turbo build",
+		"test": "turbo test",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"db:generate": "bun run --filter=@kiro-gateway/api db:generate",
+		"db:migrate": "bun run --filter=@kiro-gateway/api db:migrate"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.0",
+		"turbo": "^2.3.0",
+		"typescript": "^6.0.0"
+	}
+}

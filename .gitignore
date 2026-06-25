@@ -141,3 +141,26 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# IDE
+.idea/
+.vscode/
+
+# Turborepo
+.turbo/
+
+# Database
+data/
+*.db
+*.db-journal
+*.db-wal
+
+# Drizzle
+drizzle/meta/
+
+# Bun
+bun.lockb
+
+# OS
+.DS_Store
+Thumbs.db
