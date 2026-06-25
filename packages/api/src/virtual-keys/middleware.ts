@@ -22,15 +22,12 @@ export async function resolveAuth(
 		return { type: "admin" }
 	}
 
-	if (token.startsWith("sk-kiro-")) {
+	if (token.startsWith("sk-")) {
 		const key = await getKeyByRawKey(token)
 		if (!key) return null
 		if (!key.enabled) return null
 		return { type: "virtual_key", key }
 	}
-
-	// ponytail: fallback — treat as admin key for backward compat
-	if (token === env.ADMIN_API_KEY) return { type: "admin" }
 
 	return null
 }
