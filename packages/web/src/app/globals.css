@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+:root {
+	--background: oklch(0.09 0.005 285);
+	--foreground: oklch(0.95 0.01 285);
+	--card: oklch(0.13 0.008 285);
+	--card-foreground: oklch(0.95 0.01 285);
+	--border: oklch(0.25 0.015 285);
+	--muted: oklch(0.18 0.01 285);
+	--muted-foreground: oklch(0.6 0.02 285);
+	--primary: oklch(0.7 0.2 285);
+	--primary-foreground: oklch(0.98 0 0);
+	--accent: oklch(0.7 0.15 195);
+	--accent-foreground: oklch(0.98 0 0);
+	--destructive: oklch(0.6 0.2 25);
+	--success: oklch(0.7 0.2 155);
+	--warning: oklch(0.75 0.15 85);
+
+	--neon-purple: oklch(0.7 0.2 285);
+	--neon-cyan: oklch(0.7 0.15 195);
+	--neon-green: oklch(0.7 0.2 155);
+	--neon-yellow: oklch(0.75 0.15 85);
+}
+
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-border: var(--border);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-success: var(--success);
+	--color-warning: var(--warning);
+	--color-neon-purple: var(--neon-purple);
+	--color-neon-cyan: var(--neon-cyan);
+	--color-neon-green: var(--neon-green);
+	--color-neon-yellow: var(--neon-yellow);
+	--font-sans: var(--font-inter);
+	--font-mono: var(--font-jetbrains-mono);
+}
+
+body {
+	background: var(--background);
+	color: var(--foreground);
+}
+
+.glow-purple {
+	box-shadow:
+		0 0 20px oklch(0.7 0.2 285 / 0.3),
+		0 0 40px oklch(0.7 0.2 285 / 0.1);
+}
+
+.glow-cyan {
+	box-shadow:
+		0 0 20px oklch(0.7 0.15 195 / 0.3),
+		0 0 40px oklch(0.7 0.15 195 / 0.1);
+}
+
+.text-glow-purple {
+	text-shadow: 0 0 10px oklch(0.7 0.2 285 / 0.5);
+}
+
+.text-glow-cyan {
+	text-shadow: 0 0 10px oklch(0.7 0.15 195 / 0.5);
+}

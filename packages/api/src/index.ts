@@ -1,0 +1,22 @@
+import { bearer } from "@elysiajs/bearer"
+import { cors } from "@elysiajs/cors"
+import { Elysia } from "elysia"
+import { env } from "./config"
+import { runMigrations } from "./db/migrate"
+import { adminRoutes } from "./routes/admin"
+import { healthRoutes } from "./routes/health"
+import { openaiRoutes } from "./routes/openai"
+
+runMigrations()
+
+const app = new Elysia()
+	.use(cors())
+	.use(bearer())
+	.use(healthRoutes)
+	.use(openaiRoutes)
+	.use(adminRoutes)
+	.listen(env.PORT)
+
+console.log(`Kiro Gateway | API :${env.PORT} | Dashboard :3000`)
+
+export type App = typeof app
