@@ -15,6 +15,9 @@ interface KiroEventObject {
 	toolUseEvent?: KiroToolEvent
 	supplementaryWebChatEvent?: { content?: string }
 	codeEvent?: { content?: string }
+	content?: string
+	modelId?: string
+	contextUsagePercentage?: number
 }
 
 interface KiroToolEvent {
@@ -69,6 +72,18 @@ export class AwsEventStreamParser {
 
 	private processObject(obj: KiroEventObject): RawKiroEvent[] | null {
 		const events: RawKiroEvent[] = []
+
+		// Top-level content field (e.g. {"content":"Hi","modelId":"claude-sonnet-4.6"})
+		if (obj.content && obj.modelId) {
+			events.push({ type: "content", data: obj.content })
+			return events
+		}
+
+		// Top-level contextUsagePercentage
+		if (obj.contextUsagePercentage != null && !obj.assistantResponseEvent) {
+			events.push({ type: "context_usage", data: obj.contextUsagePercentage })
+			return events
+		}
 
 		if (obj.assistantResponseEvent?.messageMetadataEvent) {
 			const meta = obj.assistantResponseEvent.messageMetadataEvent

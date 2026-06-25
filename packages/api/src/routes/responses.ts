@@ -4,8 +4,9 @@ import {
 	buildKiroPayload,
 	type ChatCompletionRequest,
 } from "../converters/openai-to-kiro"
+import { AwsEventStreamParser } from "../kiro/parser"
 import { logRequest } from "../logging"
-import { collectResponse, createOpenAIStream } from "../streaming/converter"
+import { collectResponse } from "../streaming/converter"
 import {
 	type AuthResult,
 	checkModelAccess,
@@ -57,19 +58,17 @@ function createResponsesStream(
 	kiroResponse: Response,
 	model: string,
 	responseId: string,
-): ReadableStream<Uint8Array> {
-	const encoder = new TextEncoder()
-	const chatStream = createOpenAIStream(kiroResponse, model)
-	const reader = (chatStream as unknown as ReadableStream<Uint8Array>).getReader()
-
-	function sse(event: { type: string; [k: string]: unknown }): Uint8Array {
-		return encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
-	}
-
+): ReadableStream<string> {
+	const parser = new AwsEventStreamParser()
 	let fullText = ""
 
-	return new ReadableStream({
+	function sse(event: { type: string; [k: string]: unknown }): string {
+		return `data: ${JSON.stringify(event)}\n\n`
+	}
+
+	return new ReadableStream<string>({
 		async start(controller) {
+			// Emit initial Responses API events
 			controller.enqueue(
 				sse({
 					type: "response.created",
@@ -82,7 +81,6 @@ function createResponsesStream(
 					},
 				}),
 			)
-
 			controller.enqueue(
 				sse({
 					type: "response.output_item.added",
@@ -95,7 +93,6 @@ function createResponsesStream(
 					},
 				}),
 			)
-
 			controller.enqueue(
 				sse({
 					type: "response.content_part.added",
@@ -104,89 +101,94 @@ function createResponsesStream(
 					part: { type: "output_text", text: "" },
 				}),
 			)
-		},
-		async pull(controller) {
-			const { done, value } = await reader.read()
-			if (done) {
-				controller.enqueue(
-					sse({
-						type: "response.output_text.done",
-						output_index: 0,
-						content_index: 0,
-						text: fullText,
-					}),
-				)
-				controller.enqueue(
-					sse({
-						type: "response.content_part.done",
-						output_index: 0,
-						content_index: 0,
-						part: { type: "output_text", text: fullText },
-					}),
-				)
-				controller.enqueue(
-					sse({
-						type: "response.output_item.done",
-						output_index: 0,
-						item: {
-							type: "message",
-							id: `msg_${responseId.slice(5)}`,
-							role: "assistant",
-							content: [{ type: "output_text", text: fullText }],
-						},
-					}),
-				)
-				controller.enqueue(
-					sse({
-						type: "response.completed",
-						response: {
-							id: responseId,
-							object: "response",
-							status: "completed",
-							model,
-							output: [
-								{
-									type: "message",
-									role: "assistant",
-									content: [
-										{ type: "output_text", text: fullText },
-									],
-								},
-							],
-							usage: {
-								input_tokens: 0,
-								output_tokens: 0,
-								total_tokens: 0,
-							},
-						},
-					}),
-				)
+
+			// Read Kiro binary stream directly
+			const reader = kiroResponse.body?.getReader()
+			if (!reader) {
 				controller.close()
 				return
 			}
 
-			const text = new TextDecoder().decode(value)
-			const lines = text.split("\n")
-			for (const line of lines) {
-				if (!line.startsWith("data: ")) continue
-				const data = line.slice(6)
-				if (data === "[DONE]") continue
-				try {
-					const chunk = JSON.parse(data)
-					const delta = chunk.choices?.[0]?.delta?.content
-					if (delta) {
-						fullText += delta
-						controller.enqueue(
-							sse({
-								type: "response.output_text.delta",
-								output_index: 0,
-								content_index: 0,
-								delta,
-							}),
-						)
+			try {
+				while (true) {
+					const { done, value } = await reader.read()
+					if (done) break
+
+					const events = parser.feed(value)
+					for (const event of events) {
+						if (event.type === "content") {
+							const text = event.data as string
+							fullText += text
+							controller.enqueue(
+								sse({
+									type: "response.output_text.delta",
+									output_index: 0,
+									content_index: 0,
+									delta: text,
+								}),
+							)
+						}
 					}
-				} catch {}
+				}
+			} catch (err) {
+				// Stream error — still close gracefully
 			}
+
+			// Emit completion events
+			controller.enqueue(
+				sse({
+					type: "response.output_text.done",
+					output_index: 0,
+					content_index: 0,
+					text: fullText,
+				}),
+			)
+			controller.enqueue(
+				sse({
+					type: "response.content_part.done",
+					output_index: 0,
+					content_index: 0,
+					part: { type: "output_text", text: fullText },
+				}),
+			)
+			controller.enqueue(
+				sse({
+					type: "response.output_item.done",
+					output_index: 0,
+					item: {
+						type: "message",
+						id: `msg_${responseId.slice(5)}`,
+						role: "assistant",
+						content: [{ type: "output_text", text: fullText }],
+					},
+				}),
+			)
+			controller.enqueue(
+				sse({
+					type: "response.completed",
+					response: {
+						id: responseId,
+						object: "response",
+						status: "completed",
+						model,
+						output: [
+							{
+								type: "message",
+								role: "assistant",
+								content: [
+									{ type: "output_text", text: fullText },
+								],
+							},
+						],
+						usage: {
+							input_tokens: 0,
+							output_tokens: 0,
+							total_tokens: 0,
+						},
+					},
+				}),
+			)
+			controller.close()
 		},
 	})
 }
