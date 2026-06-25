@@ -8,6 +8,7 @@ import {
 import { AwsEventStreamParser, parseBracketToolCalls } from "../kiro/parser"
 import type { ToolUseEvent } from "../kiro/types"
 import { logRequest } from "../logging"
+import { logger } from "../logging/logger"
 import { collectResponse } from "../streaming/converter"
 import { countTokens, estimateRequestTokens } from "../utils/tokenizer"
 import {
@@ -294,8 +295,8 @@ function createResponsesStream(
 						}
 					}
 				}
-			} catch {
-				// Stream error — close gracefully
+			} catch (err) {
+				logger.warn("Stream read error:", err instanceof Error ? err.message : err)
 			}
 
 			// Flush any in-progress tool call that never got stop:true
@@ -341,6 +342,7 @@ function createResponsesStream(
 			const completionTokens = countTokens(fullText)
 			const promptTokens = inputTokens
 			const totalTokens = promptTokens + completionTokens
+			logger.info(`Tokens: in=${promptTokens} out=${completionTokens} total=${totalTokens}`)
 
 			controller.enqueue(
 				sse({
