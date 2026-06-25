@@ -37,7 +37,7 @@ function StatCard({
 						{label}
 					</span>
 					<div
-						className={`size-7 rounded-lg ${color} flex items-center justify-center`}
+						className={`size-7 ${color} flex items-center justify-center`}
 					>
 						<Icon className="size-3.5 text-current" />
 					</div>
@@ -69,7 +69,7 @@ function DashboardContent() {
 	if (error) {
 		return (
 			<div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-				<div className="size-12 rounded-xl bg-neon-purple/10 flex items-center justify-center">
+				<div className="size-12 bg-neon-purple/10 flex items-center justify-center">
 					<Activity className="size-6 text-neon-purple" />
 				</div>
 				<h1 className="font-mono text-lg font-semibold tracking-tight">

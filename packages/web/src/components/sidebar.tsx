@@ -25,7 +25,7 @@ export function Sidebar() {
 	return (
 		<aside className="fixed left-0 top-0 h-full w-56 border-r border-border/50 bg-background flex flex-col">
 			<div className="p-4 border-b border-border/50 flex items-center gap-2.5">
-				<div className="size-7 rounded-lg bg-gradient-to-br from-neon-purple to-neon-cyan glow-purple flex items-center justify-center">
+				<div className="size-7 bg-gradient-to-br from-neon-purple to-neon-cyan glow-purple flex items-center justify-center">
 					<span className="font-mono text-[10px] font-bold text-white">
 						K
 					</span>
@@ -49,7 +49,7 @@ export function Sidebar() {
 								<Link
 									key={href}
 									href={href}
-									className={`flex items-center gap-3 px-3 py-2 rounded-lg font-mono text-xs transition-colors cursor-pointer ${
+									className={`flex items-center gap-3 px-3 py-2 font-mono text-xs transition-colors cursor-pointer ${
 										active
 											? "bg-neon-purple/10 text-neon-purple"
 											: "text-muted-foreground hover:text-foreground hover:bg-muted/30"

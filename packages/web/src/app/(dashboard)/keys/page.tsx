@@ -76,7 +76,7 @@ function KeysContent() {
 					</Button>
 				</div>
 				{createdKey && (
-					<div className="rounded-lg border border-neon-green/30 bg-neon-green/5 p-3 flex items-center justify-between">
+					<div className="border border-neon-green/30 bg-neon-green/5 p-3 flex items-center justify-between">
 						<code className="font-mono text-xs text-neon-green">
 							{createdKey}
 						</code>
