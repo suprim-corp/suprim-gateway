@@ -9,6 +9,7 @@ import { AwsEventStreamParser, parseBracketToolCalls } from "../kiro/parser"
 import type { ToolUseEvent } from "../kiro/types"
 import { logRequest } from "../logging"
 import { collectResponse } from "../streaming/converter"
+import { countTokens, estimateRequestTokens } from "../utils/tokenizer"
 import {
 	type AuthResult,
 	checkModelAccess,
@@ -127,6 +128,7 @@ function createResponsesStream(
 	kiroResponse: Response,
 	model: string,
 	responseId: string,
+	inputTokens: number,
 	onDone?: (usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }) => void,
 ): ReadableStream<string> {
 	const parser = new AwsEventStreamParser()
@@ -134,7 +136,6 @@ function createResponsesStream(
 	const toolCalls: ToolUseEvent[] = []
 	let outputIndex = 0
 	let textClosed = false
-	let contextUsage: number | null = null
 
 	function sse(event: { type: string; [k: string]: unknown }): string {
 		return `data: ${JSON.stringify(event)}\n\n`
@@ -290,8 +291,6 @@ function createResponsesStream(
 							)
 						} else if (event.type === "tool_use") {
 							emitToolCall(controller, event.data as ToolUseEvent)
-						} else if (event.type === "context_usage") {
-							contextUsage = event.data as number
 						}
 					}
 				}
@@ -338,12 +337,9 @@ function createResponsesStream(
 				})
 			}
 
-			// ponytail: ~4 chars/token estimate, same as collectResponse
-			const completionTokens = Math.ceil(fullText.length / 4)
-			const promptTokens =
-				contextUsage != null
-					? Math.max(0, Math.floor((contextUsage / 100) * 200000) - completionTokens)
-					: 0
+			// tiktoken + 1.15x Claude correction
+			const completionTokens = countTokens(fullText)
+			const promptTokens = inputTokens
 			const totalTokens = promptTokens + completionTokens
 
 			controller.enqueue(
@@ -480,10 +476,12 @@ export const responsesRoutes = new Elysia({ prefix: "/v1" })
 		}
 
 		if (req.stream) {
+			const inputTokens = estimateRequestTokens(messages, req.tools as ChatCompletionRequest["tools"])
 			const stream = createResponsesStream(
 				response,
 				resolvedModel,
 				responseId,
+				inputTokens,
 				(usage) => {
 					if (auth.type === "virtual_key" && auth.key) {
 						recordUsage(auth.key.id, usage.total_tokens)
@@ -508,9 +506,12 @@ export const responsesRoutes = new Elysia({ prefix: "/v1" })
 		}
 
 		const result = await collectResponse(response, resolvedModel)
+		const inputTokens = estimateRequestTokens(messages, req.tools as ChatCompletionRequest["tools"])
+		const completionTokens = countTokens(result.content)
+		const totalTokens = inputTokens + completionTokens
 
 		if (auth.type === "virtual_key" && auth.key) {
-			recordUsage(auth.key.id, result.usage.total_tokens)
+			recordUsage(auth.key.id, totalTokens)
 		}
 
 		logRequest({
@@ -518,9 +519,9 @@ export const responsesRoutes = new Elysia({ prefix: "/v1" })
 			model: resolvedModel,
 			requestedModel: req.model,
 			status: 200,
-			promptTokens: result.usage.prompt_tokens,
-			completionTokens: result.usage.completion_tokens,
-			totalTokens: result.usage.total_tokens,
+			promptTokens: inputTokens,
+			completionTokens,
+			totalTokens,
 			streaming: false,
 			latencyMs: Date.now() - startTime,
 		})
@@ -544,9 +545,9 @@ export const responsesRoutes = new Elysia({ prefix: "/v1" })
 				},
 			],
 			usage: {
-				input_tokens: result.usage.prompt_tokens,
-				output_tokens: result.usage.completion_tokens,
-				total_tokens: result.usage.total_tokens,
+				input_tokens: inputTokens,
+				output_tokens: completionTokens,
+				total_tokens: totalTokens,
 			},
 		}
 	})

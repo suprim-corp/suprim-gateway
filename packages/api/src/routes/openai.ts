@@ -14,6 +14,7 @@ import { logger } from "../logging/logger"
 import { ModelResolver } from "../models"
 import { collectResponse, createOpenAIStream } from "../streaming"
 import { generateCompletionId } from "../utils/ids"
+import { countTokens, estimateRequestTokens } from "../utils/tokenizer"
 import {
 	type AuthResult,
 	checkModelAccess,
@@ -22,7 +23,7 @@ import {
 	resolveAuth,
 } from "../virtual-keys"
 
-// ponytail: single account for MVP, multi-account in Phase 8
+// single account for MVP, multi-account in Phase 8
 let authManager: KiroAuthManager | null = null
 let httpClient: KiroHttpClient | null = null
 const modelResolver = new ModelResolver()
@@ -241,7 +242,8 @@ export const openaiRoutes = new Elysia({ prefix: "/v1" })
 		}
 
 		if (req.stream) {
-			const stream = createOpenAIStream(response, resolvedModel, (usage) => {
+			const inputTokens = estimateRequestTokens(req.messages, req.tools)
+			const stream = createOpenAIStream(response, resolvedModel, inputTokens, (usage) => {
 				if (auth.type === "virtual_key" && auth.key) {
 					recordUsage(auth.key.id, usage.total_tokens)
 				}
@@ -265,9 +267,13 @@ export const openaiRoutes = new Elysia({ prefix: "/v1" })
 
 		const result = await collectResponse(response, resolvedModel)
 		const completionId = generateCompletionId()
+		const inputTokens = estimateRequestTokens(req.messages, req.tools)
+		const completionTokens = countTokens(result.content)
+		const totalTokens = inputTokens + completionTokens
+		const usage = { prompt_tokens: inputTokens, completion_tokens: completionTokens, total_tokens: totalTokens }
 
 		if (auth.type === "virtual_key" && auth.key) {
-			recordUsage(auth.key.id, result.usage.total_tokens)
+			recordUsage(auth.key.id, totalTokens)
 		}
 
 		logRequest({
@@ -275,9 +281,9 @@ export const openaiRoutes = new Elysia({ prefix: "/v1" })
 			model: resolvedModel,
 			requestedModel: req.model,
 			status: 200,
-			promptTokens: result.usage.prompt_tokens,
-			completionTokens: result.usage.completion_tokens,
-			totalTokens: result.usage.total_tokens,
+			promptTokens: inputTokens,
+			completionTokens,
+			totalTokens,
 			streaming: false,
 			latencyMs: Date.now() - startTime,
 		})
@@ -307,7 +313,7 @@ export const openaiRoutes = new Elysia({ prefix: "/v1" })
 			created: Math.floor(Date.now() / 1000),
 			model: resolvedModel,
 			choices: [choice],
-			usage: result.usage,
+			usage,
 		}
 
 		return responseBody

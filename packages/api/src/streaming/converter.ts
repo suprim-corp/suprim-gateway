@@ -2,6 +2,7 @@ import { AwsEventStreamParser, parseBracketToolCalls } from "../kiro/parser"
 import { unprefixToolName } from "../converters/openai-to-kiro"
 import type { ToolUseEvent } from "../kiro/types"
 import { generateCompletionId } from "../utils/ids"
+import { countTokens } from "../utils/tokenizer"
 
 export interface StreamChunk {
 	id: string
@@ -36,6 +37,7 @@ export interface StreamChunk {
 export function createOpenAIStream(
 	response: Response,
 	model: string,
+	inputTokens: number,
 	onDone?: (usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }) => void,
 ): ReadableStream<string> {
 	const completionId = generateCompletionId()
@@ -44,10 +46,6 @@ export function createOpenAIStream(
 	let fullContent = ""
 	let toolCalls: ToolUseEvent[] = []
 	let sentRole = false
-	let contextUsage: number | null = null
-	let _creditUsage: number | null = null
-
-	const _encoder = new TextEncoder()
 
 	return new ReadableStream<string>({
 		async start(controller) {
@@ -104,10 +102,6 @@ export function createOpenAIStream(
 						} else if (event.type === "tool_use") {
 							const tool = event.data as ToolUseEvent
 							toolCalls.push(tool)
-						} else if (event.type === "usage") {
-							_creditUsage = event.data as number
-						} else if (event.type === "context_usage") {
-							contextUsage = event.data as number
 						}
 					}
 				}
@@ -157,15 +151,8 @@ export function createOpenAIStream(
 
 				// Final chunk with finish_reason + usage
 				const finishReason = toolCalls.length ? "tool_calls" : "stop"
-				const completionTokens = estimateTokens(fullContent)
-				const promptTokens =
-					contextUsage != null
-						? Math.max(
-								0,
-								Math.floor((contextUsage / 100) * 200000) -
-									completionTokens,
-							)
-						: 0
+				const completionTokens = countTokens(fullContent)
+				const promptTokens = inputTokens
 
 				const finalChunk: StreamChunk = {
 					id: completionId,
@@ -208,15 +195,9 @@ export async function collectResponse(
 ): Promise<{
 	content: string
 	toolCalls: ToolUseEvent[]
-	usage: {
-		prompt_tokens: number
-		completion_tokens: number
-		total_tokens: number
-	}
 }> {
 	const parser = new AwsEventStreamParser()
 	let fullContent = ""
-	let contextUsage: number | null = null
 	let toolCalls: ToolUseEvent[] = []
 
 	const reader = response.body?.getReader()
@@ -230,7 +211,6 @@ export async function collectResponse(
 		for (const event of events) {
 			if (event.type === "content") fullContent += event.data as string
 			else if (event.type === "tool_use") toolCalls.push(event.data as ToolUseEvent)
-			else if (event.type === "context_usage") contextUsage = event.data as number
 		}
 	}
 
@@ -239,25 +219,7 @@ export async function collectResponse(
 		toolCalls = deduplicateToolCalls([...toolCalls, ...bracketTools])
 	}
 
-	const completionTokens = estimateTokens(fullContent)
-	const promptTokens =
-		contextUsage != null
-			? Math.max(
-					0,
-					Math.floor((contextUsage / 100) * 200000) -
-						completionTokens,
-				)
-			: 0
-
-	return {
-		content: fullContent,
-		toolCalls,
-		usage: {
-			prompt_tokens: promptTokens,
-			completion_tokens: completionTokens,
-			total_tokens: promptTokens + completionTokens,
-		},
-	}
+	return { content: fullContent, toolCalls }
 }
 
 function formatSSE(data: StreamChunk): string {
@@ -309,9 +271,4 @@ function deduplicateToolCalls(calls: ToolUseEvent[]): ToolUseEvent[] {
 		}
 	}
 	return [...seen.values()]
-}
-
-// ponytail: rough estimate ~4 chars/token, good enough for MVP
-function estimateTokens(text: string): number {
-	return Math.ceil(text.length / 4)
 }
