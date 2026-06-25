@@ -50,7 +50,7 @@ export default function LoginPage() {
 
 				<form
 					onSubmit={handleSubmit}
-					className="rounded-xl border border-border/60 bg-card/40 p-6 space-y-4 backdrop-blur-sm"
+					className="rounded-xl border border-border/60 bg-card p-6 space-y-4 backdrop-blur-sm"
 				>
 					<div className="space-y-2">
 						<label
@@ -65,7 +65,7 @@ export default function LoginPage() {
 							value={password}
 							onChange={(e) => setPassword(e.target.value)}
 							placeholder="Enter admin password"
-							className="w-full rounded-lg border border-border/60 bg-background/50 px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-neon-purple/50"
+							className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-neon-purple/50"
 						/>
 					</div>
 

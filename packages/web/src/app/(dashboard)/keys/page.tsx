@@ -40,7 +40,7 @@ function KeysContent() {
 			</h1>
 
 			{/* Create key form */}
-			<div className="rounded-xl border border-border/60 bg-card/40 p-4 space-y-3 backdrop-blur-sm">
+			<div className="rounded-xl border border-border/60 bg-card p-4 space-y-3 backdrop-blur-sm">
 				<span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
 					Create New Key
 				</span>
@@ -50,7 +50,7 @@ function KeysContent() {
 						placeholder="Key name"
 						value={newKeyName}
 						onChange={(e) => setNewKeyName(e.target.value)}
-						className="flex-1 rounded-lg border border-border/60 bg-background/50 px-3 py-1.5 font-mono text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-neon-purple/50"
+						className="flex-1 rounded-lg border border-border/60 bg-background px-3 py-1.5 font-mono text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-neon-purple/50"
 					/>
 					<input
 						type="number"
@@ -58,7 +58,7 @@ function KeysContent() {
 						onChange={(e) =>
 							setNewKeyRateLimit(Number(e.target.value))
 						}
-						className="w-24 rounded-lg border border-border/60 bg-background/50 px-3 py-1.5 font-mono text-xs text-foreground outline-none focus:border-neon-purple/50"
+						className="w-24 rounded-lg border border-border/60 bg-background px-3 py-1.5 font-mono text-xs text-foreground outline-none focus:border-neon-purple/50"
 						title="Rate limit/min"
 					/>
 					<button
@@ -91,7 +91,7 @@ function KeysContent() {
 			</div>
 
 			{/* Keys table */}
-			<div className="rounded-xl border border-border/60 bg-card/40 overflow-hidden backdrop-blur-sm">
+			<div className="rounded-xl border border-border/60 bg-card overflow-hidden backdrop-blur-sm">
 				<table className="w-full text-xs">
 					<thead>
 						<tr className="border-b border-border/40">

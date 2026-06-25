@@ -43,7 +43,7 @@ function LogsContent() {
 				)}
 			</div>
 
-			<div className="rounded-xl border border-border/60 bg-card/40 overflow-hidden backdrop-blur-sm">
+			<div className="rounded-xl border border-border/60 bg-card overflow-hidden backdrop-blur-sm">
 				<table className="w-full text-xs">
 					<thead>
 						<tr className="border-b border-border/40">

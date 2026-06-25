@@ -29,7 +29,7 @@ function StatCard({
 	color: string
 }) {
 	return (
-		<div className="rounded-xl border border-border/60 bg-card/40 p-4 backdrop-blur-sm">
+		<div className="rounded-xl border border-border/60 bg-card p-4 backdrop-blur-sm">
 			<div className="flex items-center justify-between mb-3">
 				<span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
 					{label}
@@ -90,7 +90,7 @@ function DashboardContent() {
 					{[1, 2, 3, 4].map((i) => (
 						<div
 							key={i}
-							className="rounded-xl border border-border/60 bg-card/40 p-4 h-28 animate-pulse backdrop-blur-sm"
+							className="rounded-xl border border-border/60 bg-card p-4 h-28 animate-pulse backdrop-blur-sm"
 						/>
 					))}
 				</div>
@@ -135,7 +135,7 @@ function DashboardContent() {
 			</div>
 
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-				<div className="rounded-xl border border-border/60 bg-card/40 p-4 backdrop-blur-sm">
+				<div className="rounded-xl border border-border/60 bg-card p-4 backdrop-blur-sm">
 					<h2 className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-4">
 						Requests (24h)
 					</h2>
@@ -150,14 +150,14 @@ function DashboardContent() {
 							<CartesianGrid strokeDasharray="3 3" stroke="#333" strokeOpacity={0.5} />
 							<XAxis dataKey="time" tick={{ fontSize: 10, fill: "#888" }} />
 							<YAxis tick={{ fontSize: 10, fill: "#888" }} allowDecimals={false} />
-							<Tooltip contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", borderRadius: 8, fontSize: 11 }} labelStyle={{ color: "#eee" }} formatter={(value: number) => value.toLocaleString()} />
+							<Tooltip contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", borderRadius: 8, fontSize: 11 }} labelStyle={{ color: "#eee" }} formatter={(value) => Number(value).toLocaleString()} />
 							<Area type="monotone" dataKey="requests" stroke="#a78bfa" fill="url(#reqGrad)" strokeWidth={2} />
 							<Area type="monotone" dataKey="errors" stroke="#f87171" fill="none" strokeWidth={1.5} strokeDasharray="4 2" />
 						</AreaChart>
 					</ResponsiveContainer>
 				</div>
 
-				<div className="rounded-xl border border-border/60 bg-card/40 p-4 backdrop-blur-sm">
+				<div className="rounded-xl border border-border/60 bg-card p-4 backdrop-blur-sm">
 					<h2 className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-4">
 						Tokens (24h)
 					</h2>
@@ -166,7 +166,7 @@ function DashboardContent() {
 							<CartesianGrid strokeDasharray="3 3" stroke="#333" strokeOpacity={0.5} />
 							<XAxis dataKey="time" tick={{ fontSize: 10, fill: "#888" }} />
 							<YAxis tick={{ fontSize: 10, fill: "#888" }} tickFormatter={(v: number) => v.toLocaleString()} />
-							<Tooltip contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", borderRadius: 8, fontSize: 11 }} labelStyle={{ color: "#eee" }} formatter={(value: number) => value.toLocaleString()} />
+							<Tooltip contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", borderRadius: 8, fontSize: 11 }} labelStyle={{ color: "#eee" }} formatter={(value) => Number(value).toLocaleString()} />
 							<Bar dataKey="tokens" fill="#22d3ee" radius={[4, 4, 0, 0]} opacity={0.8} />
 						</BarChart>
 					</ResponsiveContainer>
