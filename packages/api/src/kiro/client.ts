@@ -1,5 +1,6 @@
-import type { KiroAuthManager } from "../auth/manager"
+import type { KiroAuthManager } from "../auth"
 import { env } from "../config"
+import { logger } from "../logging/logger"
 import { buildKiroHeaders } from "./headers"
 
 const MAX_RETRIES = 3
@@ -12,8 +13,33 @@ export interface KiroRequestOptions {
 	stream?: boolean
 }
 
+export interface KiroModelInfo {
+	modelId: string
+	modelName?: string
+	description?: string
+	tokenLimits?: { maxInputTokens?: number }
+}
+
 export class KiroHttpClient {
 	constructor(private auth: KiroAuthManager) {}
+
+	async listModels(): Promise<KiroModelInfo[]> {
+		const params = new URLSearchParams({ origin: "AI_EDITOR" })
+		if (this.auth.profileArn) {
+			params.set("profileArn", this.auth.profileArn)
+		}
+		const url = `${this.auth.qHost}/ListAvailableModels?${params}`
+
+		const res = await this.request({ method: "GET", url })
+		if (res.status !== 200) {
+			const text = await res.text()
+			throw new Error(
+				`ListAvailableModels failed (${res.status}): ${text}`,
+			)
+		}
+		const data = (await res.json()) as { models?: KiroModelInfo[] }
+		return data.models ?? []
+	}
 
 	async request(opts: KiroRequestOptions): Promise<Response> {
 		const maxRetries = opts.stream
@@ -37,8 +63,8 @@ export class KiroHttpClient {
 
 				// 403 — token expired, refresh and retry
 				if (res.status === 403) {
-					console.warn(
-						`[KiroClient] 403, refreshing token (attempt ${attempt + 1}/${maxRetries})`,
+					logger.warn(
+						`403, refreshing token (attempt ${attempt + 1}/${maxRetries})`,
 					)
 					await this.auth.forceRefresh()
 					continue
@@ -48,8 +74,8 @@ export class KiroHttpClient {
 				if (res.status === 429) {
 					lastResponse = res
 					const delay = BASE_RETRY_DELAY * 2 ** attempt
-					console.warn(
-						`[KiroClient] 429, waiting ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
+					logger.warn(
+						`429, waiting ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
 					)
 					await sleep(delay)
 					continue
@@ -59,8 +85,8 @@ export class KiroHttpClient {
 				if (res.status >= 500) {
 					lastResponse = res
 					const delay = BASE_RETRY_DELAY * 2 ** attempt
-					console.warn(
-						`[KiroClient] ${res.status}, waiting ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
+					logger.warn(
+						`${res.status}, waiting ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
 					)
 					await sleep(delay)
 					continue
@@ -71,8 +97,8 @@ export class KiroHttpClient {
 			} catch (e: unknown) {
 				lastError = e instanceof Error ? e : new Error(String(e))
 				const delay = BASE_RETRY_DELAY * 2 ** attempt
-				console.error(
-					`[KiroClient] Network error: ${lastError.message}, waiting ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
+				logger.error(
+					`Network error: ${lastError.message}, waiting ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
 				)
 				await sleep(delay)
 			}

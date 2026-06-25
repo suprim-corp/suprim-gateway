@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import type { KiroAuthManager } from "../auth/manager"
+import type { KiroAuthManager } from "../auth"
 import { getMachineFingerprint } from "../utils/ids"
 
 export function buildKiroHeaders(

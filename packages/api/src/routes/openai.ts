@@ -1,16 +1,17 @@
 import { FALLBACK_MODELS } from "@kiro-gateway/shared"
 import { Elysia } from "elysia"
-import { KiroAuthManager } from "../auth/manager"
-import type { AccountCredentialConfig } from "../auth/types"
+import { KiroAuthManager } from "../auth"
+import type { AccountCredentialConfig } from "../auth"
 import { env } from "../config"
 import {
 	buildKiroPayload,
 	type ChatCompletionRequest,
 } from "../converters/openai-to-kiro"
-import { KiroHttpClient } from "../kiro/client"
+import { KiroHttpClient } from "../kiro"
 import { logRequest } from "../logging"
-import { ModelResolver } from "../models/resolver"
-import { collectResponse, createOpenAIStream } from "../streaming/converter"
+import { logger } from "../logging/logger"
+import { ModelResolver } from "../models"
+import { collectResponse, createOpenAIStream } from "../streaming"
 import { generateCompletionId } from "../utils/ids"
 import {
 	type AuthResult,
@@ -24,6 +25,8 @@ import {
 let authManager: KiroAuthManager | null = null
 let httpClient: KiroHttpClient | null = null
 const modelResolver = new ModelResolver()
+
+const MODEL_CACHE_TTL = 300_000 // 5 min
 
 function getAuth(): KiroAuthManager {
 	if (!authManager) {
@@ -52,6 +55,32 @@ function getClient(): KiroHttpClient {
 	return httpClient
 }
 
+async function refreshModelCache() {
+	try {
+		const client = getClient()
+		const auth = getAuth()
+		logger.info(`Fetching models from ${auth.qHost}/ListAvailableModels`)
+		const models = await client.listModels()
+		const ids = models.map((m) => m.modelId)
+		modelResolver.setCachedModels(ids)
+		const disabled = ids.filter((id) => env.DISABLED_MODELS.includes(id))
+		const active = ids.length - disabled.length
+		logger.info(
+			`Models: ${ids.length} fetched, ${active} active, ${disabled.length} disabled [${ids.join(", ")}]`,
+		)
+	} catch (e) {
+		const fallbackIds = FALLBACK_MODELS.map((m) => m.modelId)
+		modelResolver.setCachedModels(fallbackIds)
+		logger.warn(
+			`Failed to fetch models, using ${fallbackIds.length} fallbacks:`,
+			e instanceof Error ? e.message : e,
+		)
+	}
+}
+
+// Periodic refresh (initial fetch triggered from index.ts)
+export { MODEL_CACHE_TTL, refreshModelCache }
+
 export const openaiRoutes = new Elysia({ prefix: "/v1" })
 	.derive(async ({ headers }) => {
 		const authResult = await resolveAuth(
@@ -71,11 +100,9 @@ export const openaiRoutes = new Elysia({ prefix: "/v1" })
 		}
 	})
 	.get("/models", () => {
-		const models = modelResolver.getAvailableModels()
-		const fallbackIds = FALLBACK_MODELS.map((m) => m.modelId)
-		const allModels = [...new Set([...models, ...fallbackIds])].filter(
-			(id) => !env.DISABLED_MODELS.includes(id),
-		)
+		const allModels = modelResolver
+			.getAvailableModels()
+			.filter((id) => !env.DISABLED_MODELS.includes(id))
 
 		return {
 			object: "list",

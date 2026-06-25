@@ -11,7 +11,7 @@ export class KiroAuthManager {
 	private accessToken: string | null = null
 	private refreshToken: string | null = null
 	private expiresAt: Date | null = null
-	private profileArn: string | null = null
+	readonly profileArn: string | null = null
 	private clientId: string | null = null
 	private clientSecret: string | null = null
 	private scopes: string[] | null = null
@@ -24,7 +24,8 @@ export class KiroAuthManager {
 	constructor(config: AccountCredentialConfig) {
 		this.region = config.region ?? env.KIRO_REGION
 		this.apiRegion = config.api_region ?? env.KIRO_API_REGION ?? this.region
-		this.profileArn = config.profile_arn ?? env.PROFILE_ARN ?? null
+		;(this as { profileArn: string | null }).profileArn =
+			config.profile_arn ?? env.PROFILE_ARN ?? null
 
 		if (config.type === "json" && config.path) {
 			this.loadFromJson(config.path)
@@ -59,7 +60,10 @@ export class KiroAuthManager {
 		this.accessToken = creds.accessToken ?? null
 		this.refreshToken = creds.refreshToken ?? null
 		this.expiresAt = creds.expiresAt ? new Date(creds.expiresAt) : null
-		this.profileArn = creds.profileArn ?? this.profileArn
+		if (creds.profileArn) {
+			;(this as { profileArn: string | null }).profileArn =
+				creds.profileArn
+		}
 		this.clientId = creds.clientId ?? null
 		this.clientSecret = creds.clientSecret ?? null
 
