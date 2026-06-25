@@ -5,6 +5,7 @@ import { Copy, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { AuthGuard } from "@/components/auth-guard"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
 	useCreateKey,
 	useDeleteKey,
@@ -46,20 +47,20 @@ function KeysContent() {
 					Create New Key
 				</span>
 				<div className="flex gap-3">
-					<input
+					<Input
 						type="text"
 						placeholder="Key name"
 						value={newKeyName}
 						onChange={(e) => setNewKeyName(e.target.value)}
-						className="flex-1 rounded-lg border border-border/60 bg-background px-3 py-1.5 font-mono text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-neon-purple/50"
+						className="flex-1"
 					/>
-					<input
+					<Input
 						type="number"
 						value={newKeyRateLimit}
 						onChange={(e) =>
 							setNewKeyRateLimit(Number(e.target.value))
 						}
-						className="w-24 rounded-lg border border-border/60 bg-background px-3 py-1.5 font-mono text-xs text-foreground outline-none focus:border-neon-purple/50"
+						className="w-24"
 						title="Rate limit/min"
 					/>
 					<Button

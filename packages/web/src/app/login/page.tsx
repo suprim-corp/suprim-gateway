@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation"
 import { type FormEvent, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { apiFetch } from "@/lib/api"
 
 export default function LoginPage() {
@@ -60,13 +61,12 @@ export default function LoginPage() {
 						>
 							Password
 						</label>
-						<input
+						<Input
 							id="password"
 							type="password"
 							value={password}
 							onChange={(e) => setPassword(e.target.value)}
 							placeholder="Enter admin password"
-							className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-neon-purple/50"
 						/>
 					</div>
 
