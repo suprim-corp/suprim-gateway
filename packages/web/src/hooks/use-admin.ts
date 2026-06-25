@@ -124,4 +124,40 @@ export function useTimeSeries(hours = 24) {
 	})
 }
 
-export type { KeysResponse, LogEntry, LogsResponse, Stats, TimeSeriesPoint, VirtualKey }
+interface ModelUsage {
+	model: string
+	requests: number
+	tokens: number
+}
+
+interface ModelUsageResponse {
+	data: ModelUsage[]
+}
+
+interface KeyUsage {
+	name: string
+	requests: number
+	tokens: number
+}
+
+interface KeyUsageResponse {
+	data: KeyUsage[]
+}
+
+export function useModelUsage() {
+	return useQuery<ModelUsageResponse>({
+		queryKey: ["model-usage"],
+		queryFn: () => apiFetch("/admin/stats/models"),
+		refetchInterval: 10000,
+	})
+}
+
+export function useTopKeys() {
+	return useQuery<KeyUsageResponse>({
+		queryKey: ["top-keys"],
+		queryFn: () => apiFetch("/admin/stats/top-keys"),
+		refetchInterval: 10000,
+	})
+}
+
+export type { KeysResponse, KeyUsage, LogEntry, LogsResponse, ModelUsage, Stats, TimeSeriesPoint, VirtualKey }

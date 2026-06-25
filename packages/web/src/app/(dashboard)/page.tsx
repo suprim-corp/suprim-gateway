@@ -7,6 +7,9 @@ import {
 	Bar,
 	BarChart,
 	CartesianGrid,
+	Cell,
+	Pie,
+	PieChart,
 	ResponsiveContainer,
 	Tooltip,
 	XAxis,
@@ -14,7 +17,7 @@ import {
 } from "recharts"
 import { AuthGuard } from "@/components/auth-guard"
 import { Card, CardContent } from "@/components/ui/card"
-import { useStats, useTimeSeries } from "@/hooks/use-admin"
+import { useModelUsage, useStats, useTimeSeries, useTopKeys } from "@/hooks/use-admin"
 
 function StatCard({
 	label,
@@ -65,6 +68,8 @@ function formatUptime(seconds: number): string {
 function DashboardContent() {
 	const { data, isLoading, error } = useStats()
 	const { data: tsData } = useTimeSeries(24)
+	const { data: modelData } = useModelUsage()
+	const { data: keyData } = useTopKeys()
 
 	if (error) {
 		return (
@@ -99,6 +104,9 @@ function DashboardContent() {
 	}
 
 	const chartData = tsData?.data ?? []
+	const models = modelData?.data ?? []
+	const topKeys = keyData?.data ?? []
+	const PIE_COLORS = ["#a78bfa", "#22d3ee", "#4ade80", "#facc15", "#f87171", "#fb923c", "#a3e635", "#e879f9"]
 
 	return (
 		<div className="space-y-6">
@@ -173,6 +181,62 @@ function DashboardContent() {
 								<Bar dataKey="tokens" fill="#22d3ee" radius={[4, 4, 0, 0]} opacity={0.8} />
 							</BarChart>
 						</ResponsiveContainer>
+					</CardContent>
+				</Card>
+			</div>
+
+			<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+				<Card>
+					<CardContent>
+						<h2 className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-4">
+							Models by Requests
+						</h2>
+						{models.length === 0 ? (
+							<p className="font-mono text-xs text-muted-foreground text-center py-8">No data yet</p>
+						) : (
+							<div className="flex items-center gap-4">
+								<ResponsiveContainer width="50%" height={180}>
+									<PieChart>
+										<Pie data={models} dataKey="requests" nameKey="model" cx="50%" cy="50%" outerRadius={70} strokeWidth={1} stroke="#1a1a1a">
+											{models.map((_, i) => (
+												<Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+											))}
+										</Pie>
+										<Tooltip contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", borderRadius: 8, fontSize: 11 }} labelStyle={{ color: "#eee" }} />
+									</PieChart>
+								</ResponsiveContainer>
+								<div className="flex-1 space-y-1.5">
+									{models.map((m, i) => (
+										<div key={m.model} className="flex items-center gap-2">
+											<div className="size-2.5" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+											<span className="font-mono text-[10px] text-muted-foreground truncate flex-1">{m.model}</span>
+											<span className="font-mono text-[10px] font-medium">{m.requests}</span>
+										</div>
+									))}
+								</div>
+							</div>
+						)}
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardContent>
+						<h2 className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-4">
+							Top Keys
+						</h2>
+						{topKeys.length === 0 ? (
+							<p className="font-mono text-xs text-muted-foreground text-center py-8">No data yet</p>
+						) : (
+							<ResponsiveContainer width="100%" height={180}>
+								<BarChart data={topKeys} layout="vertical">
+									<CartesianGrid strokeDasharray="3 3" stroke="#333" strokeOpacity={0.5} horizontal={false} />
+									<XAxis type="number" tick={{ fontSize: 10, fill: "#888" }} tickFormatter={(v: number) => v.toLocaleString()} />
+									<YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: "#888" }} width={80} />
+									<Tooltip contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", borderRadius: 8, fontSize: 11 }} labelStyle={{ color: "#eee" }} formatter={(value) => Number(value).toLocaleString()} />
+									<Bar dataKey="requests" fill="#4ade80" radius={[0, 4, 4, 0]} opacity={0.8} />
+								</BarChart>
+							</ResponsiveContainer>
+						)}
 					</CardContent>
 				</Card>
 			</div>

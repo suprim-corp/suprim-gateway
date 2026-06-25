@@ -1,7 +1,7 @@
 import { Elysia } from "elysia"
 import { createSession, validateSession } from "../auth/token"
 import { env } from "../config"
-import { getStats, getTimeSeries, queryLogs } from "../logging"
+import { getModelUsage, getStats, getTimeSeries, getTopKeys, queryLogs } from "../logging"
 import {
 	createKey,
 	deleteKey,
@@ -160,6 +160,12 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 	.get("/stats/timeseries", ({ query }) => {
 		const hours = query.hours ? Number(query.hours) : 24
 		return { data: getTimeSeries(hours) }
+	})
+	.get("/stats/models", () => {
+		return { data: getModelUsage() }
+	})
+	.get("/stats/top-keys", () => {
+		return { data: getTopKeys() }
 	})
 	.get("/accounts", () => ({ data: [] }))
 

@@ -164,6 +164,47 @@ export function getTimeSeries(hours = 24): TimeSeriesPoint[] {
 	return points
 }
 
+export interface ModelUsage {
+	model: string
+	requests: number
+	tokens: number
+}
+
+export function getModelUsage(): ModelUsage[] {
+	return db
+		.select({
+			model: requestLogs.model,
+			requests: sql<number>`count(*)`,
+			tokens: sql<number>`coalesce(sum(${requestLogs.totalTokens}), 0)`,
+		})
+		.from(requestLogs)
+		.groupBy(requestLogs.model)
+		.orderBy(sql`count(*) desc`)
+		.limit(10)
+		.all() as ModelUsage[]
+}
+
+export interface KeyUsage {
+	name: string
+	requests: number
+	tokens: number
+}
+
+export function getTopKeys(): KeyUsage[] {
+	return db
+		.select({
+			name: virtualKeys.name,
+			requests: sql<number>`count(*)`,
+			tokens: sql<number>`coalesce(sum(${requestLogs.totalTokens}), 0)`,
+		})
+		.from(requestLogs)
+		.innerJoin(virtualKeys, eq(requestLogs.virtualKeyId, virtualKeys.id))
+		.groupBy(virtualKeys.name)
+		.orderBy(sql`count(*) desc`)
+		.limit(10)
+		.all() as KeyUsage[]
+}
+
 export function getStats(): {
 	totalRequests: number
 	totalTokens: number
