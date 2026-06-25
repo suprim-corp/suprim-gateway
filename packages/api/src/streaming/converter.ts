@@ -1,6 +1,7 @@
 import { AwsEventStreamParser, parseBracketToolCalls } from "../kiro/parser"
 import { unprefixToolName } from "../converters/openai-to-kiro"
 import type { ToolUseEvent } from "../kiro/types"
+import { logger } from "../logging/logger"
 import { generateCompletionId } from "../utils/ids"
 import { countTokens } from "../utils/tokenizer"
 
@@ -101,6 +102,7 @@ export function createOpenAIStream(
 							)
 						} else if (event.type === "tool_use") {
 							const tool = event.data as ToolUseEvent
+							logger.debug(`[OpenAI stream] tool_use: ${tool.name} id=${tool.id} args=${tool.arguments.length} chars`)
 							toolCalls.push(tool)
 						}
 					}
@@ -115,6 +117,8 @@ export function createOpenAIStream(
 					])
 				}
 
+				logger.debug(`[OpenAI stream] done: content=${fullContent.length} chars, toolCalls=${toolCalls.length}, bracketTools=${bracketTools.length}`)
+
 				// Emit tool calls
 				if (toolCalls.length) {
 					if (!sentRole) {
@@ -127,8 +131,12 @@ export function createOpenAIStream(
 							),
 						)
 					}
+					const CHUNK_SIZE = 16_384
 					for (let i = 0; i < toolCalls.length; i++) {
 						const tc = toolCalls[i]
+						const name = unprefixToolName(tc.name)
+						// First chunk: id + name + start of arguments
+						const firstSlice = tc.arguments.slice(0, CHUNK_SIZE)
 						controller.enqueue(
 							formatSSE(
 								makeChunk(completionId, created, model, {
@@ -138,14 +146,31 @@ export function createOpenAIStream(
 											id: tc.id,
 											type: "function",
 											function: {
-												name: unprefixToolName(tc.name),
-												arguments: tc.arguments,
+												name,
+												arguments: firstSlice,
 											},
 										},
 									],
 								}),
 							),
 						)
+						// Remaining chunks: arguments only
+						for (let j = CHUNK_SIZE; j < tc.arguments.length; j += CHUNK_SIZE) {
+							controller.enqueue(
+								formatSSE(
+									makeChunk(completionId, created, model, {
+										tool_calls: [
+											{
+												index: i,
+												function: {
+													arguments: tc.arguments.slice(j, j + CHUNK_SIZE),
+												},
+											},
+										],
+									}),
+								),
+							)
+						}
 					}
 				}
 
@@ -174,6 +199,7 @@ export function createOpenAIStream(
 				onDone?.({ prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens })
 			} catch (err: unknown) {
 				const message = err instanceof Error ? err.message : String(err)
+				logger.error(`[OpenAI stream] ${message}`, err instanceof Error ? err.stack : "")
 				controller.enqueue(
 					formatSSE(
 						makeErrorChunk(completionId, created, model, message),

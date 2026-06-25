@@ -69,6 +69,7 @@ function inputToMessages(
 		type: "function"
 		function: { name: string; arguments: string }
 	}> = []
+	let pendingAssistantContent = ""
 
 	for (const item of input) {
 		if (item.type === "function_call") {
@@ -81,10 +82,11 @@ function inputToMessages(
 			if (pendingToolCalls.length) {
 				messages.push({
 					role: "assistant",
-					content: "",
+					content: pendingAssistantContent || "",
 					tool_calls: pendingToolCalls,
 				} as unknown as (typeof messages)[number])
 				pendingToolCalls = []
+				pendingAssistantContent = ""
 			}
 			messages.push({
 				role: "tool",
@@ -95,10 +97,11 @@ function inputToMessages(
 			if (pendingToolCalls.length) {
 				messages.push({
 					role: "assistant",
-					content: "",
+					content: pendingAssistantContent || "",
 					tool_calls: pendingToolCalls,
 				} as unknown as (typeof messages)[number])
 				pendingToolCalls = []
+				pendingAssistantContent = ""
 			}
 			const content =
 				typeof item.content === "string"
@@ -110,16 +113,34 @@ function inputToMessages(
 							.map((c) => c.text)
 							.join("")
 			const role = item.role === "developer" ? "system" : item.role
-			messages.push({ role, content })
+
+			// If assistant message, hold it — next items might be function_calls belonging to this turn
+			if (role === "assistant") {
+				// Flush any prior assistant content that had no tool calls
+				if (pendingAssistantContent) {
+					messages.push({ role: "assistant", content: pendingAssistantContent })
+				}
+				pendingAssistantContent = content
+			} else {
+				// Flush pending assistant if any
+				if (pendingAssistantContent) {
+					messages.push({ role: "assistant", content: pendingAssistantContent })
+					pendingAssistantContent = ""
+				}
+				messages.push({ role, content })
+			}
 		}
 	}
 
+	// Flush remaining
 	if (pendingToolCalls.length) {
 		messages.push({
 			role: "assistant",
-			content: "",
+			content: pendingAssistantContent || "",
 			tool_calls: pendingToolCalls,
 		} as unknown as (typeof messages)[number])
+	} else if (pendingAssistantContent) {
+		messages.push({ role: "assistant", content: pendingAssistantContent })
 	}
 
 	return messages
@@ -196,22 +217,27 @@ function createResponsesStream(
 				},
 			}),
 		)
-		controller.enqueue(
-			sse({
-				type: "response.function_call_arguments.delta",
-				item_id: itemId,
-				call_id: tc.id,
-				output_index: outputIndex,
-				delta: tc.arguments,
-			}),
-		)
+		// Chunk large arguments to avoid proxy/SSE buffer truncation
+		const CHUNK_SIZE = 16_384
+		const args = tc.arguments
+		for (let i = 0; i < args.length; i += CHUNK_SIZE) {
+			controller.enqueue(
+				sse({
+					type: "response.function_call_arguments.delta",
+					item_id: itemId,
+					call_id: tc.id,
+					output_index: outputIndex,
+					delta: args.slice(i, i + CHUNK_SIZE),
+				}),
+			)
+		}
 		controller.enqueue(
 			sse({
 				type: "response.function_call_arguments.done",
 				item_id: itemId,
 				call_id: tc.id,
 				output_index: outputIndex,
-				arguments: tc.arguments,
+				arguments: args,
 			}),
 		)
 		controller.enqueue(
@@ -222,7 +248,7 @@ function createResponsesStream(
 					type: "function_call",
 					id: itemId,
 					name,
-					arguments: tc.arguments,
+					arguments: args,
 					call_id: tc.id,
 				},
 			}),
@@ -291,18 +317,20 @@ function createResponsesStream(
 								}),
 							)
 						} else if (event.type === "tool_use") {
+							logger.debug(`[Responses stream] tool_use: ${(event.data as ToolUseEvent).name} id=${(event.data as ToolUseEvent).id}`)
 							emitToolCall(controller, event.data as ToolUseEvent)
 						}
 					}
 				}
 			} catch (err) {
-				logger.warn("Stream read error:", err instanceof Error ? err.message : err)
+				logger.error(`[Responses stream] ${err instanceof Error ? err.message : err}`, err instanceof Error ? err.stack : "")
 			}
 
 			// Flush any in-progress tool call that never got stop:true
 			const flushed = parser.flush()
 			for (const event of flushed) {
 				if (event.type === "tool_use") {
+					logger.debug(`[Responses stream] flushed tool_use: ${(event.data as ToolUseEvent).name} id=${(event.data as ToolUseEvent).id}`)
 					emitToolCall(controller, event.data as ToolUseEvent)
 				}
 			}
@@ -452,6 +480,8 @@ export const responsesRoutes = new Elysia({ prefix: "/v1" })
 		const kiroAuth = getAuth()
 		const client = getClient()
 		const payload = buildKiroPayload(chatReq, kiroAuth)
+		const lastMsg = payload.conversationState.currentMessage.userInputMessage
+		logger.debug(`[Responses] tools=${req.tools?.length ?? 0}, messages=${messages.length}, kiroTools=${lastMsg.userInputMessageContext?.tools?.length ?? 0}, history=${payload.conversationState.history?.length ?? 0}, currentContent=${lastMsg.content.length}c, toolResults=${lastMsg.userInputMessageContext?.toolResults?.length ?? 0}`)
 		const url = `${kiroAuth.apiHost}/generateAssistantResponse`
 
 		const response = await client.request({

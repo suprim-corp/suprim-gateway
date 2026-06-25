@@ -1,4 +1,5 @@
 import type { RawKiroEvent, ToolUseEvent } from "./types"
+import { logger } from "../logging/logger"
 
 interface KiroEventObject {
 	assistantResponseEvent?: {
@@ -34,19 +35,96 @@ interface KiroToolEvent {
 
 export class AwsEventStreamParser {
 	private buffer = ""
+	private binaryBuffer: Uint8Array = new Uint8Array(0)
 	private currentToolCall: Partial<ToolUseEvent> | null = null
 	private toolCallArgs = ""
 	private toolCalls: ToolUseEvent[] = []
 	private toolCallCounter = 0
+	private isBinaryMode: boolean | null = null
 
 	feed(chunk: Uint8Array | string): RawKiroEvent[] {
-		const text =
-			typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)
-		this.buffer += text
-		return this.parseBuffer()
+		if (typeof chunk === "string") {
+			if (this.isBinaryMode === null) this.isBinaryMode = false
+			this.buffer += chunk
+			return this.parseTextBuffer()
+		}
+
+		// Detect mode on first binary chunk
+		if (this.isBinaryMode === null) {
+			// AWS binary event stream starts with a 4-byte big-endian length
+			// If first bytes look like valid JSON start ({, [, or whitespace before {), treat as text
+			const firstByte = chunk[0]
+			if (firstByte === 0x7b || firstByte === 0x5b || firstByte === 0x0a || firstByte === 0x0d || firstByte === 0x20) {
+				this.isBinaryMode = false
+			} else {
+				this.isBinaryMode = true
+			}
+		}
+
+		if (!this.isBinaryMode) {
+			this.buffer += new TextDecoder().decode(chunk)
+			return this.parseTextBuffer()
+		}
+
+		return this.feedBinary(chunk)
 	}
 
-	private parseBuffer(): RawKiroEvent[] {
+	private feedBinary(chunk: Uint8Array): RawKiroEvent[] {
+		// Append to binary buffer
+		const newBuf = new Uint8Array(this.binaryBuffer.length + chunk.length)
+		newBuf.set(this.binaryBuffer)
+		newBuf.set(chunk, this.binaryBuffer.length)
+		this.binaryBuffer = newBuf
+
+		const events: RawKiroEvent[] = []
+
+		while (this.binaryBuffer.length >= 12) {
+			const view = new DataView(this.binaryBuffer.buffer, this.binaryBuffer.byteOffset, this.binaryBuffer.byteLength)
+			const totalLength = view.getUint32(0)
+
+			if (totalLength < 16 || totalLength > 16 * 1024 * 1024) {
+				// Invalid frame — might be text after all, switch modes
+				this.isBinaryMode = false
+				this.buffer += new TextDecoder().decode(this.binaryBuffer)
+				this.binaryBuffer = new Uint8Array(0)
+				return [...events, ...this.parseTextBuffer()]
+			}
+
+			if (this.binaryBuffer.length < totalLength) break
+
+			const headersLength = view.getUint32(4)
+			// prelude CRC at bytes 8-11
+			const headersEnd = 12 + headersLength
+			const payloadEnd = totalLength - 4 // last 4 bytes = message CRC
+
+			if (payloadEnd > headersEnd) {
+				const payload = this.binaryBuffer.slice(headersEnd, payloadEnd)
+				const text = new TextDecoder().decode(payload)
+
+				// Try to parse JSON from payload
+				const trimmed = text.trim()
+				if (trimmed.startsWith("{")) {
+					try {
+						const obj = JSON.parse(trimmed) as KiroEventObject
+						const parsed = this.processObject(obj)
+						if (parsed) events.push(...parsed)
+					} catch {
+						// payload might contain multiple JSON objects or partial data
+						// fall back to text scanning
+						this.buffer += text
+						const textEvents = this.parseTextBuffer()
+						events.push(...textEvents)
+					}
+				}
+			}
+
+			this.binaryBuffer = this.binaryBuffer.slice(totalLength)
+		}
+
+		return events
+	}
+
+	private parseTextBuffer(): RawKiroEvent[] {
 		const events: RawKiroEvent[] = []
 		let searchFrom = 0
 
@@ -65,7 +143,7 @@ export class AwsEventStreamParser {
 				const parsed = this.processObject(obj)
 				if (parsed) events.push(...parsed)
 			} catch {
-				// malformed JSON, skip
+				logger.warn(`[Parser] malformed JSON (${jsonStr.length} chars): ${jsonStr.slice(0, 200)}`)
 			}
 		}
 
@@ -185,15 +263,34 @@ export class AwsEventStreamParser {
 			return [{ type: "tool_use", data: toolCall }]
 		}
 
-		// Start new tool call or accumulate input
-		// Kiro sends name on every chunk, so check if we already have this tool active
-		if (event.name && !this.currentToolCall) {
+		// New tool call starting — flush any in-progress one first
+		// Kiro sends name on every chunk, so only treat as new if toolUseId differs
+		if (event.name && event.toolUseId) {
+			if (this.currentToolCall && this.currentToolCall.id === event.toolUseId) {
+				// Same tool, just accumulate input
+				if (event.input != null) {
+					this.toolCallArgs += event.input
+				}
+				return null
+			}
+
+			const events: RawKiroEvent[] = []
+			if (this.currentToolCall) {
+				const toolCall: ToolUseEvent = {
+					id: this.currentToolCall.id ?? "",
+					name: this.currentToolCall.name ?? "",
+					arguments: this.toolCallArgs,
+				}
+				this.toolCalls.push(toolCall)
+				events.push({ type: "tool_use", data: toolCall })
+				this.toolCallArgs = ""
+			}
 			this.currentToolCall = {
-				id: event.toolUseId ?? `call_${(++this.toolCallCounter).toString(16).padStart(8, "0")}`,
+				id: event.toolUseId,
 				name: event.name,
 			}
 			this.toolCallArgs = event.input ?? ""
-			return null
+			return events.length ? events : null
 		}
 
 		if (event.input != null && this.currentToolCall) {
@@ -262,6 +359,8 @@ export class AwsEventStreamParser {
 
 	reset() {
 		this.buffer = ""
+		this.binaryBuffer = new Uint8Array(0)
+		this.isBinaryMode = null
 		this.currentToolCall = null
 		this.toolCallArgs = ""
 		this.toolCalls = []

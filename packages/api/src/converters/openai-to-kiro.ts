@@ -183,85 +183,138 @@ function convertMessages(messages: OpenAIMessage[]): {
 	let system: string | null = null
 	const converted: KiroHistoryEntry[] = []
 
-	// Normalize: extract system, convert roles, merge adjacent same-role
-	const normalized: Array<{ role: "user" | "assistant"; content: string; tool_calls?: OpenAIMessage["tool_calls"]; tool_call_id?: string }> = []
+	// Phase 1: Group messages into logical turns
+	// assistant with tool_calls + following tool results = one assistant turn + one user turn (with all results)
+	interface Turn {
+		role: "user" | "assistant"
+		content: string
+		tool_calls?: OpenAIMessage["tool_calls"]
+		tool_results?: Array<{ tool_call_id: string; content: string }>
+	}
 
-	for (const msg of messages) {
+	const turns: Turn[] = []
+
+	for (let i = 0; i < messages.length; i++) {
+		const msg = messages[i]
+
 		if (msg.role === "system") {
 			const text = extractTextContent(msg.content)
 			system = system ? `${system}\n\n${text}` : text
 			continue
 		}
 
-		const role: "user" | "assistant" = msg.role === "tool" ? "user" : msg.role
-		const content = extractTextContent(msg.content)
+		if (msg.role === "tool") {
+			// Merge into the last turn if it's a user/tool-result turn, else create one
+			const last = turns[turns.length - 1]
+			if (last && last.role === "user" && last.tool_results) {
+				last.tool_results.push({
+					tool_call_id: msg.tool_call_id ?? "",
+					content: extractTextContent(msg.content) || "(empty result)",
+				})
+			} else {
+				turns.push({
+					role: "user",
+					content: "",
+					tool_results: [{
+						tool_call_id: msg.tool_call_id ?? "",
+						content: extractTextContent(msg.content) || "(empty result)",
+					}],
+				})
+			}
+			continue
+		}
 
-		normalized.push({
-			role,
-			content: content ?? "",
-			tool_calls: msg.tool_calls,
-			tool_call_id: msg.tool_call_id,
+		if (msg.role === "assistant") {
+			turns.push({
+				role: "assistant",
+				content: extractTextContent(msg.content) ?? "",
+				tool_calls: msg.tool_calls,
+			})
+			continue
+		}
+
+		// user message
+		turns.push({
+			role: "user",
+			content: extractTextContent(msg.content) ?? "",
 		})
 	}
 
-	// Ensure first message is user
-	if (normalized.length > 0 && normalized[0].role !== "user") {
-		normalized.unshift({ role: "user", content: "(empty placeholder)" })
+	// Phase 2: Ensure first message is user
+	if (turns.length > 0 && turns[0].role !== "user") {
+		turns.unshift({ role: "user", content: "(empty placeholder)" })
 	}
 
-	// Ensure alternating roles by inserting placeholders
-	const alternating: typeof normalized = []
-	for (const msg of normalized) {
+	// Phase 3: Ensure alternating roles by inserting placeholders
+	const alternating: Turn[] = []
+	for (const turn of turns) {
 		if (alternating.length > 0) {
 			const last = alternating[alternating.length - 1]
-			if (msg.role === last.role) {
-				const filler = msg.role === "user" ? "assistant" : "user"
+			if (turn.role === last.role) {
+				const filler = turn.role === "user" ? "assistant" : "user"
 				alternating.push({ role: filler, content: "(empty placeholder)" })
 			}
 		}
-		alternating.push(msg)
+		alternating.push(turn)
 	}
 
-	// Convert to Kiro history format
-	const modelId = "placeholder" // will be overwritten; history uses same modelId pattern
-	for (const msg of alternating) {
-		if (msg.role === "user") {
+	// Phase 4: Convert to Kiro history format with deduplication
+	const seenToolUseIds = new Set<string>()
+	const emittedToolUseIds = new Set<string>()
+	for (const turn of alternating) {
+		if (turn.role === "user") {
 			const entry: KiroHistoryEntry = {
 				userInputMessage: {
-					content: msg.content || "(empty placeholder)",
-					modelId: "", // history entries don't need modelId based on Python code
+					content: turn.content || "(empty placeholder)",
+					modelId: "",
 					origin: "AI_EDITOR",
 				},
 			}
 
-			// If this is a tool result message
-			if (msg.tool_call_id) {
-				entry.userInputMessage!.userInputMessageContext = {
-					toolResults: [
-						{
-							content: [{ text: msg.content || "(empty result)" }],
+			if (turn.tool_results?.length) {
+				const seenResultIds = new Set<string>()
+				const validResults = turn.tool_results.filter((tr) => {
+					if (!emittedToolUseIds.has(tr.tool_call_id)) return false
+					if (seenResultIds.has(tr.tool_call_id)) return false
+					seenResultIds.add(tr.tool_call_id)
+					return true
+				})
+				if (validResults.length) {
+					entry.userInputMessage!.userInputMessageContext = {
+						toolResults: validResults.map((tr) => ({
+							content: [{ text: tr.content }],
 							status: "success",
-							toolUseId: msg.tool_call_id,
-						},
-					],
+							toolUseId: tr.tool_call_id,
+						})),
+					}
 				}
 			}
 
 			converted.push(entry)
-		} else if (msg.role === "assistant") {
+		} else if (turn.role === "assistant") {
 			const assistantEntry: KiroHistoryEntry = {
 				assistantResponseMessage: {
-					content: msg.content ?? "",
+					content: turn.content ?? "",
 				},
 			}
 
-			if (msg.tool_calls?.length) {
-				assistantEntry.assistantResponseMessage!.toolUses =
-					msg.tool_calls.map((tc) => ({
-						toolUseId: tc.id,
-						name: tc.function.name,
-						input: safeJsonParse(tc.function.arguments),
-					}))
+			if (turn.tool_calls?.length) {
+				const dedupedToolCalls = turn.tool_calls.filter((tc) => {
+					if (seenToolUseIds.has(tc.id)) return false
+					seenToolUseIds.add(tc.id)
+					return true
+				})
+				if (dedupedToolCalls.length) {
+					assistantEntry.assistantResponseMessage!.toolUses =
+						dedupedToolCalls.map((tc) => ({
+							toolUseId: tc.id,
+							name: tc.function.name,
+							input: safeJsonParse(tc.function.arguments),
+						}))
+					for (const tc of dedupedToolCalls) {
+						emittedToolUseIds.add(tc.id)
+					}
+				}
 			}
 
 			converted.push(assistantEntry)

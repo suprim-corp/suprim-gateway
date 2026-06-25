@@ -6,6 +6,7 @@ import type { AccountCredentialConfig, KiroCredentials } from "./types"
 import { AuthType } from "./types"
 
 const TOKEN_REFRESH_THRESHOLD = 600 // 10 min before expiry
+const REFRESH_COOLDOWN_MS = 60_000 // don't retry refresh for 60s after failure
 
 export class KiroAuthManager {
 	private accessToken: string | null = null
@@ -17,6 +18,7 @@ export class KiroAuthManager {
 	private scopes: string[] | null = null
 	private authType: AuthType = AuthType.KIRO_DESKTOP
 	private refreshing: Promise<void> | null = null
+	private lastRefreshFailure = 0
 	private readonly credentialSource: { type: "json" | "sqlite"; path: string } | null =
 		null
 	
@@ -180,7 +182,7 @@ export class KiroAuthManager {
 		if (this.accessToken && !this.isExpired()) {
 			return this.accessToken
 		}
-		
+
 		// Re-read credentials from disk — Kiro Desktop may have refreshed them
 		if (this.credentialSource) {
 			this.reloadCredentials()
@@ -188,11 +190,20 @@ export class KiroAuthManager {
 				return this.accessToken
 			}
 		}
-		
+
+		// Skip refresh if we recently failed and token is still usable
+		if (Date.now() - this.lastRefreshFailure < REFRESH_COOLDOWN_MS) {
+			if (this.accessToken && !this.isActuallyExpired()) {
+				return this.accessToken
+			}
+		}
+
 		// Try refresh, but gracefully degrade if it fails
 		try {
 			await this.refresh()
+			this.lastRefreshFailure = 0
 		} catch (e) {
+			this.lastRefreshFailure = Date.now()
 			if (this.accessToken && !this.isActuallyExpired()) {
 				console.warn(
 					"[Auth] Refresh failed, using existing token until expiry:",
@@ -202,7 +213,7 @@ export class KiroAuthManager {
 			}
 			throw e
 		}
-		
+
 		if (!this.accessToken) {
 			throw new Error("Token refresh failed - no access token")
 		}
