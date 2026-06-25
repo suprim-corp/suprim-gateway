@@ -36,6 +36,7 @@ export interface StreamChunk {
 export function createOpenAIStream(
 	response: Response,
 	model: string,
+	onDone?: (usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }) => void,
 ): ReadableStream<string> {
 	const completionId = generateCompletionId()
 	const created = Math.floor(Date.now() / 1000)
@@ -183,6 +184,7 @@ export function createOpenAIStream(
 				controller.enqueue(formatSSE(finalChunk))
 				controller.enqueue("data: [DONE]\n\n")
 				controller.close()
+				onDone?.({ prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens })
 			} catch (err: unknown) {
 				const message = err instanceof Error ? err.message : String(err)
 				controller.enqueue(

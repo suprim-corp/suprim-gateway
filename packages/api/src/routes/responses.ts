@@ -127,12 +127,14 @@ function createResponsesStream(
 	kiroResponse: Response,
 	model: string,
 	responseId: string,
+	onDone?: (usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }) => void,
 ): ReadableStream<string> {
 	const parser = new AwsEventStreamParser()
 	let fullText = ""
 	const toolCalls: ToolUseEvent[] = []
 	let outputIndex = 0
 	let textClosed = false
+	let contextUsage: number | null = null
 
 	function sse(event: { type: string; [k: string]: unknown }): string {
 		return `data: ${JSON.stringify(event)}\n\n`
@@ -288,6 +290,8 @@ function createResponsesStream(
 							)
 						} else if (event.type === "tool_use") {
 							emitToolCall(controller, event.data as ToolUseEvent)
+						} else if (event.type === "context_usage") {
+							contextUsage = event.data as number
 						}
 					}
 				}
@@ -334,6 +338,14 @@ function createResponsesStream(
 				})
 			}
 
+			// ponytail: ~4 chars/token estimate, same as collectResponse
+			const completionTokens = Math.ceil(fullText.length / 4)
+			const promptTokens =
+				contextUsage != null
+					? Math.max(0, Math.floor((contextUsage / 100) * 200000) - completionTokens)
+					: 0
+			const totalTokens = promptTokens + completionTokens
+
 			controller.enqueue(
 				sse({
 					type: "response.completed",
@@ -344,14 +356,15 @@ function createResponsesStream(
 						model,
 						output,
 						usage: {
-							input_tokens: 0,
-							output_tokens: 0,
-							total_tokens: 0,
+							input_tokens: promptTokens,
+							output_tokens: completionTokens,
+							total_tokens: totalTokens,
 						},
 					},
 				}),
 			)
 			controller.close()
+			onDone?.({ prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: totalTokens })
 		},
 	})
 }
@@ -471,21 +484,26 @@ export const responsesRoutes = new Elysia({ prefix: "/v1" })
 				response,
 				resolvedModel,
 				responseId,
+				(usage) => {
+					if (auth.type === "virtual_key" && auth.key) {
+						recordUsage(auth.key.id, usage.total_tokens)
+					}
+					logRequest({
+						virtualKeyId: keyId,
+						model: resolvedModel,
+						requestedModel: req.model,
+						status: 200,
+						promptTokens: usage.prompt_tokens,
+						completionTokens: usage.completion_tokens,
+						totalTokens: usage.total_tokens,
+						streaming: true,
+						latencyMs: Date.now() - startTime,
+					})
+				},
 			)
 			set.headers["content-type"] = "text/event-stream"
 			set.headers["cache-control"] = "no-cache"
 			set.headers.connection = "keep-alive"
-			if (auth.type === "virtual_key" && auth.key) {
-				recordUsage(auth.key.id, 0)
-			}
-			logRequest({
-				virtualKeyId: keyId,
-				model: resolvedModel,
-				requestedModel: req.model,
-				status: 200,
-				streaming: true,
-				latencyMs: Date.now() - startTime,
-			})
 			return new Response(stream as unknown as BodyInit)
 		}
 

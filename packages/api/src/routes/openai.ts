@@ -241,21 +241,25 @@ export const openaiRoutes = new Elysia({ prefix: "/v1" })
 		}
 
 		if (req.stream) {
-			const stream = createOpenAIStream(response, resolvedModel)
+			const stream = createOpenAIStream(response, resolvedModel, (usage) => {
+				if (auth.type === "virtual_key" && auth.key) {
+					recordUsage(auth.key.id, usage.total_tokens)
+				}
+				logRequest({
+					virtualKeyId: keyId,
+					model: resolvedModel,
+					requestedModel: req.model,
+					status: 200,
+					promptTokens: usage.prompt_tokens,
+					completionTokens: usage.completion_tokens,
+					totalTokens: usage.total_tokens,
+					streaming: true,
+					latencyMs: Date.now() - startTime,
+				})
+			})
 			set.headers["content-type"] = "text/event-stream"
 			set.headers["cache-control"] = "no-cache"
 			set.headers.connection = "keep-alive"
-			if (auth.type === "virtual_key" && auth.key) {
-				recordUsage(auth.key.id, 0)
-			}
-			logRequest({
-				virtualKeyId: keyId,
-				model: resolvedModel,
-				requestedModel: req.model,
-				status: 200,
-				streaming: true,
-				latencyMs: Date.now() - startTime,
-			})
 			return new Response(stream as unknown as BodyInit)
 		}
 
