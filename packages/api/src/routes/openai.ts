@@ -1,7 +1,7 @@
 import { FALLBACK_MODELS } from "@kiro-gateway/shared"
 import { Elysia } from "elysia"
-import { KiroAuthManager } from "../auth"
 import type { AccountCredentialConfig } from "../auth"
+import { KiroAuthManager } from "../auth"
 import { env } from "../config"
 import {
 	buildKiroPayload,
@@ -79,7 +79,34 @@ async function refreshModelCache() {
 }
 
 // Periodic refresh (initial fetch triggered from index.ts)
-export { MODEL_CACHE_TTL, refreshModelCache }
+export { getAuth, getClient, MODEL_CACHE_TTL, modelResolver, refreshModelCache }
+
+interface ChatCompletionChoice {
+	index: number
+	message: {
+		role: "assistant"
+		content: string | null
+		tool_calls?: Array<{
+			id: string
+			type: "function"
+			function: { name: string; arguments: string }
+		}>
+	}
+	finish_reason: "stop" | "tool_calls"
+}
+
+interface ChatCompletionResponse {
+	id: string
+	object: "chat.completion"
+	created: number
+	model: string
+	choices: ChatCompletionChoice[]
+	usage: {
+		prompt_tokens: number
+		completion_tokens: number
+		total_tokens: number
+	}
+}
 
 export const openaiRoutes = new Elysia({ prefix: "/v1" })
 	.derive(async ({ headers }) => {
@@ -185,7 +212,7 @@ export const openaiRoutes = new Elysia({ prefix: "/v1" })
 		const kiroAuth = getAuth()
 		const client = getClient()
 		const payload = buildKiroPayload(req, kiroAuth)
-		const url = `${kiroAuth.apiHost}/amazonq/generateAssistantResponse`
+		const url = `${kiroAuth.apiHost}/generateAssistantResponse`
 
 		const response = await client.request({
 			method: "POST",
@@ -249,33 +276,6 @@ export const openaiRoutes = new Elysia({ prefix: "/v1" })
 			streaming: false,
 			latencyMs: Date.now() - startTime,
 		})
-
-		interface ChatCompletionChoice {
-			index: number
-			message: {
-				role: "assistant"
-				content: string | null
-				tool_calls?: Array<{
-					id: string
-					type: "function"
-					function: { name: string; arguments: string }
-				}>
-			}
-			finish_reason: "stop" | "tool_calls"
-		}
-
-		interface ChatCompletionResponse {
-			id: string
-			object: "chat.completion"
-			created: number
-			model: string
-			choices: ChatCompletionChoice[]
-			usage: {
-				prompt_tokens: number
-				completion_tokens: number
-				total_tokens: number
-			}
-		}
 
 		const choice: ChatCompletionChoice = {
 			index: 0,

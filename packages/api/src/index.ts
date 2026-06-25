@@ -11,6 +11,7 @@ import {
 	openaiRoutes,
 	refreshModelCache,
 } from "./routes/openai"
+import { responsesRoutes } from "./routes/responses"
 
 runMigrations()
 
@@ -19,6 +20,7 @@ const app = new Elysia()
 	.use(bearer())
 	.use(healthRoutes)
 	.use(openaiRoutes)
+	.use(responsesRoutes)
 	.use(adminRoutes)
 	.listen(env.PORT)
 
