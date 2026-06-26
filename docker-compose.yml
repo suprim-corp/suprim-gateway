@@ -7,7 +7,8 @@ services:
     env_file: .env
     environment:
       DATABASE_PATH: /app/data/gateway.db
+      KIRO_CREDS_FILE: /app/creds/kiro-auth-token.json
     volumes:
       - ./data:/app/data
-      - ${KIRO_CREDS_FILE:-~/.aws/sso/cache/kiro-auth-token.json}:/app/creds/kiro-auth-token.json:ro
+      - ${KIRO_CREDS_HOST_PATH:-~/.aws/sso/cache/kiro-auth-token.json}:/app/creds/kiro-auth-token.json:ro
     restart: unless-stopped
