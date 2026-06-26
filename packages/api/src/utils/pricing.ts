@@ -4,22 +4,23 @@ interface ModelPricing {
 	output: number
 }
 
+// per 1M tokens, USD — sourced from AWS Bedrock pricing
 const PRICING: Record<string, ModelPricing> = {
 	"auto": { input: 3, output: 15 },
 	"claude-sonnet-4": { input: 3, output: 15 },
 	"claude-sonnet-4.5": { input: 3, output: 15 },
 	"claude-sonnet-4.6": { input: 3, output: 15 },
-	"claude-opus-4": { input: 15, output: 75 },
-	"claude-opus-4.5": { input: 15, output: 75 },
-	"claude-opus-4.6": { input: 15, output: 75 },
-	"claude-haiku-4.5": { input: 0.8, output: 4 },
+	"claude-opus-4": { input: 5, output: 25 },
+	"claude-opus-4.5": { input: 5, output: 25 },
+	"claude-opus-4.6": { input: 5, output: 25 },
+	"claude-haiku-4.5": { input: 1, output: 5 },
 	"claude-3.7-sonnet": { input: 3, output: 15 },
-	"deepseek-v3.2": { input: 0.27, output: 1.1 },
-	"deepseek-3.2": { input: 0.27, output: 1.1 },
-	"glm-5": { input: 0.5, output: 2 },
-	"minimax-m2.5": { input: 0.5, output: 2 },
-	"minimax-m2.1": { input: 0.5, output: 2 },
-	"qwen3-coder-next": { input: 0.5, output: 2 },
+	"deepseek-v3.2": { input: 0.62, output: 1.85 },
+	"deepseek-3.2": { input: 0.62, output: 1.85 },
+	"glm-5": { input: 1, output: 3.2 },
+	"minimax-m2.5": { input: 0.3, output: 1.2 },
+	"minimax-m2.1": { input: 0.3, output: 1.2 },
+	"qwen3-coder-next": { input: 0.15, output: 1.2 },
 }
 
 const MODEL_ALIASES: Record<string, string> = {
