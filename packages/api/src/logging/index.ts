@@ -1,7 +1,7 @@
 import { desc, eq, sql } from "drizzle-orm"
 import { db } from "../db/index"
 import { requestLogs, virtualKeys } from "../db/schema"
-import { calculateCost } from "../utils/pricing"
+import { calculateCost, resolveModelAlias } from "../utils/pricing"
 
 export interface LogEntry {
 	virtualKeyId?: string
@@ -204,12 +204,25 @@ export function getModelUsage(): ModelUsage[] {
 		.limit(10)
 		.all() as { model: string; requests: number; tokens: number; promptTokens: number; completionTokens: number }[]
 
-	return rows.map((r) => ({
-		model: r.model,
-		requests: r.requests,
-		tokens: r.tokens,
-		cost: calculateCost(r.model, r.promptTokens, r.completionTokens),
-	}))
+	const merged = new Map<string, ModelUsage>()
+	for (const r of rows) {
+		const name = resolveModelAlias(r.model)
+		const existing = merged.get(name)
+		if (existing) {
+			existing.requests += r.requests
+			existing.tokens += r.tokens
+			existing.cost += calculateCost(r.model, r.promptTokens, r.completionTokens)
+		} else {
+			merged.set(name, {
+				model: name,
+				requests: r.requests,
+				tokens: r.tokens,
+				cost: calculateCost(r.model, r.promptTokens, r.completionTokens),
+			})
+		}
+	}
+
+	return [...merged.values()].sort((a, b) => b.requests - a.requests)
 }
 
 export interface KeyUsage {

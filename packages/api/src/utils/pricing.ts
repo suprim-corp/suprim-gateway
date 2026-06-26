@@ -20,10 +20,23 @@ const PRICING: Record<string, ModelPricing> = {
 	"qwen3-coder-next": { input: 0.5, output: 2 },
 }
 
+const MODEL_ALIASES: Record<string, string> = {
+	"claude-opus-4-6": "claude-opus-4.6",
+	"claude-opus-4-5": "claude-opus-4.5",
+	"claude-sonnet-4-5": "claude-sonnet-4.5",
+	"claude-sonnet-4-6": "claude-sonnet-4.6",
+	"claude-haiku-4-5": "claude-haiku-4.5",
+}
+
 const DEFAULT_PRICING: ModelPricing = { input: 3, output: 15 }
 
+export function resolveModelAlias(model: string): string {
+	return MODEL_ALIASES[model] ?? model
+}
+
 export function getModelPricing(model: string): ModelPricing {
-	return PRICING[model] ?? DEFAULT_PRICING
+	const resolved = resolveModelAlias(model)
+	return PRICING[resolved] ?? DEFAULT_PRICING
 }
 
 export function calculateCost(model: string, promptTokens: number, completionTokens: number): number {
