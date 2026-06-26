@@ -6,13 +6,10 @@ import { runMigrations } from "./db/migrate"
 import { logger } from "./logging/logger"
 import { adminRoutes } from "./routes/admin"
 import { healthRoutes } from "./routes/health"
-import {
-	MODEL_CACHE_TTL,
-	openaiRoutes,
-	refreshModelCache,
-} from "./routes/openai"
-import { anthropicRoutes } from "./routes/anthropic"
+import { completionsRoutes } from "./routes/completions"
 import { responsesRoutes } from "./routes/responses"
+import { anthropicRoutes } from "./routes/anthropic"
+import { MODEL_CACHE_TTL, refreshModelCache } from "./routes/shared"
 
 runMigrations()
 
@@ -20,7 +17,7 @@ const app = new Elysia()
 	.use(cors())
 	.use(bearer())
 	.use(healthRoutes)
-	.use(openaiRoutes)
+	.use(completionsRoutes)
 	.use(responsesRoutes)
 	.use(anthropicRoutes)
 	.use(adminRoutes)
