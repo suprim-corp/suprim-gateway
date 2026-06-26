@@ -22,6 +22,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
 	useCreateKey,
 	useKeyBudget,
 	useKeys,
@@ -177,10 +183,11 @@ function KeysContent() {
 	}
 
 	return (
-		<div className="space-y-6">
-			<h1 className="font-mono text-lg font-semibold tracking-tight">
-				API Keys
-			</h1>
+		<TooltipProvider>
+			<div className="space-y-6">
+				<h1 className="font-mono text-lg font-semibold tracking-tight">
+					API Keys
+				</h1>
 
 			{/* Create key form */}
 			<Card>
@@ -203,7 +210,7 @@ function KeysContent() {
 							setNewKeyRateLimit(Number(e.target.value))
 						}
 						className="w-24"
-						title="Rate limit/min"
+						placeholder="Rate limit/min"
 					/>
 					<Button
 						variant="default"
@@ -221,17 +228,21 @@ function KeysContent() {
 						<code className="font-mono text-xs text-neon-green">
 							{createdKey}
 						</code>
-						<Button
-							variant="ghost"
-							size="icon-xs"
-							onClick={() => {
-								navigator.clipboard.writeText(createdKey)
-							}}
-							title="Copy to clipboard"
-							className="cursor-pointer"
-						>
-							<Copy className="size-4" />
-						</Button>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon-xs"
+									onClick={() => {
+										navigator.clipboard.writeText(createdKey)
+									}}
+									className="cursor-pointer"
+								>
+									<Copy className="size-4" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>Copy to clipboard</TooltipContent>
+						</Tooltip>
 					</div>
 				)}
 				</CardContent>
@@ -346,30 +357,38 @@ function KeysContent() {
 									)}
 								</td>
 								<td className="px-4 py-2.5 flex gap-1">
-									<Button
-										variant="ghost"
-										size="icon-xs"
-										onClick={() => setEditingBudget(key.id)}
-										className="text-muted-foreground hover:text-neon-cyan cursor-pointer"
-										title="Edit budget"
-										disabled={!!key.revokedAt}
-									>
-										<Pencil className="size-3.5" />
-									</Button>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<Button
+												variant="ghost"
+												size="icon-xs"
+												onClick={() => setEditingBudget(key.id)}
+												className="text-muted-foreground hover:text-neon-cyan cursor-pointer"
+												disabled={!!key.revokedAt}
+											>
+												<Pencil className="size-3.5" />
+											</Button>
+										</TooltipTrigger>
+										<TooltipContent>Edit budget</TooltipContent>
+									</Tooltip>
 									{!key.revokedAt && (
-										<Button
-											variant="ghost"
-											size="icon-xs"
-											onClick={() => {
-												if (confirm("Revoke this key? This cannot be undone.")) {
-													revokeKey.mutate(key.id)
-												}
-											}}
-											className="text-muted-foreground hover:text-destructive cursor-pointer"
-											title="Revoke key"
-										>
-											<Ban className="size-3.5" />
-										</Button>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<Button
+													variant="ghost"
+													size="icon-xs"
+													onClick={() => {
+														if (confirm("Revoke this key? This cannot be undone.")) {
+															revokeKey.mutate(key.id)
+														}
+													}}
+													className="text-muted-foreground hover:text-destructive cursor-pointer"
+												>
+													<Ban className="size-3.5" />
+												</Button>
+											</TooltipTrigger>
+											<TooltipContent>Revoke key</TooltipContent>
+										</Tooltip>
 									)}
 								</td>
 							</tr>
@@ -390,6 +409,7 @@ function KeysContent() {
 				/>
 			)}
 		</div>
+		</TooltipProvider>
 	)
 }
 
