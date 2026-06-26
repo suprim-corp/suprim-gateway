@@ -51,6 +51,9 @@ const envSchema = z.object({
 	// Proxy
 	VPN_PROXY_URL: z.string().optional(),
 
+	// Server
+	HOST: z.string().default("127.0.0.1"),
+
 	// Logging
 	LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 	DEBUG_MODE: z.enum(["off", "errors", "all"]).default("off"),

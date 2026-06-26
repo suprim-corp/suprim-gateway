@@ -21,7 +21,7 @@ const app = new Elysia()
 	.use(responsesRoutes)
 	.use(anthropicRoutes)
 	.use(adminRoutes)
-	.listen(3001)
+	.listen({ port: 3001, hostname: env.HOST })
 
 logger.info(`Kiro Gateway | API :3001 | Dashboard :3000 | pid:${process.pid}`)
 refreshModelCache().then(() => {})
