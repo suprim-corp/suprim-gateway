@@ -6,7 +6,7 @@ import type { AccountCredentialConfig, KiroCredentials } from "./types"
 import { AuthType } from "./types"
 
 const TOKEN_REFRESH_THRESHOLD = 600 // 10 min before expiry
-const REFRESH_COOLDOWN_MS = 60_000 // don't retry refresh for 5min after failure
+const REFRESH_COOLDOWN_MS = 60_000 // don't retry refresh for 1min after failure
 
 export class KiroAuthManager {
 	private accessToken: string | null = null
@@ -57,7 +57,8 @@ export class KiroAuthManager {
 			filePath.replace(/^~/, process.env.HOME ?? "~"),
 		)
 		if (!existsSync(resolved)) {
-			throw new Error(`Credentials file not found: ${resolved}`)
+			console.error(`[Auth] Credentials file not found: ${resolved}`)
+			return
 		}
 
 		const raw = readFileSync(resolved, "utf-8")
@@ -81,7 +82,8 @@ export class KiroAuthManager {
 	private loadFromSqlite(dbPath: string) {
 		const resolved = resolve(dbPath.replace(/^~/, process.env.HOME ?? "~"))
 		if (!existsSync(resolved)) {
-			throw new Error(`SQLite database not found: ${resolved}`)
+			console.error(`[Auth] SQLite database not found: ${resolved}`)
+			return
 		}
 		
 		const { Database } =
