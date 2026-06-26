@@ -38,9 +38,9 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 		}
 	})
 	.get("/stats", () => {
-		const keys = listKeys()
+		const { data: keys } = listKeys({ limit: 10000 })
 		const stats = getStats()
-		const activeKeys = keys.filter((k) => k.enabled).length
+		const activeKeys = keys.filter((k) => k.enabled && !k.revokedAt).length
 
 		return {
 			...stats,
