@@ -23,6 +23,9 @@ export const virtualKeys = sqliteTable("virtual_keys", {
 	enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
 	rateLimitPerMin: integer("rate_limit_per_min").notNull().default(60),
 	allowedModels: text("allowed_models"), // JSON array or null
+	budgetPeriod: text("budget_period"), // 'hour' | 'day' | 'week' | 'month' | null (unlimited)
+	budgetTokens: integer("budget_tokens"), // null = unlimited
+	budgetRequests: integer("budget_requests"), // null = unlimited
 	totalRequests: integer("total_requests").notNull().default(0),
 	totalTokens: integer("total_tokens").notNull().default(0),
 	lastUsedAt: integer("last_used_at"),

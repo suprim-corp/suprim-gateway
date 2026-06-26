@@ -10,6 +10,7 @@ import { collectResponse } from "../../streaming"
 import { countTokens, estimateRequestTokens } from "../../utils/tokenizer"
 import {
 	type AuthResult,
+	checkKeyBudget,
 	checkModelAccess,
 	checkRateLimit,
 	recordUsage,
@@ -78,6 +79,16 @@ export const responsesRoutes = new Elysia({ prefix: "/v1" })
 					error: {
 						message: "Rate limit exceeded",
 						type: "rate_limit_error",
+					},
+				}
+			}
+			const budget = checkKeyBudget(auth.key)
+			if (!budget.allowed) {
+				set.status = 429
+				return {
+					error: {
+						message: budget.reason,
+						type: "budget_exceeded",
 					},
 				}
 			}

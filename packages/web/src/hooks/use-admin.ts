@@ -39,6 +39,9 @@ interface VirtualKey {
 	enabled: boolean
 	rateLimitPerMin: number
 	allowedModels: string[] | null
+	budgetPeriod: string | null
+	budgetTokens: number | null
+	budgetRequests: number | null
 	totalRequests: number
 	totalTokens: number
 	lastUsedAt: number | null
@@ -76,7 +79,13 @@ export function useKeys() {
 export function useCreateKey() {
 	const queryClient = useQueryClient()
 	return useMutation({
-		mutationFn: (input: { name: string; rateLimitPerMin: number }) =>
+		mutationFn: (input: {
+			name: string
+			rateLimitPerMin: number
+			budgetPeriod?: string | null
+			budgetTokens?: number | null
+			budgetRequests?: number | null
+		}) =>
 			apiFetch<{ key: string }>("/admin/keys", {
 				method: "POST",
 				body: JSON.stringify(input),
@@ -103,6 +112,43 @@ export function useToggleKey() {
 				body: JSON.stringify({ enabled: !enabled }),
 			}),
 		onSuccess: () => queryClient.invalidateQueries({ queryKey: ["keys"] }),
+	})
+}
+
+export function useUpdateKeyBudget() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({
+			id,
+			budgetPeriod,
+			budgetTokens,
+			budgetRequests,
+		}: {
+			id: string
+			budgetPeriod: string | null
+			budgetTokens: number | null
+			budgetRequests: number | null
+		}) =>
+			apiFetch(`/admin/keys/${id}`, {
+				method: "PATCH",
+				body: JSON.stringify({ budgetPeriod, budgetTokens, budgetRequests }),
+			}),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ["keys"] }),
+	})
+}
+
+interface BudgetUsageResponse {
+	budgetPeriod: string | null
+	tokens: { used: number; limit: number | null }
+	requests: { used: number; limit: number | null }
+}
+
+export function useKeyBudget(keyId: string | null) {
+	return useQuery<BudgetUsageResponse>({
+		queryKey: ["key-budget", keyId],
+		queryFn: () => apiFetch(`/admin/keys/${keyId}/budget`),
+		enabled: !!keyId,
+		refetchInterval: 5000,
 	})
 }
 
@@ -161,4 +207,4 @@ export function useTopKeys() {
 	})
 }
 
-export type { KeysResponse, KeyUsage, LogEntry, LogsResponse, ModelUsage, Stats, TimeSeriesPoint, VirtualKey }
+export type { BudgetUsageResponse, KeysResponse, KeyUsage, LogEntry, LogsResponse, ModelUsage, Stats, TimeSeriesPoint, VirtualKey }

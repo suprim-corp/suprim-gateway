@@ -1,18 +1,141 @@
 "use client"
 
 import { formatDistanceToNow } from "date-fns"
-import { Copy, Plus, Trash2 } from "lucide-react"
+import { ChevronDown, Copy, Pencil, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { AuthGuard } from "@/components/auth-guard"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
 	useCreateKey,
 	useDeleteKey,
+	useKeyBudget,
 	useKeys,
 	useToggleKey,
+	useUpdateKeyBudget,
 } from "@/hooks/use-admin"
+
+const BUDGET_PERIODS = [
+	{ value: "", label: "Unlimited" },
+	{ value: "hour", label: "Per Hour" },
+	{ value: "day", label: "Per Day" },
+	{ value: "week", label: "Per Week" },
+	{ value: "month", label: "Per Month" },
+]
+
+function BudgetBadge({ period, tokens, requests }: { period: string | null; tokens: number | null; requests: number | null }) {
+	if (!period) return <span className="text-muted-foreground">—</span>
+	const parts: string[] = []
+	if (tokens != null) parts.push(`${tokens.toLocaleString()} tok`)
+	if (requests != null) parts.push(`${requests.toLocaleString()} req`)
+	return (
+		<span className="text-neon-cyan">
+			{parts.join(" / ")}/{period}
+		</span>
+	)
+}
+
+function BudgetEditor({ keyId, currentPeriod, currentTokens, currentRequests, onClose }: {
+	keyId: string
+	currentPeriod: string | null
+	currentTokens: number | null
+	currentRequests: number | null
+	onClose: () => void
+}) {
+	const [period, setPeriod] = useState(currentPeriod ?? "")
+	const [tokens, setTokens] = useState(currentTokens?.toString() ?? "")
+	const [requests, setRequests] = useState(currentRequests?.toString() ?? "")
+	const updateBudget = useUpdateKeyBudget()
+	const { data: usage } = useKeyBudget(period ? keyId : null)
+
+	function handleSave() {
+		updateBudget.mutate(
+			{
+				id: keyId,
+				budgetPeriod: period || null,
+				budgetTokens: tokens ? Number(tokens) : null,
+				budgetRequests: requests ? Number(requests) : null,
+			},
+			{ onSuccess: onClose },
+		)
+	}
+
+	return (
+		<tr>
+			<td colSpan={9} className="px-4 pt-3 pb-4 bg-muted/10 border-t border-border/30">
+				<span className="block mb-4 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+					Budget Settings
+				</span>
+				<div className="flex gap-6 items-end flex-wrap">
+						<div className="space-y-2">
+							<label className="block font-mono text-[10px] text-muted-foreground">Period</label>
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
+									<Button variant="outline" className="h-9 w-36 justify-between font-mono text-xs cursor-pointer bg-background">
+										{BUDGET_PERIODS.find((p) => p.value === period)?.label ?? "Unlimited"}
+										<ChevronDown className="size-3 opacity-50" />
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent>
+									<DropdownMenuRadioGroup value={period} onValueChange={setPeriod}>
+										{BUDGET_PERIODS.map((p) => (
+											<DropdownMenuRadioItem key={p.value} value={p.value} className="font-mono text-xs cursor-pointer">
+												{p.label}
+											</DropdownMenuRadioItem>
+										))}
+									</DropdownMenuRadioGroup>
+								</DropdownMenuContent>
+							</DropdownMenu>
+						</div>
+						<div className="space-y-2">
+							<label className="block font-mono text-[10px] text-muted-foreground">Token Limit</label>
+							<Input
+								type="number"
+								placeholder="Unlimited"
+								value={tokens}
+								onChange={(e) => setTokens(e.target.value)}
+								className="w-36 h-9"
+								disabled={!period}
+							/>
+						</div>
+						<div className="space-y-2">
+							<label className="block font-mono text-[10px] text-muted-foreground">Request Limit</label>
+							<Input
+								type="number"
+								placeholder="Unlimited"
+								value={requests}
+								onChange={(e) => setRequests(e.target.value)}
+								className="w-36 h-9"
+								disabled={!period}
+							/>
+						</div>
+						<div className="flex gap-2 h-9">
+							<Button size="sm" onClick={handleSave} disabled={updateBudget.isPending} className="h-9 cursor-pointer">
+								Save
+							</Button>
+							<Button size="sm" variant="ghost" onClick={onClose} className="h-9 cursor-pointer">
+								Cancel
+							</Button>
+						</div>
+					</div>
+					{usage && usage.budgetPeriod && (
+						<div className="mt-3 font-mono text-[10px] text-muted-foreground space-x-4">
+							<span>Current usage: {usage.tokens.used.toLocaleString()}{usage.tokens.limit != null && ` / ${usage.tokens.limit.toLocaleString()}`} tokens</span>
+							<span>{usage.requests.used.toLocaleString()}{usage.requests.limit != null && ` / ${usage.requests.limit.toLocaleString()}`} requests</span>
+						</div>
+					)}
+			</td>
+		</tr>
+	)
+}
 
 function KeysContent() {
 	const { data, isLoading } = useKeys()
@@ -22,6 +145,7 @@ function KeysContent() {
 	const [newKeyName, setNewKeyName] = useState("")
 	const [newKeyRateLimit, setNewKeyRateLimit] = useState(60)
 	const [createdKey, setCreatedKey] = useState<string | null>(null)
+	const [editingBudget, setEditingBudget] = useState<string | null>(null)
 
 	function handleCreate() {
 		if (!newKeyName.trim()) return
@@ -70,6 +194,7 @@ function KeysContent() {
 						size="sm"
 						onClick={handleCreate}
 						disabled={createKey.isPending || !newKeyName.trim()}
+						className="cursor-pointer"
 					>
 						<Plus className="size-3" />
 						Create
@@ -87,6 +212,7 @@ function KeysContent() {
 								navigator.clipboard.writeText(createdKey)
 							}}
 							title="Copy to clipboard"
+							className="cursor-pointer"
 						>
 							<Copy className="size-4" />
 						</Button>
@@ -110,6 +236,9 @@ function KeysContent() {
 								Rate
 							</th>
 							<th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-normal">
+								Budget
+							</th>
+							<th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-normal">
 								Requests
 							</th>
 							<th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-normal">
@@ -128,7 +257,7 @@ function KeysContent() {
 						{isLoading && (
 							<tr>
 								<td
-									colSpan={8}
+									colSpan={9}
 									className="px-4 py-8 text-center font-mono text-xs text-muted-foreground"
 								>
 									Loading...
@@ -138,7 +267,7 @@ function KeysContent() {
 						{data?.data.length === 0 && (
 							<tr>
 								<td
-									colSpan={8}
+									colSpan={9}
 									className="px-4 py-8 text-center font-mono text-xs text-muted-foreground"
 								>
 									No keys yet. Create one above.
@@ -146,63 +275,87 @@ function KeysContent() {
 							</tr>
 						)}
 						{data?.data.map((key) => (
-							<tr
-								key={key.id}
-								className="transition-colors hover:bg-muted/5"
-							>
-								<td className="px-4 py-2.5 font-mono text-xs font-medium">
-									{key.name}
-								</td>
-								<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
-									{key.keyPrefix}...
-								</td>
-								<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
-									{key.rateLimitPerMin}/min
-								</td>
-								<td className="px-4 py-2.5 font-mono text-[10px]">
-									{key.totalRequests.toLocaleString()}
-								</td>
-								<td className="px-4 py-2.5 font-mono text-[10px]">
-									{key.totalTokens.toLocaleString()}
-								</td>
-								<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
-									{key.lastUsedAt
-										? formatDistanceToNow(key.lastUsedAt, {
-												addSuffix: true,
-											})
-										: "Never"}
-								</td>
-								<td className="px-4 py-2.5">
-									<Button
-										variant={key.enabled ? "ghost" : "ghost"}
-										size="xs"
-										onClick={() =>
-											toggleKey.mutate({
-												id: key.id,
-												enabled: key.enabled,
-											})
-										}
-										className={
-											key.enabled
-												? "bg-neon-green/10 text-neon-green"
-												: "bg-muted/30 text-muted-foreground"
-										}
-									>
-										{key.enabled ? "Active" : "Disabled"}
-									</Button>
-								</td>
-								<td className="px-4 py-2.5">
-									<Button
-										variant="ghost"
-										size="icon-xs"
-										onClick={() => deleteKey.mutate(key.id)}
-										className="text-muted-foreground hover:text-destructive"
-										title="Delete key"
-									>
-										<Trash2 className="size-3.5" />
-									</Button>
-								</td>
-							</tr>
+							<>
+								<tr
+									key={key.id}
+									className="transition-colors hover:bg-muted/5"
+								>
+									<td className="px-4 py-2.5 font-mono text-xs font-medium">
+										{key.name}
+									</td>
+									<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
+										{key.keyPrefix}...
+									</td>
+									<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
+										{key.rateLimitPerMin}/min
+									</td>
+									<td className="px-4 py-2.5 font-mono text-[10px]">
+										<BudgetBadge period={key.budgetPeriod} tokens={key.budgetTokens} requests={key.budgetRequests} />
+									</td>
+									<td className="px-4 py-2.5 font-mono text-[10px]">
+										{key.totalRequests.toLocaleString()}
+									</td>
+									<td className="px-4 py-2.5 font-mono text-[10px]">
+										{key.totalTokens.toLocaleString()}
+									</td>
+									<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
+										{key.lastUsedAt
+											? formatDistanceToNow(key.lastUsedAt, {
+													addSuffix: true,
+												})
+											: "Never"}
+									</td>
+									<td className="px-4 py-2.5">
+										<Button
+											variant="ghost"
+											size="xs"
+											onClick={() =>
+												toggleKey.mutate({
+													id: key.id,
+													enabled: key.enabled,
+												})
+											}
+											className={`cursor-pointer ${
+												key.enabled
+													? "bg-neon-green/10 text-neon-green"
+													: "bg-muted/30 text-muted-foreground"
+											}`}
+										>
+											{key.enabled ? "Active" : "Disabled"}
+										</Button>
+									</td>
+									<td className="px-4 py-2.5 flex gap-1">
+										<Button
+											variant="ghost"
+											size="icon-xs"
+											onClick={() => setEditingBudget(editingBudget === key.id ? null : key.id)}
+											className="text-muted-foreground hover:text-neon-cyan cursor-pointer"
+											title="Edit budget"
+										>
+											<Pencil className="size-3.5" />
+										</Button>
+										<Button
+											variant="ghost"
+											size="icon-xs"
+											onClick={() => deleteKey.mutate(key.id)}
+											className="text-muted-foreground hover:text-destructive cursor-pointer"
+											title="Delete key"
+										>
+											<Trash2 className="size-3.5" />
+										</Button>
+									</td>
+								</tr>
+								{editingBudget === key.id && (
+									<BudgetEditor
+										key={`budget-${key.id}`}
+										keyId={key.id}
+										currentPeriod={key.budgetPeriod}
+										currentTokens={key.budgetTokens}
+										currentRequests={key.budgetRequests}
+										onClose={() => setEditingBudget(null)}
+									/>
+								)}
+							</>
 						))}
 					</tbody>
 				</table>

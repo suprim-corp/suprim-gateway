@@ -5,6 +5,7 @@ import { getModelUsage, getStats, getTimeSeries, getTopKeys, queryLogs } from ".
 import {
 	createKey,
 	deleteKey,
+	getBudgetUsage,
 	getKeyById,
 	listKeys,
 	updateKey,
@@ -72,6 +73,9 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 				allowedModels: k.allowedModels
 					? JSON.parse(k.allowedModels)
 					: null,
+				budgetPeriod: k.budgetPeriod,
+				budgetTokens: k.budgetTokens,
+				budgetRequests: k.budgetRequests,
 				totalRequests: k.totalRequests,
 				totalTokens: k.totalTokens,
 				lastUsedAt: k.lastUsedAt,
@@ -85,6 +89,9 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 			accountId?: string
 			rateLimitPerMin?: number
 			allowedModels?: string[]
+			budgetPeriod?: string | null
+			budgetTokens?: number | null
+			budgetRequests?: number | null
 		}
 
 		if (!input.name) {
@@ -97,6 +104,9 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 			accountId: input.accountId,
 			rateLimitPerMin: input.rateLimitPerMin,
 			allowedModels: input.allowedModels,
+			budgetPeriod: input.budgetPeriod,
+			budgetTokens: input.budgetTokens,
+			budgetRequests: input.budgetRequests,
 		})
 
 		set.status = 201
@@ -110,6 +120,9 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 			allowedModels: key.allowedModels
 				? JSON.parse(key.allowedModels)
 				: null,
+			budgetPeriod: key.budgetPeriod,
+			budgetTokens: key.budgetTokens,
+			budgetRequests: key.budgetRequests,
 			createdAt: key.createdAt,
 		}
 	})
@@ -126,6 +139,9 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 			accountId?: string | null
 			rateLimitPerMin?: number
 			allowedModels?: string[] | null
+			budgetPeriod?: string | null
+			budgetTokens?: number | null
+			budgetRequests?: number | null
 		}
 
 		const updated = updateKey(params.id, input)
@@ -143,6 +159,9 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 			allowedModels: updated.allowedModels
 				? JSON.parse(updated.allowedModels)
 				: null,
+			budgetPeriod: updated.budgetPeriod,
+			budgetTokens: updated.budgetTokens,
+			budgetRequests: updated.budgetRequests,
 			totalRequests: updated.totalRequests,
 			totalTokens: updated.totalTokens,
 			lastUsedAt: updated.lastUsedAt,
@@ -168,5 +187,21 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 		return { data: getTopKeys() }
 	})
 	.get("/accounts", () => ({ data: [] }))
+	.get("/keys/:id/budget", ({ params, set }) => {
+		const key = getKeyById(params.id)
+		if (!key) {
+			set.status = 404
+			return { error: "Key not found" }
+		}
+		if (!key.budgetPeriod) {
+			return { budgetPeriod: null, tokens: { used: 0, limit: null }, requests: { used: 0, limit: null } }
+		}
+		const usage = getBudgetUsage(key.id, key.budgetPeriod)
+		return {
+			budgetPeriod: key.budgetPeriod,
+			tokens: { used: usage.tokens, limit: key.budgetTokens },
+			requests: { used: usage.requests, limit: key.budgetRequests },
+		}
+	})
 
 export const adminRoutes = new Elysia().use(loginRoute).use(protectedRoutes)

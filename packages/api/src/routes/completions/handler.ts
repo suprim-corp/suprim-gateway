@@ -11,6 +11,7 @@ import { generateCompletionId } from "../../utils/ids"
 import { countTokens, estimateRequestTokens } from "../../utils/tokenizer"
 import {
 	type AuthResult,
+	checkKeyBudget,
 	checkModelAccess,
 	checkRateLimit,
 	recordUsage,
@@ -69,6 +70,26 @@ export async function handleChatCompletion(
 				error: {
 					message: "Rate limit exceeded",
 					type: "rate_limit_error",
+				},
+			}
+		}
+		const budget = checkKeyBudget(auth.key)
+		if (!budget.allowed) {
+			logRequest({
+				clientIp,
+				virtualKeyId: keyId,
+				model: req.model,
+				requestedModel: req.model,
+				status: 429,
+				streaming: req.stream,
+				latencyMs: Date.now() - startTime,
+				errorMessage: budget.reason,
+			})
+			set.status = 429
+			return {
+				error: {
+					message: budget.reason,
+					type: "budget_exceeded",
 				},
 			}
 		}

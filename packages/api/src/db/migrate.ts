@@ -55,4 +55,16 @@ export function runMigrations() {
     CREATE INDEX IF NOT EXISTS idx_request_logs_virtual_key_id ON request_logs(virtual_key_id);
     CREATE INDEX IF NOT EXISTS idx_virtual_keys_key_hash ON virtual_keys(key_hash);
   `)
+
+	// v2: budget columns
+	const hasBudgetPeriod = sqlite
+		.query("SELECT 1 FROM pragma_table_info('virtual_keys') WHERE name='budget_period'")
+		.get()
+	if (!hasBudgetPeriod) {
+		sqlite.exec(`
+      ALTER TABLE virtual_keys ADD COLUMN budget_period TEXT;
+      ALTER TABLE virtual_keys ADD COLUMN budget_tokens INTEGER;
+      ALTER TABLE virtual_keys ADD COLUMN budget_requests INTEGER;
+    `)
+	}
 }

@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm"
 import { db } from "../db"
-import { virtualKeys } from "../db/schema"
+import { requestLogs, virtualKeys } from "../db/schema"
 
 const KEY_PREFIX = "sk-"
 
@@ -9,6 +9,9 @@ export interface CreateKeyInput {
 	accountId?: string
 	rateLimitPerMin?: number
 	allowedModels?: string[]
+	budgetPeriod?: string | null
+	budgetTokens?: number | null
+	budgetRequests?: number | null
 }
 
 export interface UpdateKeyInput {
@@ -17,6 +20,9 @@ export interface UpdateKeyInput {
 	accountId?: string | null
 	rateLimitPerMin?: number
 	allowedModels?: string[] | null
+	budgetPeriod?: string | null
+	budgetTokens?: number | null
+	budgetRequests?: number | null
 }
 
 export interface VirtualKeyRow {
@@ -28,6 +34,9 @@ export interface VirtualKeyRow {
 	enabled: boolean
 	rateLimitPerMin: number
 	allowedModels: string | null
+	budgetPeriod: string | null
+	budgetTokens: number | null
+	budgetRequests: number | null
 	totalRequests: number
 	totalTokens: number
 	lastUsedAt: number | null
@@ -72,6 +81,9 @@ export async function createKey(
 		allowedModels: input.allowedModels
 			? JSON.stringify(input.allowedModels)
 			: null,
+		budgetPeriod: input.budgetPeriod ?? null,
+		budgetTokens: input.budgetTokens ?? null,
+		budgetRequests: input.budgetRequests ?? null,
 		totalRequests: 0,
 		totalTokens: 0,
 		lastUsedAt: null,
@@ -119,6 +131,12 @@ export function updateKey(
 			? JSON.stringify(input.allowedModels)
 			: null
 	}
+	if (input.budgetPeriod !== undefined)
+		updates.budgetPeriod = input.budgetPeriod
+	if (input.budgetTokens !== undefined)
+		updates.budgetTokens = input.budgetTokens
+	if (input.budgetRequests !== undefined)
+		updates.budgetRequests = input.budgetRequests
 
 	if (Object.keys(updates).length === 0) return getKeyById(id)
 
@@ -142,4 +160,55 @@ export function recordUsage(id: string, tokens: number): void {
 		})
 		.where(eq(virtualKeys.id, id))
 		.run()
+}
+
+function getPeriodStart(period: string): number {
+	const now = new Date()
+	switch (period) {
+		case "hour":
+			return new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours()).getTime()
+		case "day":
+			return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+		case "week": {
+			const day = now.getDay()
+			const diff = now.getDate() - day + (day === 0 ? -6 : 1)
+			return new Date(now.getFullYear(), now.getMonth(), diff).getTime()
+		}
+		case "month":
+			return new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+		default:
+			return 0
+	}
+}
+
+export interface BudgetUsage {
+	tokens: number
+	requests: number
+}
+
+export function getBudgetUsage(keyId: string, period: string): BudgetUsage {
+	const since = getPeriodStart(period)
+	const result = db
+		.select({
+			tokens: sql<number>`coalesce(sum(${requestLogs.totalTokens}), 0)`,
+			requests: sql<number>`count(*)`,
+		})
+		.from(requestLogs)
+		.where(sql`${requestLogs.virtualKeyId} = ${keyId} AND ${requestLogs.createdAt} >= ${since}`)
+		.get() as { tokens: number; requests: number } | undefined
+
+	return { tokens: result?.tokens ?? 0, requests: result?.requests ?? 0 }
+}
+
+export function checkBudget(key: VirtualKeyRow): { allowed: boolean; reason?: string } {
+	if (!key.budgetPeriod) return { allowed: true }
+	const usage = getBudgetUsage(key.id, key.budgetPeriod)
+
+	if (key.budgetTokens != null && usage.tokens >= key.budgetTokens) {
+		return { allowed: false, reason: `Token budget exceeded (${usage.tokens}/${key.budgetTokens} per ${key.budgetPeriod})` }
+	}
+	if (key.budgetRequests != null && usage.requests >= key.budgetRequests) {
+		return { allowed: false, reason: `Request budget exceeded (${usage.requests}/${key.budgetRequests} per ${key.budgetPeriod})` }
+	}
+	return { allowed: true }
 }

@@ -1,6 +1,6 @@
 import { env } from "../config"
 import { isRateLimited } from "./rate-limiter"
-import { getKeyByRawKey, type VirtualKeyRow } from "./service"
+import { checkBudget, getKeyByRawKey, type VirtualKeyRow } from "./service"
 
 export interface AuthResult {
 	type: "admin" | "virtual_key"
@@ -41,4 +41,8 @@ export function checkModelAccess(key: VirtualKeyRow, model: string): boolean {
 	const allowed: string[] = JSON.parse(key.allowedModels)
 	if (allowed.length === 0) return true
 	return allowed.includes(model)
+}
+
+export function checkKeyBudget(key: VirtualKeyRow): { allowed: boolean; reason?: string } {
+	return checkBudget(key)
 }

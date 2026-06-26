@@ -13,6 +13,7 @@ import { createAnthropicStream } from "../../streaming/anthropic-stream"
 import { countTokens, estimateRequestTokens } from "../../utils/tokenizer"
 import {
 	type AuthResult,
+	checkKeyBudget,
 	checkModelAccess,
 	checkRateLimit,
 	recordUsage,
@@ -79,6 +80,14 @@ export const anthropicRoutes = new Elysia({ prefix: "/v1" })
 				return {
 					type: "error",
 					error: { type: "rate_limit_error", message: "Rate limit exceeded" },
+				}
+			}
+			const budget = checkKeyBudget(auth.key)
+			if (!budget.allowed) {
+				set.status = 429
+				return {
+					type: "error",
+					error: { type: "budget_exceeded", message: budget.reason },
 				}
 			}
 			if (!checkModelAccess(auth.key, req.model)) {
