@@ -1,6 +1,6 @@
 # Kiro Gateway
 
-Proxy gateway cho Kiro API (AWS Q Developer) — tương thích OpenAI API, có dashboard quản lý và hệ thống virtual key.
+Proxy gateway for Kiro API (AWS Q Developer) — OpenAI-compatible API with admin dashboard and virtual key system.
 
 ## Stack
 
@@ -24,12 +24,12 @@ Proxy gateway cho Kiro API (AWS Q Developer) — tương thích OpenAI API, có 
 - **Anthropic Messages API** — `/v1/messages` (native Claude SDK support)
 - **Responses API** — `/v1/responses` (OpenAI Responses format)
 - **Streaming SSE** — real-time response streaming
-- **Multi-account** — nhiều Kiro accounts với failover tự động
-- **Virtual Keys** — tạo và quản lý API keys cho users, rate limit, model whitelist
-- **Dashboard** — web UI để xem logs, quản lý accounts, keys, health monitoring
-- **Auth** — hỗ trợ Kiro Desktop Auth + AWS SSO OIDC
-- **Model resolver** — tự normalize tên model (dots, dashes, date suffixes)
-- **Retry logic** — tự retry khi 403/429/5xx với exponential backoff
+- **Multi-account** — multiple Kiro accounts with automatic failover
+- **Virtual Keys** — create and manage API keys per user, rate limit, model whitelist
+- **Dashboard** — web UI for logs, account management, keys, health monitoring
+- **Auth** — supports Kiro Desktop Auth + AWS SSO OIDC
+- **Model resolver** — auto-normalizes model names (dots, dashes, date suffixes)
+- **Retry logic** — auto-retry on 403/429/5xx with exponential backoff
 
 ## Project Structure
 
@@ -76,22 +76,22 @@ bun install
 # Configure
 cp .env.example .env
 bun run generate:key    # Generate ADMIN_API_KEY and write to .env
-# Edit .env với credentials của bạn
+# Edit .env with your credentials
 
 # Dev
-bun dev           # Start cả backend + frontend
-bun dev:api       # Chỉ backend (:3001, internal)
+bun dev           # Start both backend + frontend
+bun dev:api       # Backend only (:3001, internal)
 bun dev:web       # Dashboard + API proxy (:3000)
 ```
 
 ## Configuration
 
 ```env
-# Kiro credentials (chọn 1 trong 3)
+# Kiro credentials (choose 1 of 3)
 KIRO_CREDS_FILE="~/.aws/sso/cache/kiro-auth-token.json"
-# hoặc
+# or
 REFRESH_TOKEN="your_refresh_token"
-# hoặc
+# or
 KIRO_CLI_DB_FILE="~/.local/share/kiro-cli/data.sqlite3"
 
 # Admin
@@ -107,13 +107,13 @@ HOST="127.0.0.1"                     # 0.0.0.0 for container
 
 ### Proxy API (OpenAI-compatible)
 
-| Method | Path                   | Auth        | Description              |
-|--------|------------------------|-------------|--------------------------|
-| GET    | `/health`              | —           | Health check             |
-| GET    | `/v1/models`           | Virtual Key | List models              |
-| POST   | `/v1/chat/completions` | Virtual Key | Chat completions (OpenAI)|
-| POST   | `/v1/messages`         | Virtual Key | Messages (Anthropic)     |
-| POST   | `/v1/responses`        | Virtual Key | Responses (OpenAI)       |
+| Method | Path                   | Auth        | Description               |
+|--------|------------------------|-------------|---------------------------|
+| GET    | `/health`              | —           | Health check              |
+| GET    | `/v1/models`           | Virtual Key | List models               |
+| POST   | `/v1/chat/completions` | Virtual Key | Chat completions (OpenAI) |
+| POST   | `/v1/messages`         | Virtual Key | Messages (Anthropic)      |
+| POST   | `/v1/responses`        | Virtual Key | Responses (OpenAI)        |
 
 ### Admin API (Dashboard)
 
@@ -126,26 +126,27 @@ HOST="127.0.0.1"                     # 0.0.0.0 for container
 
 ## Virtual Keys
 
-Virtual keys cho phép bạn tạo nhiều API keys cho users khác nhau:
+Virtual keys let you create multiple API keys for different users:
 
 ```bash
-# Tạo key qua dashboard hoặc API
+# Create key via dashboard or API
 curl -X POST http://localhost:3000/api/admin/keys \
   -H "Authorization: Bearer $ADMIN_API_KEY" \
   -d '{"name": "user-1", "rateLimitPerMin": 30, "allowedModels": ["claude-sonnet-4.5"]}'
 
-# Sử dụng virtual key
+# Use virtual key
 curl http://localhost:3000/v1/chat/completions \
   -H "Authorization: Bearer sk-kiro-xxxxx" \
   -d '{"model": "claude-sonnet-4-5", "messages": [{"role": "user", "content": "Hello!"}], "stream": true}'
 ```
 
-Mỗi virtual key có:
+Each virtual key has:
 
-- Rate limit (requests/phút)
-- Model whitelist (restrict models nào được dùng)
+- Rate limit (requests/min)
+- Model whitelist (restrict which models can be used)
 - Usage tracking (request count, tokens used)
 - Enable/disable toggle
+- Revoke (permanent, cannot be re-enabled)
 
 ## Supported Models
 
@@ -158,7 +159,7 @@ Mỗi virtual key có:
 | glm-5             | Open MoE 744B              |
 | qwen3-coder-next  | Coding-focused             |
 
-Model names tự động normalize — `claude-sonnet-4-5`, `claude-sonnet-4.5`, `claude-sonnet-4-5-20250929` đều hoạt động.
+Model names are auto-normalized — `claude-sonnet-4-5`, `claude-sonnet-4.5`, `claude-sonnet-4-5-20250929` all work.
 
 ## Docker
 
@@ -173,19 +174,35 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
-Image: ~57MB (Alpine + UPX-compressed Bun). Chỉ expose port 3000 (Next.js), API chạy internal trên 3001.
+Image: ~57MB (Alpine + UPX-compressed Bun). Only exposes port 3000 (Next.js), API runs internally on 3001.
 
-SQLite data persist qua volume `./data`. Cần set `DATABASE_PATH` trong `.env`:
+SQLite data persists via volume `./data`. Set `DATABASE_PATH` in `.env`:
 
 ```env
 DATABASE_PATH=/app/data/gateway.db
 ```
 
-Port expose configurable qua `WEB_PORT` (default 3000):
+Port is configurable via `WEB_PORT` (default 3000):
 
 ```env
 WEB_PORT=8080
 ```
+
+### Credentials Volume
+
+Container mounts a directory containing credentials to `/app/creds`. Configure via `KIRO_CREDS_HOST_PATH` in `.env`:
+
+```env
+# MUST be a directory, NOT a file path
+KIRO_CREDS_HOST_PATH="/root/.aws/sso/cache"
+```
+
+Default: `$HOME/.aws/sso/cache`. The directory must contain:
+
+- `kiro-auth-token.json` — access/refresh token
+- `{clientIdHash}.json` — device registration (Enterprise SSO OIDC)
+
+Gateway automatically saves refreshed tokens back to file after each successful refresh.
 
 ## Development
 
@@ -200,4 +217,4 @@ bun generate:key  # Generate admin key → .env
 
 ## License
 
-AGPL-3.0 — xem [LICENSE](LICENSE)
+AGPL-3.0 — see [LICENSE](LICENSE)
