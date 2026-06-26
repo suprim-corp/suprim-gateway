@@ -44,7 +44,7 @@ interface VirtualKey {
 	budgetPeriod: string | null
 	budgetTokens: number | null
 	budgetRequests: number | null
-	periodCost: number | null
+	usage: { hour: number; day: number; week: number; month: number }
 	totalRequests: number
 	totalTokens: number
 	lastUsedAt: number | null

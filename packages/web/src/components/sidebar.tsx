@@ -1,6 +1,6 @@
 "use client"
 
-import { Key, LayoutDashboard, ScrollText, Settings } from "lucide-react"
+import { DollarSign, Key, LayoutDashboard, ScrollText, Settings } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -15,6 +15,7 @@ const nav = [
 			{ href: "/", label: "Overview", icon: LayoutDashboard },
 			{ href: "/logs", label: "Logs", icon: ScrollText },
 			{ href: "/keys", label: "API Keys", icon: Key },
+			{ href: "/usage", label: "Usage", icon: DollarSign },
 		],
 	},
 	{
