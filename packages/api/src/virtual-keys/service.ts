@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm"
 import { db } from "../db"
-import { requestLogs, virtualKeys } from "../db/schema"
+import { virtualKeys } from "../db/schema"
 
 const KEY_PREFIX = "sk-"
 
@@ -37,6 +37,9 @@ export interface VirtualKeyRow {
 	budgetPeriod: string | null
 	budgetTokens: number | null
 	budgetRequests: number | null
+	periodTokensUsed: number
+	periodRequestsUsed: number
+	periodResetAt: number | null
 	totalRequests: number
 	totalTokens: number
 	lastUsedAt: number | null
@@ -84,6 +87,9 @@ export async function createKey(
 		budgetPeriod: input.budgetPeriod ?? null,
 		budgetTokens: input.budgetTokens ?? null,
 		budgetRequests: input.budgetRequests ?? null,
+		periodTokensUsed: 0,
+		periodRequestsUsed: 0,
+		periodResetAt: null,
 		totalRequests: 0,
 		totalTokens: 0,
 		lastUsedAt: null,
@@ -137,6 +143,11 @@ export function updateKey(
 		updates.budgetTokens = input.budgetTokens
 	if (input.budgetRequests !== undefined)
 		updates.budgetRequests = input.budgetRequests
+	if (input.budgetPeriod !== undefined) {
+		updates.periodTokensUsed = 0
+		updates.periodRequestsUsed = 0
+		updates.periodResetAt = input.budgetPeriod ? getNextPeriodReset(input.budgetPeriod) : null
+	}
 
 	if (Object.keys(updates).length === 0) return getKeyById(id)
 
@@ -156,29 +167,45 @@ export function recordUsage(id: string, tokens: number): void {
 		.set({
 			totalRequests: sql`${virtualKeys.totalRequests} + 1`,
 			totalTokens: sql`${virtualKeys.totalTokens} + ${tokens}`,
+			periodRequestsUsed: sql`${virtualKeys.periodRequestsUsed} + 1`,
+			periodTokensUsed: sql`${virtualKeys.periodTokensUsed} + ${tokens}`,
 			lastUsedAt: Date.now(),
 		})
 		.where(eq(virtualKeys.id, id))
 		.run()
 }
 
-function getPeriodStart(period: string): number {
+function getNextPeriodReset(period: string): number {
 	const now = new Date()
 	switch (period) {
 		case "hour":
-			return new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours()).getTime()
+			return new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1).getTime()
 		case "day":
-			return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+			return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime()
 		case "week": {
 			const day = now.getDay()
-			const diff = now.getDate() - day + (day === 0 ? -6 : 1)
+			const diff = now.getDate() - day + (day === 0 ? -6 : 1) + 7
 			return new Date(now.getFullYear(), now.getMonth(), diff).getTime()
 		}
 		case "month":
-			return new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+			return new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime()
 		default:
 			return 0
 	}
+}
+
+function resetPeriodIfNeeded(key: VirtualKeyRow): VirtualKeyRow {
+	if (!key.budgetPeriod) return key
+	const now = Date.now()
+	if (!key.periodResetAt || now >= key.periodResetAt) {
+		const nextReset = getNextPeriodReset(key.budgetPeriod)
+		db.update(virtualKeys)
+			.set({ periodTokensUsed: 0, periodRequestsUsed: 0, periodResetAt: nextReset })
+			.where(eq(virtualKeys.id, key.id))
+			.run()
+		return { ...key, periodTokensUsed: 0, periodRequestsUsed: 0, periodResetAt: nextReset }
+	}
+	return key
 }
 
 export interface BudgetUsage {
@@ -187,28 +214,21 @@ export interface BudgetUsage {
 }
 
 export function getBudgetUsage(keyId: string, period: string): BudgetUsage {
-	const since = getPeriodStart(period)
-	const result = db
-		.select({
-			tokens: sql<number>`coalesce(sum(${requestLogs.totalTokens}), 0)`,
-			requests: sql<number>`count(*)`,
-		})
-		.from(requestLogs)
-		.where(sql`${requestLogs.virtualKeyId} = ${keyId} AND ${requestLogs.createdAt} >= ${since}`)
-		.get() as { tokens: number; requests: number } | undefined
-
-	return { tokens: result?.tokens ?? 0, requests: result?.requests ?? 0 }
+	const key = getKeyById(keyId)
+	if (!key) return { tokens: 0, requests: 0 }
+	const fresh = resetPeriodIfNeeded(key)
+	return { tokens: fresh.periodTokensUsed, requests: fresh.periodRequestsUsed }
 }
 
 export function checkBudget(key: VirtualKeyRow): { allowed: boolean; reason?: string } {
 	if (!key.budgetPeriod) return { allowed: true }
-	const usage = getBudgetUsage(key.id, key.budgetPeriod)
+	const fresh = resetPeriodIfNeeded(key)
 
-	if (key.budgetTokens != null && usage.tokens >= key.budgetTokens) {
-		return { allowed: false, reason: `Token budget exceeded (${usage.tokens}/${key.budgetTokens} per ${key.budgetPeriod})` }
+	if (fresh.budgetTokens != null && fresh.periodTokensUsed >= fresh.budgetTokens) {
+		return { allowed: false, reason: `Token budget exceeded (${fresh.periodTokensUsed}/${fresh.budgetTokens} per ${fresh.budgetPeriod})` }
 	}
-	if (key.budgetRequests != null && usage.requests >= key.budgetRequests) {
-		return { allowed: false, reason: `Request budget exceeded (${usage.requests}/${key.budgetRequests} per ${key.budgetPeriod})` }
+	if (fresh.budgetRequests != null && fresh.periodRequestsUsed >= fresh.budgetRequests) {
+		return { allowed: false, reason: `Request budget exceeded (${fresh.periodRequestsUsed}/${fresh.budgetRequests} per ${fresh.budgetPeriod})` }
 	}
 	return { allowed: true }
 }

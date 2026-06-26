@@ -26,6 +26,9 @@ export const virtualKeys = sqliteTable("virtual_keys", {
 	budgetPeriod: text("budget_period"), // 'hour' | 'day' | 'week' | 'month' | null (unlimited)
 	budgetTokens: integer("budget_tokens"), // null = unlimited
 	budgetRequests: integer("budget_requests"), // null = unlimited
+	periodTokensUsed: integer("period_tokens_used").notNull().default(0),
+	periodRequestsUsed: integer("period_requests_used").notNull().default(0),
+	periodResetAt: integer("period_reset_at"), // timestamp when current period ends
 	totalRequests: integer("total_requests").notNull().default(0),
 	totalTokens: integer("total_tokens").notNull().default(0),
 	lastUsedAt: integer("last_used_at"),

@@ -65,6 +65,21 @@ export function runMigrations() {
       ALTER TABLE virtual_keys ADD COLUMN budget_period TEXT;
       ALTER TABLE virtual_keys ADD COLUMN budget_tokens INTEGER;
       ALTER TABLE virtual_keys ADD COLUMN budget_requests INTEGER;
+      ALTER TABLE virtual_keys ADD COLUMN period_tokens_used INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE virtual_keys ADD COLUMN period_requests_used INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE virtual_keys ADD COLUMN period_reset_at INTEGER;
+    `)
+	}
+
+	// v2.1: period counters (if v2 ran without them)
+	const hasPeriodTokensUsed = sqlite
+		.query("SELECT 1 FROM pragma_table_info('virtual_keys') WHERE name='period_tokens_used'")
+		.get()
+	if (!hasPeriodTokensUsed) {
+		sqlite.exec(`
+      ALTER TABLE virtual_keys ADD COLUMN period_tokens_used INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE virtual_keys ADD COLUMN period_requests_used INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE virtual_keys ADD COLUMN period_reset_at INTEGER;
     `)
 	}
 }

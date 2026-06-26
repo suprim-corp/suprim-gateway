@@ -84,6 +84,7 @@ export const responsesRoutes = new Elysia({ prefix: "/v1" })
 			}
 			const budget = checkKeyBudget(auth.key)
 			if (!budget.allowed) {
+				logRequest({ clientIp, virtualKeyId: keyId, model: req.model, requestedModel: req.model, status: 429, streaming: req.stream, latencyMs: Date.now() - startTime, errorMessage: budget.reason })
 				set.status = 429
 				return {
 					error: {
