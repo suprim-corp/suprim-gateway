@@ -39,6 +39,7 @@ interface VirtualKey {
 	name: string
 	keyPrefix: string
 	enabled: boolean
+	revokedAt: number | null
 	rateLimitPerMin: number
 	allowedModels: string[] | null
 	budgetPeriod: string | null
@@ -106,6 +107,15 @@ export function useToggleKey() {
 				method: "PATCH",
 				body: JSON.stringify({ enabled: !enabled }),
 			}),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ["keys"] }),
+	})
+}
+
+export function useRevokeKey() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (id: string) =>
+			apiFetch(`/admin/keys/${id}/revoke`, { method: "POST" }),
 		onSuccess: () => queryClient.invalidateQueries({ queryKey: ["keys"] }),
 	})
 }

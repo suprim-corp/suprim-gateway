@@ -1,7 +1,7 @@
 "use client"
 
 import { formatDistanceToNow } from "date-fns"
-import { ChevronDown, Copy, Pencil, Plus } from "lucide-react"
+import { Ban, ChevronDown, Copy, Pencil, Plus } from "lucide-react"
 import { useState } from "react"
 import { AuthGuard } from "@/components/auth-guard"
 import { Button } from "@/components/ui/button"
@@ -25,6 +25,7 @@ import {
 	useCreateKey,
 	useKeyBudget,
 	useKeys,
+	useRevokeKey,
 	useToggleKey,
 	useUpdateKeyBudget,
 } from "@/hooks/use-admin"
@@ -154,6 +155,7 @@ function KeysContent() {
 	const { data, isLoading } = useKeys()
 	const createKey = useCreateKey()
 	const toggleKey = useToggleKey()
+	const revokeKey = useRevokeKey()
 	const [newKeyName, setNewKeyName] = useState("")
 	const [newKeyRateLimit, setNewKeyRateLimit] = useState(60)
 	const [createdKey, setCreatedKey] = useState<string | null>(null)
@@ -319,23 +321,29 @@ function KeysContent() {
 										: "Never"}
 								</td>
 								<td className="px-4 py-2.5">
-									<Button
-										variant="ghost"
-										size="xs"
-										onClick={() =>
-											toggleKey.mutate({
-												id: key.id,
-												enabled: key.enabled,
-											})
-										}
-										className={`cursor-pointer ${
-											key.enabled
-												? "bg-neon-green/10 text-neon-green"
-												: "bg-muted/30 text-muted-foreground"
-										}`}
-									>
-										{key.enabled ? "Active" : "Disabled"}
-									</Button>
+									{key.revokedAt ? (
+										<span className="font-mono text-[10px] bg-destructive/10 text-destructive px-2 py-0.5 rounded">
+											Revoked
+										</span>
+									) : (
+										<Button
+											variant="ghost"
+											size="xs"
+											onClick={() =>
+												toggleKey.mutate({
+													id: key.id,
+													enabled: key.enabled,
+												})
+											}
+											className={`cursor-pointer ${
+												key.enabled
+													? "bg-neon-green/10 text-neon-green"
+													: "bg-muted/30 text-muted-foreground"
+											}`}
+										>
+											{key.enabled ? "Active" : "Disabled"}
+										</Button>
+									)}
 								</td>
 								<td className="px-4 py-2.5 flex gap-1">
 									<Button
@@ -344,10 +352,26 @@ function KeysContent() {
 										onClick={() => setEditingBudget(key.id)}
 										className="text-muted-foreground hover:text-neon-cyan cursor-pointer"
 										title="Edit budget"
+										disabled={!!key.revokedAt}
 									>
 										<Pencil className="size-3.5" />
 									</Button>
-									</td>
+									{!key.revokedAt && (
+										<Button
+											variant="ghost"
+											size="icon-xs"
+											onClick={() => {
+												if (confirm("Revoke this key? This cannot be undone.")) {
+													revokeKey.mutate(key.id)
+												}
+											}}
+											className="text-muted-foreground hover:text-destructive cursor-pointer"
+											title="Revoke key"
+										>
+											<Ban className="size-3.5" />
+										</Button>
+									)}
+								</td>
 							</tr>
 						))}
 					</tbody>

@@ -21,6 +21,7 @@ export const virtualKeys = sqliteTable("virtual_keys", {
 	keyPrefix: text("key_prefix").notNull(),
 	accountId: text("account_id").references(() => accounts.id),
 	enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+	revokedAt: integer("revoked_at"),
 	rateLimitPerMin: integer("rate_limit_per_min").notNull().default(60),
 	allowedModels: text("allowed_models"), // JSON array or null
 	budgetPeriod: text("budget_period"), // 'hour' | 'day' | 'week' | 'month' | null (unlimited)

@@ -25,7 +25,7 @@ export async function resolveAuth(
 	if (token.startsWith("sk-")) {
 		const key = await getKeyByRawKey(token)
 		if (!key) return null
-		if (!key.enabled) return null
+		if (!key.enabled || key.revokedAt) return null
 		return { type: "virtual_key", key }
 	}
 

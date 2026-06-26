@@ -32,6 +32,7 @@ export interface VirtualKeyRow {
 	keyPrefix: string
 	accountId: string | null
 	enabled: boolean
+	revokedAt: number | null
 	rateLimitPerMin: number
 	allowedModels: string | null
 	budgetPeriod: string | null
@@ -80,6 +81,7 @@ export async function createKey(
 		keyPrefix,
 		accountId: input.accountId ?? null,
 		enabled: true,
+		revokedAt: null,
 		rateLimitPerMin: input.rateLimitPerMin ?? 60,
 		allowedModels: input.allowedModels
 			? JSON.stringify(input.allowedModels)
@@ -155,6 +157,13 @@ export function updateKey(
 	return getKeyById(id)
 }
 
+
+export function revokeKey(id: string): boolean {
+	const key = getKeyById(id)
+	if (!key || key.revokedAt) return false
+	db.update(virtualKeys).set({ revokedAt: Date.now(), enabled: false }).where(eq(virtualKeys.id, id)).run()
+	return true
+}
 
 export function recordUsage(id: string, tokens: number): void {
 	db.update(virtualKeys)

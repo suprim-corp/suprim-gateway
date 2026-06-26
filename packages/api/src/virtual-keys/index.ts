@@ -9,5 +9,6 @@ export {
 	getKeyById,
 	listKeys,
 	recordUsage,
+	revokeKey,
 	updateKey,
 } from "./service"

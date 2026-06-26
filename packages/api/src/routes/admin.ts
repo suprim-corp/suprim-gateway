@@ -7,6 +7,7 @@ import {
 	getBudgetUsage,
 	getKeyById,
 	listKeys,
+	revokeKey,
 	updateKey,
 } from "../virtual-keys"
 
@@ -69,6 +70,7 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 				keyPrefix: k.keyPrefix,
 				accountId: k.accountId,
 				enabled: k.enabled,
+				revokedAt: k.revokedAt,
 				rateLimitPerMin: k.rateLimitPerMin,
 				allowedModels: k.allowedModels
 					? JSON.parse(k.allowedModels)
@@ -138,6 +140,10 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 			set.status = 404
 			return { error: "Key not found" }
 		}
+		if (existing.revokedAt) {
+			set.status = 403
+			return { error: "Key is revoked" }
+		}
 
 		const input = body as {
 			name?: string
@@ -173,6 +179,14 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 			lastUsedAt: updated.lastUsedAt,
 			createdAt: updated.createdAt,
 		}
+	})
+	.post("/keys/:id/revoke", ({ params, set }) => {
+		const revoked = revokeKey(params.id)
+		if (!revoked) {
+			set.status = 404
+			return { error: "Key not found or already revoked" }
+		}
+		return { success: true }
 	})
 	.get("/stats/timeseries", ({ query }) => {
 		const hours = query.hours ? Number(query.hours) : 24
