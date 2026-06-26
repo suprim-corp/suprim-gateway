@@ -10,5 +10,5 @@ services:
       KIRO_CREDS_FILE: /app/creds/kiro-auth-token.json
     volumes:
       - ./data:/app/data
-      - ${KIRO_CREDS_HOST_PATH:-~/.aws/sso/cache}:/app/creds
+      - ${KIRO_CREDS_HOST_PATH:-${HOME}/.aws/sso/cache}:/app/creds
     restart: unless-stopped
