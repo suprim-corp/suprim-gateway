@@ -3,6 +3,7 @@ import { createSession, validateSession } from "../auth/token"
 import { env } from "../config"
 import { getModelUsage, getStats, getTimeSeries, getTopKeys, getKeyCostSince, queryLogs } from "../logging"
 import {
+	countActiveKeys,
 	createKey,
 	getBudgetUsage,
 	getKeyById,
@@ -38,9 +39,8 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 		}
 	})
 	.get("/stats", () => {
-		const { data: keys } = listKeys({ limit: 10000 })
 		const stats = getStats()
-		const activeKeys = keys.filter((k) => k.enabled && !k.revokedAt).length
+		const activeKeys = countActiveKeys()
 
 		return {
 			...stats,

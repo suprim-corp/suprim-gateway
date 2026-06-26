@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm"
+import { and, eq, isNull, sql } from "drizzle-orm"
 import { db } from "../db"
 import { virtualKeys } from "../db/schema"
 
@@ -109,6 +109,11 @@ export function listKeys(opts?: { limit?: number; offset?: number }): { data: Vi
 	const total = (db.select({ count: sql<number>`count(*)` }).from(virtualKeys).get() as { count: number })?.count ?? 0
 	const data = db.select().from(virtualKeys).limit(limit).offset(offset).all() as VirtualKeyRow[]
 	return { data, total }
+}
+
+export function countActiveKeys(): number {
+	const result = db.select({ count: sql<number>`count(*)` }).from(virtualKeys).where(and(eq(virtualKeys.enabled, true), isNull(virtualKeys.revokedAt))).get() as { count: number } | undefined
+	return result?.count ?? 0
 }
 
 export function getKeyById(id: string): VirtualKeyRow | undefined {
