@@ -17,6 +17,9 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
 	title: "Kiro Gateway",
 	description: "Kiro API Gateway Dashboard",
+	icons: {
+		icon: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png",
+	},
 }
 
 export default function RootLayout({
