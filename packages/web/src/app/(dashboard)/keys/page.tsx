@@ -7,6 +7,13 @@ import { AuthGuard } from "@/components/auth-guard"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
+	Dialog,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog"
+import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuRadioGroup,
@@ -43,11 +50,13 @@ function BudgetBadge({ period, tokens, requests }: { period: string | null; toke
 	)
 }
 
-function BudgetEditor({ keyId, currentPeriod, currentTokens, currentRequests, onClose }: {
+function BudgetDialog({ keyId, keyName, currentPeriod, currentTokens, currentRequests, open, onClose }: {
 	keyId: string
+	keyName: string
 	currentPeriod: string | null
 	currentTokens: number | null
 	currentRequests: number | null
+	open: boolean
 	onClose: () => void
 }) {
 	const [period, setPeriod] = useState(currentPeriod ?? "")
@@ -69,71 +78,76 @@ function BudgetEditor({ keyId, currentPeriod, currentTokens, currentRequests, on
 	}
 
 	return (
-		<tr>
-			<td colSpan={9} className="px-4 pt-3 pb-4 bg-muted/10 border-t border-border/30">
-				<span className="block mb-4 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-					Budget Settings
-				</span>
-				<div className="flex gap-6 items-end flex-wrap">
+		<Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+			<DialogContent className="sm:max-w-md">
+				<DialogHeader>
+					<DialogTitle className="font-mono">Budget — {keyName}</DialogTitle>
+				</DialogHeader>
+				<div className="space-y-4">
+					<div className="space-y-2">
+						<label className="block font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Period</label>
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button variant="outline" className="h-9 w-full justify-between font-mono text-xs cursor-pointer bg-background">
+									{BUDGET_PERIODS.find((p) => p.value === period)?.label ?? "Unlimited"}
+									<ChevronDown className="size-3 opacity-50" />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent>
+								<DropdownMenuRadioGroup value={period} onValueChange={setPeriod}>
+									{BUDGET_PERIODS.map((p) => (
+										<DropdownMenuRadioItem key={p.value} value={p.value} className="font-mono text-xs cursor-pointer">
+											{p.label}
+										</DropdownMenuRadioItem>
+									))}
+								</DropdownMenuRadioGroup>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</div>
+					<div className="grid grid-cols-2 gap-4">
 						<div className="space-y-2">
-							<label className="block font-mono text-[10px] text-muted-foreground">Period</label>
-							<DropdownMenu>
-								<DropdownMenuTrigger asChild>
-									<Button variant="outline" className="h-9 w-36 justify-between font-mono text-xs cursor-pointer bg-background">
-										{BUDGET_PERIODS.find((p) => p.value === period)?.label ?? "Unlimited"}
-										<ChevronDown className="size-3 opacity-50" />
-									</Button>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent>
-									<DropdownMenuRadioGroup value={period} onValueChange={setPeriod}>
-										{BUDGET_PERIODS.map((p) => (
-											<DropdownMenuRadioItem key={p.value} value={p.value} className="font-mono text-xs cursor-pointer">
-												{p.label}
-											</DropdownMenuRadioItem>
-										))}
-									</DropdownMenuRadioGroup>
-								</DropdownMenuContent>
-							</DropdownMenu>
-						</div>
-						<div className="space-y-2">
-							<label className="block font-mono text-[10px] text-muted-foreground">Token Limit</label>
+							<label className="block font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Token Limit</label>
 							<Input
 								type="number"
 								placeholder="Unlimited"
 								value={tokens}
 								onChange={(e) => setTokens(e.target.value)}
-								className="w-36 h-9"
+								className="h-9"
 								disabled={!period}
 							/>
 						</div>
 						<div className="space-y-2">
-							<label className="block font-mono text-[10px] text-muted-foreground">Request Limit</label>
+							<label className="block font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Request Limit</label>
 							<Input
 								type="number"
 								placeholder="Unlimited"
 								value={requests}
 								onChange={(e) => setRequests(e.target.value)}
-								className="w-36 h-9"
+								className="h-9"
 								disabled={!period}
 							/>
 						</div>
-						<div className="flex gap-2 h-9">
-							<Button size="sm" onClick={handleSave} disabled={updateBudget.isPending} className="h-9 cursor-pointer">
-								Save
-							</Button>
-							<Button size="sm" variant="ghost" onClick={onClose} className="h-9 cursor-pointer">
-								Cancel
-							</Button>
-						</div>
 					</div>
 					{usage && usage.budgetPeriod && (
-						<div className="mt-3 font-mono text-[10px] text-muted-foreground space-x-4">
-							<span>Current usage: {usage.tokens.used.toLocaleString()}{usage.tokens.limit != null && ` / ${usage.tokens.limit.toLocaleString()}`} tokens</span>
-							<span>{usage.requests.used.toLocaleString()}{usage.requests.limit != null && ` / ${usage.requests.limit.toLocaleString()}`} requests</span>
+						<div className="border border-border/40 p-3 space-y-1">
+							<span className="block font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Current Usage</span>
+							<div className="flex justify-between font-mono text-xs">
+								<span>Tokens</span>
+								<span>{usage.tokens.used.toLocaleString()}{usage.tokens.limit != null && <span className="text-muted-foreground"> / {usage.tokens.limit.toLocaleString()}</span>}</span>
+							</div>
+							<div className="flex justify-between font-mono text-xs">
+								<span>Requests</span>
+								<span>{usage.requests.used.toLocaleString()}{usage.requests.limit != null && <span className="text-muted-foreground"> / {usage.requests.limit.toLocaleString()}</span>}</span>
+							</div>
 						</div>
 					)}
-			</td>
-		</tr>
+				</div>
+				<DialogFooter>
+					<Button variant="ghost" onClick={onClose} className="cursor-pointer">Cancel</Button>
+					<Button onClick={handleSave} disabled={updateBudget.isPending} className="cursor-pointer">Save</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	)
 }
 
@@ -146,6 +160,8 @@ function KeysContent() {
 	const [newKeyRateLimit, setNewKeyRateLimit] = useState(60)
 	const [createdKey, setCreatedKey] = useState<string | null>(null)
 	const [editingBudget, setEditingBudget] = useState<string | null>(null)
+
+	const editingKey = data?.data.find((k) => k.id === editingBudget)
 
 	function handleCreate() {
 		if (!newKeyName.trim()) return
@@ -275,91 +291,91 @@ function KeysContent() {
 							</tr>
 						)}
 						{data?.data.map((key) => (
-							<>
-								<tr
-									key={key.id}
-									className="transition-colors hover:bg-muted/5"
-								>
-									<td className="px-4 py-2.5 font-mono text-xs font-medium">
-										{key.name}
-									</td>
-									<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
-										{key.keyPrefix}...
-									</td>
-									<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
-										{key.rateLimitPerMin}/min
-									</td>
-									<td className="px-4 py-2.5 font-mono text-[10px]">
-										<BudgetBadge period={key.budgetPeriod} tokens={key.budgetTokens} requests={key.budgetRequests} />
-									</td>
-									<td className="px-4 py-2.5 font-mono text-[10px]">
-										{key.totalRequests.toLocaleString()}
-									</td>
-									<td className="px-4 py-2.5 font-mono text-[10px]">
-										{key.totalTokens.toLocaleString()}
-									</td>
-									<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
-										{key.lastUsedAt
-											? formatDistanceToNow(key.lastUsedAt, {
-													addSuffix: true,
-												})
-											: "Never"}
-									</td>
-									<td className="px-4 py-2.5">
-										<Button
-											variant="ghost"
-											size="xs"
-											onClick={() =>
-												toggleKey.mutate({
-													id: key.id,
-													enabled: key.enabled,
-												})
-											}
-											className={`cursor-pointer ${
-												key.enabled
-													? "bg-neon-green/10 text-neon-green"
-													: "bg-muted/30 text-muted-foreground"
-											}`}
-										>
-											{key.enabled ? "Active" : "Disabled"}
-										</Button>
-									</td>
-									<td className="px-4 py-2.5 flex gap-1">
-										<Button
-											variant="ghost"
-											size="icon-xs"
-											onClick={() => setEditingBudget(editingBudget === key.id ? null : key.id)}
-											className="text-muted-foreground hover:text-neon-cyan cursor-pointer"
-											title="Edit budget"
-										>
-											<Pencil className="size-3.5" />
-										</Button>
-										<Button
-											variant="ghost"
-											size="icon-xs"
-											onClick={() => deleteKey.mutate(key.id)}
-											className="text-muted-foreground hover:text-destructive cursor-pointer"
-											title="Delete key"
-										>
-											<Trash2 className="size-3.5" />
-										</Button>
-									</td>
-								</tr>
-								{editingBudget === key.id && (
-									<BudgetEditor
-										key={`budget-${key.id}`}
-										keyId={key.id}
-										currentPeriod={key.budgetPeriod}
-										currentTokens={key.budgetTokens}
-										currentRequests={key.budgetRequests}
-										onClose={() => setEditingBudget(null)}
-									/>
-								)}
-							</>
+							<tr
+								key={key.id}
+								className="transition-colors hover:bg-muted/5"
+							>
+								<td className="px-4 py-2.5 font-mono text-xs font-medium">
+									{key.name}
+								</td>
+								<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
+									{key.keyPrefix}...
+								</td>
+								<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
+									{key.rateLimitPerMin}/min
+								</td>
+								<td className="px-4 py-2.5 font-mono text-[10px]">
+									<BudgetBadge period={key.budgetPeriod} tokens={key.budgetTokens} requests={key.budgetRequests} />
+								</td>
+								<td className="px-4 py-2.5 font-mono text-[10px]">
+									{key.totalRequests.toLocaleString()}
+								</td>
+								<td className="px-4 py-2.5 font-mono text-[10px]">
+									{key.totalTokens.toLocaleString()}
+								</td>
+								<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
+									{key.lastUsedAt
+										? formatDistanceToNow(key.lastUsedAt, {
+												addSuffix: true,
+											})
+										: "Never"}
+								</td>
+								<td className="px-4 py-2.5">
+									<Button
+										variant="ghost"
+										size="xs"
+										onClick={() =>
+											toggleKey.mutate({
+												id: key.id,
+												enabled: key.enabled,
+											})
+										}
+										className={`cursor-pointer ${
+											key.enabled
+												? "bg-neon-green/10 text-neon-green"
+												: "bg-muted/30 text-muted-foreground"
+										}`}
+									>
+										{key.enabled ? "Active" : "Disabled"}
+									</Button>
+								</td>
+								<td className="px-4 py-2.5 flex gap-1">
+									<Button
+										variant="ghost"
+										size="icon-xs"
+										onClick={() => setEditingBudget(key.id)}
+										className="text-muted-foreground hover:text-neon-cyan cursor-pointer"
+										title="Edit budget"
+									>
+										<Pencil className="size-3.5" />
+									</Button>
+									<Button
+										variant="ghost"
+										size="icon-xs"
+										onClick={() => deleteKey.mutate(key.id)}
+										className="text-muted-foreground hover:text-destructive cursor-pointer"
+										title="Delete key"
+									>
+										<Trash2 className="size-3.5" />
+									</Button>
+								</td>
+							</tr>
 						))}
 					</tbody>
 				</table>
 			</Card>
+
+			{editingKey && (
+				<BudgetDialog
+					keyId={editingKey.id}
+					keyName={editingKey.name}
+					currentPeriod={editingKey.budgetPeriod}
+					currentTokens={editingKey.budgetTokens}
+					currentRequests={editingKey.budgetRequests}
+					open={!!editingBudget}
+					onClose={() => setEditingBudget(null)}
+				/>
+			)}
 		</div>
 	)
 }
