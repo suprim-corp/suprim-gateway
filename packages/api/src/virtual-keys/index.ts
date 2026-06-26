@@ -5,7 +5,6 @@ export type { BudgetUsage, CreateKeyInput, UpdateKeyInput, VirtualKeyRow } from 
 export {
 	checkBudget,
 	createKey,
-	deleteKey,
 	getBudgetUsage,
 	getKeyById,
 	listKeys,

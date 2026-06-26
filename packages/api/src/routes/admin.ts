@@ -4,7 +4,6 @@ import { env } from "../config"
 import { getModelUsage, getStats, getTimeSeries, getTopKeys, getKeyCostSince, queryLogs } from "../logging"
 import {
 	createKey,
-	deleteKey,
 	getBudgetUsage,
 	getKeyById,
 	listKeys,
@@ -174,14 +173,6 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 			lastUsedAt: updated.lastUsedAt,
 			createdAt: updated.createdAt,
 		}
-	})
-	.delete("/keys/:id", ({ params, set }) => {
-		const deleted = deleteKey(params.id)
-		if (!deleted) {
-			set.status = 404
-			return { error: "Key not found" }
-		}
-		return { success: true }
 	})
 	.get("/stats/timeseries", ({ query }) => {
 		const hours = query.hours ? Number(query.hours) : 24

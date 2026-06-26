@@ -1,7 +1,7 @@
 "use client"
 
 import { formatDistanceToNow } from "date-fns"
-import { ChevronDown, Copy, Pencil, Plus, Trash2 } from "lucide-react"
+import { ChevronDown, Copy, Pencil, Plus } from "lucide-react"
 import { useState } from "react"
 import { AuthGuard } from "@/components/auth-guard"
 import { Button } from "@/components/ui/button"
@@ -23,7 +23,6 @@ import {
 import { Input } from "@/components/ui/input"
 import {
 	useCreateKey,
-	useDeleteKey,
 	useKeyBudget,
 	useKeys,
 	useToggleKey,
@@ -154,7 +153,6 @@ function BudgetDialog({ keyId, keyName, currentPeriod, currentTokens, currentReq
 function KeysContent() {
 	const { data, isLoading } = useKeys()
 	const createKey = useCreateKey()
-	const deleteKey = useDeleteKey()
 	const toggleKey = useToggleKey()
 	const [newKeyName, setNewKeyName] = useState("")
 	const [newKeyRateLimit, setNewKeyRateLimit] = useState(60)
@@ -349,16 +347,7 @@ function KeysContent() {
 									>
 										<Pencil className="size-3.5" />
 									</Button>
-									<Button
-										variant="ghost"
-										size="icon-xs"
-										onClick={() => deleteKey.mutate(key.id)}
-										className="text-muted-foreground hover:text-destructive cursor-pointer"
-										title="Delete key"
-									>
-										<Trash2 className="size-3.5" />
-									</Button>
-								</td>
+									</td>
 							</tr>
 						))}
 					</tbody>

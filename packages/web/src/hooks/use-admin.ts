@@ -97,14 +97,6 @@ export function useCreateKey() {
 	})
 }
 
-export function useDeleteKey() {
-	const queryClient = useQueryClient()
-	return useMutation({
-		mutationFn: (id: string) =>
-			apiFetch(`/admin/keys/${id}`, { method: "DELETE" }),
-		onSuccess: () => queryClient.invalidateQueries({ queryKey: ["keys"] }),
-	})
-}
 
 export function useToggleKey() {
 	const queryClient = useQueryClient()
