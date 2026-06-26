@@ -1,6 +1,6 @@
 "use client"
 
-import { Activity, Key, ScrollText, Zap } from "lucide-react"
+import { Activity, DollarSign, Key, ScrollText, Zap } from "lucide-react"
 import {
 	Area,
 	AreaChart,
@@ -113,7 +113,7 @@ function DashboardContent() {
 			<h1 className="font-mono text-lg font-semibold tracking-tight">
 				Overview
 			</h1>
-			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
 				<StatCard
 					label="Requests"
 					value={data.totalRequests.toLocaleString()}
@@ -128,6 +128,12 @@ function DashboardContent() {
 					color="bg-neon-cyan/10 text-neon-cyan"
 				/>
 				<StatCard
+					label="Cost"
+					value={`$${data.totalCost.toFixed(4)}`}
+					icon={DollarSign}
+					color="bg-neon-yellow/10 text-neon-yellow"
+				/>
+				<StatCard
 					label="Active Keys"
 					value={String(data.activeKeys)}
 					icon={Key}
@@ -137,7 +143,7 @@ function DashboardContent() {
 					label="Avg Latency"
 					value={`${data.avgLatencyMs ?? 0}ms`}
 					icon={Activity}
-					color="bg-neon-yellow/10 text-neon-yellow"
+					color="bg-neon-purple/10 text-neon-purple"
 					sub={`Uptime: ${formatUptime(data.uptimeSeconds ?? 0)}`}
 				/>
 			</div>
@@ -210,7 +216,7 @@ function DashboardContent() {
 										<div key={m.model} className="flex items-center gap-2">
 											<div className="size-2.5" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
 											<span className="font-mono text-[10px] text-muted-foreground truncate flex-1">{m.model}</span>
-											<span className="font-mono text-[10px] font-medium">{m.requests}</span>
+											<span className="font-mono text-[10px] font-medium">${m.cost.toFixed(4)}</span>
 										</div>
 									))}
 								</div>

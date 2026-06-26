@@ -4,6 +4,7 @@ import { apiFetch } from "@/lib/api"
 interface Stats {
 	totalRequests: number
 	totalTokens: number
+	totalCost: number
 	activeKeys: number
 	errorRate: number
 	avgLatencyMs: number
@@ -20,6 +21,7 @@ interface LogEntry {
 	promptTokens: number | null
 	completionTokens: number | null
 	totalTokens: number | null
+	cost: number | null
 	latencyMs: number | null
 	streaming: boolean | null
 	clientIp: string | null
@@ -42,6 +44,7 @@ interface VirtualKey {
 	budgetPeriod: string | null
 	budgetTokens: number | null
 	budgetRequests: number | null
+	periodCost: number | null
 	totalRequests: number
 	totalTokens: number
 	lastUsedAt: number | null
@@ -157,6 +160,7 @@ interface TimeSeriesPoint {
 	requests: number
 	tokens: number
 	errors: number
+	cost: number
 }
 
 interface TimeSeriesResponse {
@@ -175,6 +179,7 @@ interface ModelUsage {
 	model: string
 	requests: number
 	tokens: number
+	cost: number
 }
 
 interface ModelUsageResponse {

@@ -1,7 +1,7 @@
 import { Elysia } from "elysia"
 import { createSession, validateSession } from "../auth/token"
 import { env } from "../config"
-import { getModelUsage, getStats, getTimeSeries, getTopKeys, queryLogs } from "../logging"
+import { getModelUsage, getStats, getTimeSeries, getTopKeys, getKeyCostSince, queryLogs } from "../logging"
 import {
 	createKey,
 	deleteKey,
@@ -10,6 +10,16 @@ import {
 	listKeys,
 	updateKey,
 } from "../virtual-keys"
+
+function getPeriodMs(period: string | null): number {
+	switch (period) {
+		case "hour": return 3600_000
+		case "day": return 86400_000
+		case "week": return 604800_000
+		case "month": return 2592000_000
+		default: return 0
+	}
+}
 
 const loginRoute = new Elysia({ prefix: "/admin" }).post(
 	"/login",
@@ -63,24 +73,30 @@ const protectedRoutes = new Elysia({ prefix: "/admin" })
 	.get("/keys", () => {
 		const keys = listKeys()
 		return {
-			data: keys.map((k) => ({
-				id: k.id,
-				name: k.name,
-				keyPrefix: k.keyPrefix,
-				accountId: k.accountId,
-				enabled: k.enabled,
-				rateLimitPerMin: k.rateLimitPerMin,
-				allowedModels: k.allowedModels
-					? JSON.parse(k.allowedModels)
-					: null,
-				budgetPeriod: k.budgetPeriod,
-				budgetTokens: k.budgetTokens,
-				budgetRequests: k.budgetRequests,
-				totalRequests: k.totalRequests,
-				totalTokens: k.totalTokens,
-				lastUsedAt: k.lastUsedAt,
-				createdAt: k.createdAt,
-			})),
+			data: keys.map((k) => {
+				const periodStart = k.periodResetAt
+					? k.periodResetAt - getPeriodMs(k.budgetPeriod)
+					: 0
+				return {
+					id: k.id,
+					name: k.name,
+					keyPrefix: k.keyPrefix,
+					accountId: k.accountId,
+					enabled: k.enabled,
+					rateLimitPerMin: k.rateLimitPerMin,
+					allowedModels: k.allowedModels
+						? JSON.parse(k.allowedModels)
+						: null,
+					budgetPeriod: k.budgetPeriod,
+					budgetTokens: k.budgetTokens,
+					budgetRequests: k.budgetRequests,
+					periodCost: k.budgetPeriod ? getKeyCostSince(k.id, periodStart) : null,
+					totalRequests: k.totalRequests,
+					totalTokens: k.totalTokens,
+					lastUsedAt: k.lastUsedAt,
+					createdAt: k.createdAt,
+				}
+			}),
 		}
 	})
 	.post("/keys", async ({ body, set }) => {

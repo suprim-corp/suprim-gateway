@@ -61,6 +61,9 @@ function LogsContent() {
 								Out
 							</th>
 							<th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-normal">
+								Cost
+							</th>
+							<th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-normal">
 								Latency
 							</th>
 							<th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-normal">
@@ -81,7 +84,7 @@ function LogsContent() {
 						{isLoading && (
 							<tr>
 								<td
-									colSpan={9}
+									colSpan={10}
 									className="px-4 py-8 text-center font-mono text-xs text-muted-foreground"
 								>
 									<div className="flex items-center justify-center gap-2">
@@ -94,7 +97,7 @@ function LogsContent() {
 						{data?.data.length === 0 && (
 							<tr>
 								<td
-									colSpan={9}
+									colSpan={10}
 									className="px-4 py-8 text-center font-mono text-xs text-muted-foreground"
 								>
 									No requests yet
@@ -117,6 +120,9 @@ function LogsContent() {
 								</td>
 								<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
 									{log.completionTokens?.toLocaleString() ?? "—"}
+								</td>
+								<td className="px-4 py-2.5 font-mono text-[10px] text-neon-yellow">
+									{log.cost != null ? `$${log.cost.toFixed(4)}` : "—"}
 								</td>
 								<td className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
 									{log.latencyMs ? `${log.latencyMs.toLocaleString()}ms` : "—"}
