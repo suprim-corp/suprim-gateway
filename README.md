@@ -21,6 +21,8 @@ Proxy gateway cho Kiro API (AWS Q Developer) — tương thích OpenAI API, có 
 ## Features
 
 - **OpenAI-compatible API** — `/v1/chat/completions`, `/v1/models`
+- **Anthropic Messages API** — `/v1/messages` (native Claude SDK support)
+- **Responses API** — `/v1/responses` (OpenAI Responses format)
 - **Streaming SSE** — real-time response streaming
 - **Multi-account** — nhiều Kiro accounts với failover tự động
 - **Virtual Keys** — tạo và quản lý API keys cho users, rate limit, model whitelist
@@ -73,6 +75,7 @@ bun install
 
 # Configure
 cp .env.example .env
+bun run generate:key    # Generate ADMIN_API_KEY and write to .env
 # Edit .env với credentials của bạn
 
 # Dev
@@ -92,22 +95,25 @@ REFRESH_TOKEN="your_refresh_token"
 KIRO_CLI_DB_FILE="~/.local/share/kiro-cli/data.sqlite3"
 
 # Admin
-ADMIN_API_KEY="your-admin-secret"
+ADMIN_API_KEY="your-admin-secret"    # or: bun run generate:key
 
 # Optional
 KIRO_REGION="us-east-1"
 VPN_PROXY_URL=""
+HOST="127.0.0.1"                     # 0.0.0.0 for container
 ```
 
 ## API Endpoints
 
 ### Proxy API (OpenAI-compatible)
 
-| Method | Path                   | Auth        | Description      |
-|--------|------------------------|-------------|------------------|
-| GET    | `/health`              | —           | Health check     |
-| GET    | `/v1/models`           | Virtual Key | List models      |
-| POST   | `/v1/chat/completions` | Virtual Key | Chat completions |
+| Method | Path                   | Auth        | Description              |
+|--------|------------------------|-------------|--------------------------|
+| GET    | `/health`              | —           | Health check             |
+| GET    | `/v1/models`           | Virtual Key | List models              |
+| POST   | `/v1/chat/completions` | Virtual Key | Chat completions (OpenAI)|
+| POST   | `/v1/messages`         | Virtual Key | Messages (Anthropic)     |
+| POST   | `/v1/responses`        | Virtual Key | Responses (OpenAI)       |
 
 ### Admin API (Dashboard)
 
@@ -189,6 +195,7 @@ bun lint          # Biome lint + format check
 bun build         # Build all packages
 bun db:generate   # Generate Drizzle migrations
 bun db:migrate    # Run migrations
+bun generate:key  # Generate admin key → .env
 ```
 
 ## License

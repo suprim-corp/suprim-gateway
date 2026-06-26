@@ -14,7 +14,8 @@
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"db:generate": "bun run --filter=@kiro-gateway/api db:generate",
-		"db:migrate": "bun run --filter=@kiro-gateway/api db:migrate"
+		"db:migrate": "bun run --filter=@kiro-gateway/api db:migrate",
+		"generate:key": "KEY=$(openssl rand -base64 32) && ([ -f .env ] && sed -i '' \"s|^ADMIN_API_KEY=.*|ADMIN_API_KEY=\\\"$KEY\\\"|\" .env || echo \"ADMIN_API_KEY=\\\"$KEY\\\"\" >> .env) && echo \"ADMIN_API_KEY=$KEY\""
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.0",
