@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { env } from "../config"
 import { refreshDesktopToken, refreshSsoOidcToken } from "./refresh"
@@ -262,6 +262,20 @@ export class KiroAuthManager {
 		}
 	}
 	
+	private saveTokenToFile(result: { accessToken: string; refreshToken: string; expiresAt: string }) {
+		if (!this.credentialSource || this.credentialSource.type !== "json") return
+		const filePath = resolve(this.credentialSource.path.replace(/^~/, process.env.HOME ?? "~"))
+		try {
+			const existing = existsSync(filePath) ? JSON.parse(readFileSync(filePath, "utf-8")) : {}
+			existing.accessToken = result.accessToken
+			existing.refreshToken = result.refreshToken
+			existing.expiresAt = result.expiresAt
+			writeFileSync(filePath, JSON.stringify(existing, null, 2))
+		} catch (e) {
+			console.error(`[Auth] Failed to save refreshed token: ${e instanceof Error ? e.message : e}`)
+		}
+	}
+
 	private async doRefresh(): Promise<void> {
 		if (!this.refreshToken) {
 			throw new Error("No refresh token available")
@@ -283,11 +297,13 @@ export class KiroAuthManager {
 			this.accessToken = result.accessToken
 			this.refreshToken = result.refreshToken
 			this.expiresAt = new Date(result.expiresAt)
+			this.saveTokenToFile(result)
 		} else {
 			const result = await refreshDesktopToken(this.refreshToken, region)
 			this.accessToken = result.accessToken
 			this.refreshToken = result.refreshToken
 			this.expiresAt = new Date(result.expiresAt)
+			this.saveTokenToFile(result)
 		}
 	}
 }
