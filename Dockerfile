@@ -42,7 +42,7 @@ RUN apk add --no-cache upx binutils && \
 FROM alpine:3.21
 WORKDIR /app
 RUN addgroup -S app && adduser -S app -G app && \
-    apk add --no-cache libgcc libstdc++ && \
+    apk add --no-cache libgcc libstdc++ su-exec && \
     rm -rf /var/cache/apk /usr/share/apk /etc/apk && \
     mkdir -p /app/data && chown app:app /app/data
 
@@ -58,7 +58,6 @@ COPY --from=build-web --chown=app:app /app/packages/web/public packages/web/pack
 COPY --chown=app:app entrypoint.sh .
 RUN chmod +x entrypoint.sh
 
-USER app
 EXPOSE 3000
 
 CMD ["./entrypoint.sh"]
