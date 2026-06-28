@@ -113,7 +113,9 @@ export class KiroAuthManager {
 
 		interface RegData {
 			clientId?: string
+			client_id?: string
 			clientSecret?: string
+			client_secret?: string
 			scopes?: string[]
 		}
 
@@ -153,8 +155,8 @@ export class KiroAuthManager {
 				.get(key) as DbRow | null
 			if (row?.value) {
 				const reg = JSON.parse(row.value) as RegData
-				this.clientId = reg.clientId ?? null
-				this.clientSecret = reg.clientSecret ?? null
+				this.clientId = reg.clientId ?? reg.client_id ?? null
+				this.clientSecret = reg.clientSecret ?? reg.client_secret ?? null
 				this.scopes = reg.scopes ?? null
 				logger.info(`[Auth] Loaded device registration (key=${key}, scopes=${this.scopes?.join(",")})`)
 				break
