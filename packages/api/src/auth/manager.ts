@@ -91,6 +91,8 @@ export class KiroAuthManager {
 		const { Database } =
 			require("bun:sqlite") as typeof import("bun:sqlite")
 		const db = new Database(resolved)
+		// Force reading latest WAL data from other processes
+		db.run("PRAGMA wal_checkpoint(PASSIVE)")
 
 		const tokenKeys = [
 			"kirocli:social:token",
@@ -109,6 +111,7 @@ export class KiroAuthManager {
 			refresh_token?: string
 			expiresAt?: string
 			expires_at?: string
+			scopes?: string[]
 		}
 
 		interface RegData {
@@ -141,6 +144,7 @@ export class KiroAuthManager {
 		this.refreshToken = tokenData.refreshToken ?? tokenData.refresh_token ?? null
 		const expiresRaw = tokenData.expiresAt ?? tokenData.expires_at
 		this.expiresAt = expiresRaw ? new Date(expiresRaw) : null
+		if (tokenData.scopes) this.scopes = tokenData.scopes
 
 		logger.info(`[Auth] Loaded token from SQLite (key=${matchedKey}, expires=${this.expiresAt?.toISOString()})`)
 
@@ -341,17 +345,43 @@ export class KiroAuthManager {
 			if (!this.clientId || !this.clientSecret) {
 				throw new Error("SSO OIDC requires clientId and clientSecret")
 			}
-			const result = await refreshSsoOidcToken(
-				this.refreshToken,
-				this.clientId,
-				this.clientSecret,
-				region,
-				this.scopes ?? undefined,
-			)
-			this.accessToken = result.accessToken
-			this.refreshToken = result.refreshToken
-			this.expiresAt = new Date(result.expiresAt)
-			this.saveTokenToFile(result)
+			try {
+				const result = await refreshSsoOidcToken(
+					this.refreshToken,
+					this.clientId,
+					this.clientSecret,
+					region,
+					this.scopes ?? undefined,
+				)
+				this.accessToken = result.accessToken
+				this.refreshToken = result.refreshToken
+				this.expiresAt = new Date(result.expiresAt)
+				this.saveTokenToFile(result)
+			} catch (e) {
+				// 400 = stale token, kiro-cli may have refreshed — reload and retry once
+				const is400 = e instanceof Error && e.message.includes("(400)")
+				if (is400 && this.credentialSource?.type === "sqlite") {
+					logger.warn("[Auth] SSO OIDC 400 — reloading SQLite and retrying...")
+					this.loadFromSqlite(this.credentialSource.path)
+					this.detectAuthType()
+					if (!this.refreshToken || !this.clientId || !this.clientSecret) {
+						throw e
+					}
+					const result = await refreshSsoOidcToken(
+						this.refreshToken,
+						this.clientId,
+						this.clientSecret,
+						region,
+						this.scopes ?? undefined,
+					)
+					this.accessToken = result.accessToken
+					this.refreshToken = result.refreshToken
+					this.expiresAt = new Date(result.expiresAt)
+					this.saveTokenToFile(result)
+				} else {
+					throw e
+				}
+			}
 		} else {
 			const result = await refreshDesktopToken(this.refreshToken, region)
 			this.accessToken = result.accessToken

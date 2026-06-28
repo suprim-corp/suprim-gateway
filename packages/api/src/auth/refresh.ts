@@ -45,20 +45,22 @@ export async function refreshSsoOidcToken(
 ): Promise<RefreshResult> {
 	const url = AWS_SSO_OIDC_URL.replace("{region}", region)
 	logger.debug(`[Auth] SSO OIDC refresh → ${url}`)
-	const body = new URLSearchParams({
-		grant_type: "refresh_token",
-		client_id: clientId,
-		client_secret: clientSecret,
-		refresh_token: refreshToken,
-	})
+
+	// AWS SSO OIDC CreateToken API uses JSON with camelCase params
+	const payload: Record<string, string | string[]> = {
+		grantType: "refresh_token",
+		clientId,
+		clientSecret,
+		refreshToken,
+	}
 	if (scopes?.length) {
-		body.set("scope", scopes.join(" "))
+		payload.scope = scopes
 	}
 
 	const res = await fetch(url, {
 		method: "POST",
-		headers: { "Content-Type": "application/x-www-form-urlencoded" },
-		body: body.toString(),
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload),
 	})
 
 	if (!res.ok) {
