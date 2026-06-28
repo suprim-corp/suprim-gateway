@@ -4,7 +4,7 @@ export function runMigrations() {
 	const sqlite = (db as unknown as { $client: import("bun:sqlite").Database })
 		.$client
 
-	sqlite.exec(`
+	sqlite.run(`
     CREATE TABLE IF NOT EXISTS accounts (
       id TEXT PRIMARY KEY,
       type TEXT NOT NULL,
@@ -61,7 +61,7 @@ export function runMigrations() {
 		.query("SELECT 1 FROM pragma_table_info('virtual_keys') WHERE name='budget_period'")
 		.get()
 	if (!hasBudgetPeriod) {
-		sqlite.exec(`
+		sqlite.run(`
       ALTER TABLE virtual_keys ADD COLUMN budget_period TEXT;
       ALTER TABLE virtual_keys ADD COLUMN budget_tokens INTEGER;
       ALTER TABLE virtual_keys ADD COLUMN budget_requests INTEGER;
@@ -76,7 +76,7 @@ export function runMigrations() {
 		.query("SELECT 1 FROM pragma_table_info('virtual_keys') WHERE name='period_tokens_used'")
 		.get()
 	if (!hasPeriodTokensUsed) {
-		sqlite.exec(`
+		sqlite.run(`
       ALTER TABLE virtual_keys ADD COLUMN period_tokens_used INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE virtual_keys ADD COLUMN period_requests_used INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE virtual_keys ADD COLUMN period_reset_at INTEGER;

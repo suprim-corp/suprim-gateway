@@ -1,3 +1,5 @@
+import { logger } from "../logging/logger"
+
 const KIRO_REFRESH_URL =
 	"https://prod.{region}.auth.desktop.kiro.dev/refreshToken"
 const AWS_SSO_OIDC_URL = "https://oidc.{region}.amazonaws.com/token"
@@ -13,6 +15,7 @@ export async function refreshDesktopToken(
 	region: string,
 ): Promise<RefreshResult> {
 	const url = KIRO_REFRESH_URL.replace("{region}", region)
+	logger.debug(`[Auth] Desktop refresh → ${url}`)
 	const res = await fetch(url, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
@@ -21,6 +24,7 @@ export async function refreshDesktopToken(
 
 	if (!res.ok) {
 		const text = await res.text()
+		logger.error(`[Auth] Desktop refresh failed: ${res.status} ${text.slice(0, 300)}`)
 		throw new Error(`Desktop token refresh failed (${res.status}): ${text}`)
 	}
 
@@ -40,6 +44,7 @@ export async function refreshSsoOidcToken(
 	scopes?: string[],
 ): Promise<RefreshResult> {
 	const url = AWS_SSO_OIDC_URL.replace("{region}", region)
+	logger.debug(`[Auth] SSO OIDC refresh → ${url}`)
 	const body = new URLSearchParams({
 		grant_type: "refresh_token",
 		client_id: clientId,
@@ -58,6 +63,7 @@ export async function refreshSsoOidcToken(
 
 	if (!res.ok) {
 		const text = await res.text()
+		logger.error(`[Auth] SSO OIDC refresh failed: ${res.status} ${text.slice(0, 300)}`)
 		throw new Error(
 			`SSO OIDC token refresh failed (${res.status}): ${text}`,
 		)

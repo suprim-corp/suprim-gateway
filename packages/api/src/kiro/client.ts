@@ -30,6 +30,7 @@ export class KiroHttpClient {
 		}
 		const url = `${this.auth.qHost}/ListAvailableModels?${params}`
 
+		logger.info(`Fetching models from ${this.auth.qHost}/ListAvailableModels`)
 		const res = await this.request({ method: "GET", url })
 		if (res.status !== 200) {
 			const text = await res.text()
@@ -38,6 +39,7 @@ export class KiroHttpClient {
 			)
 		}
 		const data = (await res.json()) as { models?: KiroModelInfo[] }
+		logger.info(`Fetched ${data.models?.length ?? 0} models`)
 		return data.models ?? []
 	}
 
@@ -53,6 +55,8 @@ export class KiroHttpClient {
 				const token = await this.auth.getAccessToken()
 				const headers = buildKiroHeaders(this.auth, token)
 
+				logger.debug(`[Kiro] ${opts.method} ${opts.url} (attempt ${attempt + 1}/${maxRetries})`)
+
 				const res = await fetch(opts.url, {
 					method: opts.method,
 					headers,
@@ -63,8 +67,9 @@ export class KiroHttpClient {
 
 				// 403 — token expired, refresh and retry
 				if (res.status === 403) {
+					const body = await res.text()
 					logger.warn(
-						`403, refreshing token (attempt ${attempt + 1}/${maxRetries})`,
+						`[Kiro] 403 from upstream: ${body.slice(0, 200)}, refreshing token (attempt ${attempt + 1}/${maxRetries})`,
 					)
 					await this.auth.forceRefresh()
 					continue
@@ -75,7 +80,7 @@ export class KiroHttpClient {
 					lastResponse = res
 					const delay = BASE_RETRY_DELAY * 2 ** attempt
 					logger.warn(
-						`429, waiting ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
+						`[Kiro] 429 rate limited, waiting ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
 					)
 					await sleep(delay)
 					continue
@@ -84,21 +89,23 @@ export class KiroHttpClient {
 				// 5xx — server error
 				if (res.status >= 500) {
 					lastResponse = res
+					const body = await res.clone().text().catch(() => "")
 					const delay = BASE_RETRY_DELAY * 2 ** attempt
 					logger.warn(
-						`${res.status}, waiting ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
+						`[Kiro] ${res.status} from upstream: ${body.slice(0, 200)}, waiting ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
 					)
 					await sleep(delay)
 					continue
 				}
 
 				// Other errors — return as-is
+				logger.warn(`[Kiro] Unexpected ${res.status} from ${opts.url}`)
 				return res
 			} catch (e: unknown) {
 				lastError = e instanceof Error ? e : new Error(String(e))
 				const delay = BASE_RETRY_DELAY * 2 ** attempt
 				logger.error(
-					`Network error: ${lastError.message}, waiting ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
+					`[Kiro] Network error: ${lastError.message}, waiting ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
 				)
 				await sleep(delay)
 			}

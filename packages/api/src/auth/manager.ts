@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { env } from "../config"
+import { logger } from "../logging/logger"
 import { refreshDesktopToken, refreshSsoOidcToken } from "./refresh"
 import type { AccountCredentialConfig, KiroCredentials } from "./types"
 import { AuthType } from "./types"
@@ -205,17 +206,22 @@ export class KiroAuthManager {
 			return this.accessToken
 		}
 
+		logger.debug(`[Auth] Token expired or missing, expiresAt=${this.expiresAt?.toISOString()}, authType=${this.authType}`)
+
 		// Re-read credentials from disk — Kiro Desktop may have refreshed them
 		if (this.credentialSource) {
 			this.reloadCredentials()
 			if (this.accessToken && !this.isExpired()) {
+				logger.info(`[Auth] Reloaded valid token from ${this.credentialSource.type} (expires ${this.expiresAt?.toISOString()})`)
 				return this.accessToken
 			}
+			logger.warn(`[Auth] Reloaded credentials still expired (expires ${this.expiresAt?.toISOString()})`)
 		}
 
 		// Skip refresh if we recently failed and token is still usable
 		if (Date.now() - this.lastRefreshFailure < REFRESH_COOLDOWN_MS) {
 			if (this.accessToken && !this.isActuallyExpired()) {
+				logger.debug("[Auth] In cooldown after recent failure, using existing token")
 				return this.accessToken
 			}
 		}
@@ -224,11 +230,16 @@ export class KiroAuthManager {
 		try {
 			await this.refresh()
 			this.lastRefreshFailure = 0
+			logger.info(`[Auth] Token refreshed successfully via ${this.authType}, expires ${this.expiresAt?.toISOString()}`)
 		} catch (e) {
 			this.lastRefreshFailure = Date.now()
+			const msg = e instanceof Error ? e.message : String(e)
+			logger.error(`[Auth] Refresh failed (${this.authType}): ${msg}`)
 			if (this.accessToken && !this.isActuallyExpired()) {
+				logger.warn("[Auth] Using existing token despite refresh failure")
 				return this.accessToken
 			}
+			logger.error(`[Auth] No usable token — refresh failed and token expired`)
 			throw new Error("Service temporarily unavailable")
 		}
 
@@ -280,9 +291,10 @@ export class KiroAuthManager {
 		if (!this.refreshToken) {
 			throw new Error("No refresh token available")
 		}
-		
+
 		const region = this.region
-		
+		logger.info(`[Auth] Refreshing token via ${this.authType}, region=${region}`)
+
 		if (this.authType === AuthType.AWS_SSO_OIDC) {
 			if (!this.clientId || !this.clientSecret) {
 				throw new Error("SSO OIDC requires clientId and clientSecret")
