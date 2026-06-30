@@ -7,8 +7,8 @@ import { HIDDEN_MODELS, MODEL_ALIASES } from "@kiro-gateway/shared"
 export function normalizeModelName(model: string): string {
 	let name = model.trim().toLowerCase()
 
-	// 1. Strip context window suffix: [1m], [200k], etc.
-	name = name.replace(/\s*\[\d+[km]?\]$/i, "")
+	// Normalize context window suffix: "model [1m]" → "model[1m]" (strip space, keep suffix)
+	name = name.replace(/\s+(\[\d+[km]?\])$/i, "$1")
 
 	// 2. Handle inverted format with effort suffix: claude-4.5-opus-high → claude-opus-4.5
 	const invertedMatch = name.match(
@@ -30,9 +30,9 @@ export function normalizeModelName(model: string): string {
 
 	// 4. Convert trailing version dashes to dots: claude-sonnet-4-5 → claude-sonnet-4.5
 	name = name.replace(
-		/^(claude-(?:sonnet|opus|haiku)-)(\d+)-(\d+)(-.+)?$/,
-		(_, prefix, major, minor, rest) =>
-			`${prefix}${major}.${minor}${rest ?? ""}`,
+		/^(claude-(?:sonnet|opus|haiku)-)(\d+)-(\d+)(-.+)?(\[\d+[km]?\])?$/i,
+		(_, prefix, major, minor, rest, ctx) =>
+			`${prefix}${major}.${minor}${rest ?? ""}${ctx ?? ""}`,
 	)
 
 	// 5. Strip date suffix: claude-sonnet-4.5-20250929 → claude-sonnet-4.5
