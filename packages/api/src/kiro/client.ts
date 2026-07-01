@@ -98,8 +98,9 @@ export class KiroHttpClient {
 					continue
 				}
 
-				// Other errors — return as-is
-				logger.warn(`[Kiro] Unexpected ${res.status} from ${opts.url}`)
+				// Other errors — log body and return as-is
+				const errBody = await res.clone().text().catch(() => "")
+				logger.warn(`[Kiro] Unexpected ${res.status} from ${opts.url}: ${errBody.slice(0, 500)}`)
 				return res
 			} catch (e: unknown) {
 				lastError = e instanceof Error ? e : new Error(String(e))
