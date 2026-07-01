@@ -74,6 +74,8 @@ export function buildKiroPayload(
 		for (const entry of history) {
 			if (entry.userInputMessage) {
 				entry.userInputMessage.modelId = modelId
+				// strip base64 images from history to avoid re-sending megabytes every turn
+				delete entry.userInputMessage.images
 			}
 		}
 		payload.conversationState.history = history
