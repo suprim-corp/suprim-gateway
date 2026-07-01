@@ -185,6 +185,7 @@ export function createAnthropicStream(
 		},
 		cancel() {
 			closed = true
+			logger.warn(`[Anthropic stream] Client disconnected (cancel called)`)
 		},
 	})
 }

@@ -55,13 +55,16 @@ export class KiroHttpClient {
 				const token = await this.auth.getAccessToken()
 				const headers = buildKiroHeaders(this.auth, token)
 
-				logger.debug(`[Kiro] ${opts.method} ${opts.url} (attempt ${attempt + 1}/${maxRetries})`)
+				const bodyStr = opts.body ? JSON.stringify(opts.body) : undefined
+				logger.debug(`[Kiro] ${opts.method} ${opts.url} (attempt ${attempt + 1}/${maxRetries}, body=${bodyStr ? Math.round(bodyStr.length / 1024) : 0}kb)`)
 
 				const res = await fetch(opts.url, {
 					method: opts.method,
 					headers,
-					body: opts.body ? JSON.stringify(opts.body) : undefined,
+					body: bodyStr,
 				})
+
+				logger.debug(`[Kiro] Response ${res.status} from ${opts.url} (attempt ${attempt + 1}/${maxRetries})`)
 
 				if (res.status === 200) return res
 
