@@ -21,12 +21,20 @@ export function createAnthropicStream(
 		return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
 	}
 
+	let closed = false
+
 	return new ReadableStream<string>({
 		async start(controller) {
-			let closed = false
 			const safe = {
-				enqueue(chunk: string) { if (!closed) controller.enqueue(chunk) },
-				close() { if (!closed) { closed = true; controller.close() } },
+				enqueue(chunk: string) {
+					if (closed) return
+					try { controller.enqueue(chunk) } catch (e) { closed = true; logger.warn(`[Anthropic stream] enqueue failed: ${e instanceof Error ? e.message : e}`) }
+				},
+				close() {
+					if (closed) return
+					closed = true
+					try { controller.close() } catch (e) { logger.warn(`[Anthropic stream] close failed: ${e instanceof Error ? e.message : e}`) }
+				},
 			}
 
 			safe.enqueue(
@@ -170,6 +178,9 @@ export function createAnthropicStream(
 			safe.enqueue(sse("message_stop", { type: "message_stop" }))
 			safe.close()
 			onDone?.({ input_tokens: inputTokens, output_tokens: outputTokens })
+		},
+		cancel() {
+			closed = true
 		},
 	})
 }
