@@ -1,4 +1,5 @@
 import { extractImages, extractTextContent } from "./content"
+import { logger } from "../../logging/logger"
 import type { KiroHistoryEntry, KiroImageBlock, OpenAIMessage } from "./types"
 
 export function convertMessages(messages: OpenAIMessage[]): {
@@ -142,6 +143,25 @@ export function convertMessages(messages: OpenAIMessage[]): {
 			}
 
 			converted.push(assistantEntry)
+		}
+	}
+
+	// Enforce: each user turn's toolResults count must not exceed the preceding assistant turn's toolUses count
+	for (let i = 1; i < converted.length; i++) {
+		const cur = converted[i]
+		const prev = converted[i - 1]
+		const results = cur.userInputMessage?.userInputMessageContext?.toolResults
+		const uses = prev.assistantResponseMessage?.toolUses
+		if (results && results.length > 0) {
+			const maxAllowed = uses?.length ?? 0
+			if (maxAllowed === 0) {
+				logger.warn(`[Converter] Dropping ${results.length} orphan toolResults at turn ${i} (no toolUses in prev turn). IDs: ${results.map((r: any) => r.toolUseId).join(", ")}`)
+				delete cur.userInputMessage!.userInputMessageContext
+			} else if (results.length > maxAllowed) {
+				const dropped = results.slice(maxAllowed)
+				logger.warn(`[Converter] Trimming toolResults at turn ${i}: ${results.length} results > ${maxAllowed} toolUses. Dropped IDs: ${dropped.map((r: any) => r.toolUseId).join(", ")}`)
+				cur.userInputMessage!.userInputMessageContext!.toolResults = results.slice(0, maxAllowed)
+			}
 		}
 	}
 
