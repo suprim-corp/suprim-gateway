@@ -22,6 +22,7 @@ export function createAnthropicStream(
 	}
 
 	let closed = false
+	let pingInterval: ReturnType<typeof setInterval> | null = null
 
 	return new ReadableStream<string>({
 		async start(controller) {
@@ -59,6 +60,11 @@ export function createAnthropicStream(
 				safe.close()
 				return
 			}
+
+			// Keepalive ping while waiting for first content from Kiro
+			pingInterval = setInterval(() => {
+				if (!closed) safe.enqueue(": ping\n\n")
+			}, 5000)
 
 			try {
 				while (true) {
@@ -112,6 +118,8 @@ export function createAnthropicStream(
 			} catch (err) {
 				logger.error(`[Anthropic stream] ${err instanceof Error ? err.message : err}`)
 			}
+
+			if (pingInterval) clearInterval(pingInterval)
 
 			if (closed) return
 
@@ -185,6 +193,7 @@ export function createAnthropicStream(
 		},
 		cancel() {
 			closed = true
+			if (pingInterval) clearInterval(pingInterval)
 			logger.warn(`[Anthropic stream] Client disconnected (cancel called)`)
 		},
 	})
