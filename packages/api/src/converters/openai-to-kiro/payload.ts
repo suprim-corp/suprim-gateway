@@ -97,6 +97,7 @@ function trimPayload(payload: KiroPayload): void {
 	const history = payload.conversationState.history
 	if (!history?.length) return
 
+	const originalLen = history.length
 	while (history.length > 2 && JSON.stringify(payload).length > MAX_PAYLOAD_BYTES) {
 		history.shift()
 		history.shift()
@@ -105,6 +106,40 @@ function trimPayload(payload: KiroPayload): void {
 	// Ensure history starts with a userInputMessage
 	while (history.length && !history[0].userInputMessage) {
 		history.shift()
+	}
+
+	// Repair orphaned toolResults — remove any that reference toolUseIds
+	// not present in the preceding assistant message
+	if (history.length !== originalLen) {
+		for (let i = 0; i < history.length; i++) {
+			const user = history[i].userInputMessage
+			if (!user?.userInputMessageContext?.toolResults) continue
+
+			const validIds = new Set<string>()
+			if (i > 0) {
+				const prev = history[i - 1].assistantResponseMessage
+				if (prev?.toolUses) {
+					for (const tu of prev.toolUses) {
+						if (tu.toolUseId) validIds.add(tu.toolUseId)
+					}
+				}
+			}
+
+			const kept = user.userInputMessageContext.toolResults.filter(
+				(tr: { toolUseId?: string }) => validIds.has(tr.toolUseId ?? "")
+			)
+
+			if (kept.length) {
+				user.userInputMessageContext.toolResults = kept
+			} else {
+				delete user.userInputMessageContext.toolResults
+				if (!Object.keys(user.userInputMessageContext).length) {
+					delete user.userInputMessageContext
+				}
+			}
+		}
+
+		logger.info(`Trimmed history: ${originalLen} -> ${history.length} entries`)
 	}
 
 	if (!history.length) {
