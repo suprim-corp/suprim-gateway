@@ -30,6 +30,9 @@ class LogsController {
         model.addAttribute("total", total);
         model.addAttribute("page", page);
         model.addAttribute("totalPages", totalPages);
-        return "logs";
+        model.addAttribute("view", "logs");
+        model.addAttribute("currentPage", "logs");
+        model.addAttribute("pageTitle", "Logs");
+        return "layout";
     }
 }

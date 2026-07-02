@@ -38,7 +38,10 @@ class UsageController {
         model.addAttribute("totalCost", totalCost);
         model.addAttribute("totalTokens", totalTokens);
         model.addAttribute("totalRequests", totalRequests);
-        return "usage";
+        model.addAttribute("view", "usage");
+        model.addAttribute("currentPage", "usage");
+        model.addAttribute("pageTitle", "Usage");
+        return "layout";
     }
 
     private List<Map<String, Object>> formatTimeSeries(List<Map<String, Object>> raw) {

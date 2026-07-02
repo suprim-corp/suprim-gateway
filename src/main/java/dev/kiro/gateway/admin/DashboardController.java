@@ -43,7 +43,10 @@ class DashboardController {
         model.addAttribute("topKeys", topKeys);
         model.addAttribute("activeKeys", activeKeys);
         model.addAttribute("uptime", uptime);
-        return "dashboard";
+        model.addAttribute("view", "dashboard");
+        model.addAttribute("currentPage", "overview");
+        model.addAttribute("pageTitle", "Overview");
+        return "layout";
     }
 
     private List<Map<String, Object>> formatTimeSeries(List<Map<String, Object>> raw) {

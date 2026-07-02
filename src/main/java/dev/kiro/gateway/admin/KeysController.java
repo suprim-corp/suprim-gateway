@@ -39,7 +39,10 @@ class KeysController {
 		model.addAttribute("page", page);
 		model.addAttribute("totalPages", totalPages);
 		model.addAttribute("createdKey", createdKey);
-		return "keys";
+		model.addAttribute("view", "keys");
+		model.addAttribute("currentPage", "keys");
+		model.addAttribute("pageTitle", "API Keys");
+		return "layout";
 	}
 
 	@PostMapping("/keys/create")
