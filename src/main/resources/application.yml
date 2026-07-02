@@ -11,7 +11,7 @@ spring:
     cache: false
 
 kiro:
-  admin-api-key: ${ADMIN_API_KEY:}
+  admin-api-key: ${ADMIN_API_KEY:admin}
   creds-file: ${KIRO_CREDS_FILE:}
   refresh-token: ${REFRESH_TOKEN:}
   cli-db-file: ${KIRO_CLI_DB_FILE:}
