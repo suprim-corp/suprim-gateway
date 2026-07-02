@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head th:fragment="head">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--/*@thymesVar id="pageTitle" type="apple"*/-->
+    <title th:text="${pageTitle != null ? pageTitle + ' — Kiro Gateway' : 'Kiro Gateway'}">Kiro Gateway</title>
+    <link rel="icon" type="image/png"
+          href="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'neon-purple': '#a78bfa',
+                        'neon-cyan': '#22d3ee',
+                        'neon-green': '#4ade80',
+                        'neon-yellow': '#facc15',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+        }
+    </style>
+</head>
+<body></body>
+</html>
