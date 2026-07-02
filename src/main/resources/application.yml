@@ -1,0 +1,25 @@
+server:
+  port: 3000
+
+spring:
+  datasource:
+    url: jdbc:sqlite:${DATABASE_PATH:./data/gateway.db}
+    driver-class-name: org.sqlite.JDBC
+  flyway:
+    locations: classpath:db/migration
+  thymeleaf:
+    cache: false
+
+kiro:
+  admin-api-key: ${ADMIN_API_KEY:}
+  creds-file: ${KIRO_CREDS_FILE:}
+  refresh-token: ${REFRESH_TOKEN:}
+  cli-db-file: ${KIRO_CLI_DB_FILE:}
+  profile-arn: ${PROFILE_ARN:}
+  region: ${KIRO_REGION:us-east-1}
+  api-region: ${KIRO_API_REGION:}
+  vpn-proxy-url: ${VPN_PROXY_URL:}
+  first-token-timeout: ${FIRST_TOKEN_TIMEOUT:15}
+  streaming-read-timeout: ${STREAMING_READ_TIMEOUT:300}
+  first-token-max-retries: ${FIRST_TOKEN_MAX_RETRIES:3}
+  disabled-models: ${DISABLED_MODELS:}

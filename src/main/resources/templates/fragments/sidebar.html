@@ -1,0 +1,42 @@
+<nav th:fragment="sidebar" class="fixed left-0 top-0 h-full w-56 border-r border-zinc-800 bg-zinc-950 flex flex-col">
+    <div class="p-4 border-b border-zinc-800 flex items-center gap-2.5">
+        <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png" alt="Kiro" class="size-7">
+        <span class="text-sm font-semibold tracking-tight">Kiro Gateway</span>
+    </div>
+    <div class="flex-1 p-3 space-y-4">
+        <div class="space-y-1">
+            <span class="px-3 text-[10px] uppercase tracking-widest text-zinc-500">Gateway</span>
+            <a href="/" th:classappend="${#strings.equals(currentPage, 'overview')} ? 'bg-purple-500/10 text-neon-purple' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/30'"
+               class="flex items-center gap-3 px-3 py-2 text-xs transition-colors cursor-pointer">
+                <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                Overview
+            </a>
+            <a href="/logs" th:classappend="${#strings.equals(currentPage, 'logs')} ? 'bg-purple-500/10 text-neon-purple' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/30'"
+               class="flex items-center gap-3 px-3 py-2 text-xs transition-colors cursor-pointer">
+                <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                Logs
+            </a>
+            <a href="/keys" th:classappend="${#strings.equals(currentPage, 'keys')} ? 'bg-purple-500/10 text-neon-purple' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/30'"
+               class="flex items-center gap-3 px-3 py-2 text-xs transition-colors cursor-pointer">
+                <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+                API Keys
+            </a>
+            <a href="/usage" th:classappend="${#strings.equals(currentPage, 'usage')} ? 'bg-purple-500/10 text-neon-purple' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/30'"
+               class="flex items-center gap-3 px-3 py-2 text-xs transition-colors cursor-pointer">
+                <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Usage
+            </a>
+        </div>
+        <div class="space-y-1">
+            <span class="px-3 text-[10px] uppercase tracking-widest text-zinc-500">System</span>
+            <a href="/settings" th:classappend="${#strings.equals(currentPage, 'settings')} ? 'bg-purple-500/10 text-neon-purple' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/30'"
+               class="flex items-center gap-3 px-3 py-2 text-xs transition-colors cursor-pointer">
+                <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                Settings
+            </a>
+        </div>
+    </div>
+    <div class="p-4 border-t border-zinc-800 text-[10px] text-zinc-500">
+        v0.2.0
+    </div>
+</nav>

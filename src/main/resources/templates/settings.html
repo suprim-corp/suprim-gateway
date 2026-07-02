@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{layout :: html}" lang="en"
+      th:with="content=~{::main-content}, currentPage='settings', pageTitle='Settings'">
+<th:block th:fragment="main-content">
+<div class="space-y-6">
+    <h1 class="text-lg font-semibold tracking-tight">Settings</h1>
+    <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg space-y-5">
+        <div>
+            <span class="text-[10px] uppercase tracking-widest text-zinc-500">API Endpoint</span>
+            <p class="mt-1 text-xs text-zinc-100" id="api-endpoint"></p>
+            <script>document.getElementById('api-endpoint').textContent = window.location.origin + '/v1';</script>
+        </div>
+        <div class="border-t border-zinc-800 pt-4">
+            <span class="text-[10px] uppercase tracking-widest text-zinc-500">Version</span>
+            <p class="mt-1 text-xs text-zinc-100">0.2.0</p>
+        </div>
+        <div class="border-t border-zinc-800 pt-4">
+            <span class="text-[10px] uppercase tracking-widest text-zinc-500">Stack</span>
+            <p class="mt-1 text-xs text-zinc-100">Spring Boot 4.1 + Thymeleaf + SQLite + Java 25</p>
+        </div>
+        <div class="border-t border-zinc-800 pt-4">
+            <form action="/logout" method="post">
+                <button type="submit" class="h-9 px-4 border border-red-500/30 text-red-400 rounded text-xs cursor-pointer hover:bg-red-500/10 transition-colors">
+                    Logout
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+</th:block>
+</html>

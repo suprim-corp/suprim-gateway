@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{layout :: html}" lang="en"
+      th:with="content=~{::main-content}, currentPage='usage', pageTitle='Usage'">
+<th:block th:fragment="main-content">
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h1 class="text-lg font-semibold tracking-tight">Usage</h1>
+        <form action="/usage" method="get" class="flex gap-2">
+            <select name="hours" onchange="this.form.submit()"
+                    class="h-9 px-3 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 cursor-pointer">
+                <option value="1" th:selected="${hours == 1}">Last 1 hour</option>
+                <option value="6" th:selected="${hours == 6}">Last 6 hours</option>
+                <option value="24" th:selected="${hours == 24}">Last 24 hours</option>
+                <option value="168" th:selected="${hours == 168}">Last 7 days</option>
+                <option value="720" th:selected="${hours == 720}">Last 30 days</option>
+            </select>
+        </form>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+            <span class="text-[10px] uppercase tracking-widest text-zinc-500">Cost</span>
+            <div class="text-2xl font-bold text-neon-yellow mt-1" th:text="'$' + ${#numbers.formatDecimal(totalCost, 1, 4)}">$0.00</div>
+        </div>
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+            <span class="text-[10px] uppercase tracking-widest text-zinc-500">Tokens</span>
+            <div class="text-2xl font-bold text-neon-cyan mt-1" th:text="${#numbers.formatInteger(totalTokens, 1, 'COMMA')}">0</div>
+        </div>
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+            <span class="text-[10px] uppercase tracking-widest text-zinc-500">Requests</span>
+            <div class="text-2xl font-bold text-neon-purple mt-1" th:text="${#numbers.formatInteger(totalRequests, 1, 'COMMA')}">0</div>
+        </div>
+    </div>
+
+    <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+        <h2 class="text-[10px] uppercase tracking-widest text-zinc-500 mb-4">Cost Over Time</h2>
+        <canvas id="costChart" height="220"></canvas>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+            <h2 class="text-[10px] uppercase tracking-widest text-zinc-500 mb-4">Cost by Model</h2>
+            <div th:if="${models.isEmpty()}" class="text-xs text-zinc-500 text-center py-8">No data yet</div>
+            <div th:if="${!models.isEmpty()}" class="space-y-2">
+                <div th:each="m : ${models}" class="flex items-center justify-between">
+                    <span class="text-[10px] text-zinc-500 truncate flex-1" th:text="${m.model}">—</span>
+                    <span class="text-[10px] font-medium text-neon-yellow" th:text="'$' + ${#numbers.formatDecimal(m.cost, 1, 4)}">—</span>
+                </div>
+            </div>
+        </div>
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+            <h2 class="text-[10px] uppercase tracking-widest text-zinc-500 mb-4">Top Keys by Requests</h2>
+            <div th:if="${topKeys.isEmpty()}" class="text-xs text-zinc-500 text-center py-8">No data yet</div>
+            <canvas th:if="${!topKeys.isEmpty()}" id="topKeysChart" height="180"></canvas>
+        </div>
+    </div>
+</div>
+
+<script th:inline="javascript">
+    const timeSeries = /*[[${timeSeries}]]*/ [];
+    const topKeys = /*[[${topKeys}]]*/ [];
+
+    Chart.defaults.color = '#888';
+    Chart.defaults.borderColor = '#333';
+
+    new Chart(document.getElementById('costChart'), {
+        type: 'line',
+        data: {
+            labels: timeSeries.map(p => p.time),
+            datasets: [{ label: 'Cost', data: timeSeries.map(p => p.cost), borderColor: '#facc15', backgroundColor: 'rgba(250,204,21,0.1)', fill: true, tension: 0.3 }]
+        },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    if (topKeys.length > 0) {
+        new Chart(document.getElementById('topKeysChart'), {
+            type: 'bar',
+            data: {
+                labels: topKeys.map(k => k.name),
+                datasets: [{ label: 'Requests', data: topKeys.map(k => k.requests), backgroundColor: 'rgba(74,222,128,0.8)', borderRadius: 4 }]
+            },
+            options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+        });
+    }
+</script>
+</th:block>
+</html>

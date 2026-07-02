@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — Kiro Gateway</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class', theme: { extend: { colors: { 'neon-purple': '#a78bfa' } } } }
+    </script>
+    <style>body { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace; }</style>
+</head>
+<body class="dark bg-zinc-950 text-zinc-100 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-sm space-y-6">
+        <div class="flex flex-col items-center gap-3">
+            <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png" alt="Kiro" class="size-10">
+            <h1 class="text-lg font-semibold tracking-tight">Kiro Gateway</h1>
+            <p class="text-[10px] text-zinc-500">Admin Dashboard</p>
+        </div>
+        <div class="border border-zinc-800 bg-zinc-900/50 p-6 rounded-lg">
+            <form th:action="@{/login}" method="post" class="space-y-4">
+                <div class="space-y-2">
+                    <label for="password" class="text-[10px] uppercase tracking-widest text-zinc-500">Password</label>
+                    <input type="hidden" name="username" value="admin">
+                    <input id="password" name="password" type="password" placeholder="Enter admin password"
+                           class="w-full h-10 px-3 bg-zinc-950 border border-zinc-800 rounded text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-neon-purple">
+                </div>
+                <div th:if="${param.error}" class="text-[10px] text-red-400">Invalid password</div>
+                <button type="submit" class="w-full h-10 bg-neon-purple text-zinc-950 font-medium rounded text-sm cursor-pointer hover:bg-purple-300 transition-colors">
+                    Sign in
+                </button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

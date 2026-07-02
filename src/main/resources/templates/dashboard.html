@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{layout :: html}" lang="en"
+      th:with="content=~{::main-content}, currentPage='overview', pageTitle='Overview'">
+<th:block th:fragment="main-content">
+<div class="space-y-6">
+    <h1 class="text-lg font-semibold tracking-tight">Overview</h1>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-[10px] uppercase tracking-widest text-zinc-500">Requests</span>
+            </div>
+            <div class="text-2xl font-bold tracking-tight" th:text="${stats.totalRequests}">0</div>
+            <p class="mt-1 text-[10px] text-zinc-500" th:text="${#numbers.formatDecimal(stats.errorRate * 100, 1, 1) + '% error rate'}">0% error rate</p>
+        </div>
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-[10px] uppercase tracking-widest text-zinc-500">Tokens</span>
+            </div>
+            <div class="text-2xl font-bold tracking-tight text-neon-cyan" th:text="${#numbers.formatInteger(stats.totalTokens, 1, 'COMMA')}">0</div>
+        </div>
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-[10px] uppercase tracking-widest text-zinc-500">Cost</span>
+            </div>
+            <div class="text-2xl font-bold tracking-tight text-neon-yellow" th:text="'$' + ${#numbers.formatDecimal(stats.totalCost, 1, 4)}">$0.00</div>
+        </div>
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-[10px] uppercase tracking-widest text-zinc-500">Active Keys</span>
+            </div>
+            <div class="text-2xl font-bold tracking-tight text-neon-green" th:text="${activeKeys}">0</div>
+        </div>
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-[10px] uppercase tracking-widest text-zinc-500">Avg Latency</span>
+            </div>
+            <div class="text-2xl font-bold tracking-tight" th:text="${stats.avgLatencyMs + 'ms'}">0ms</div>
+            <p class="mt-1 text-[10px] text-zinc-500" th:text="'Uptime: ' + ${uptime}">Uptime: 0m</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+            <h2 class="text-[10px] uppercase tracking-widest text-zinc-500 mb-4">Requests (24h)</h2>
+            <canvas id="requestsChart" height="200"></canvas>
+        </div>
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+            <h2 class="text-[10px] uppercase tracking-widest text-zinc-500 mb-4">Tokens (24h)</h2>
+            <canvas id="tokensChart" height="200"></canvas>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+            <h2 class="text-[10px] uppercase tracking-widest text-zinc-500 mb-4">Models by Requests</h2>
+            <canvas id="modelsChart" height="180"></canvas>
+        </div>
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg">
+            <h2 class="text-[10px] uppercase tracking-widest text-zinc-500 mb-4">Top Keys</h2>
+            <canvas id="keysChart" height="180"></canvas>
+        </div>
+    </div>
+</div>
+
+<script th:inline="javascript">
+    const timeSeries = /*[[${timeSeries}]]*/ [];
+    const models = /*[[${models}]]*/ [];
+    const topKeys = /*[[${topKeys}]]*/ [];
+
+    const chartDefaults = { color: '#888', borderColor: '#333' };
+    Chart.defaults.color = '#888';
+    Chart.defaults.borderColor = '#333';
+
+    new Chart(document.getElementById('requestsChart'), {
+        type: 'line',
+        data: {
+            labels: timeSeries.map(p => p.time),
+            datasets: [
+                { label: 'Requests', data: timeSeries.map(p => p.requests), borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.1)', fill: true, tension: 0.3 },
+                { label: 'Errors', data: timeSeries.map(p => p.errors), borderColor: '#f87171', borderDash: [4,2], fill: false, tension: 0.3 }
+            ]
+        },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    new Chart(document.getElementById('tokensChart'), {
+        type: 'bar',
+        data: {
+            labels: timeSeries.map(p => p.time),
+            datasets: [{ label: 'Tokens', data: timeSeries.map(p => p.tokens), backgroundColor: 'rgba(34,211,238,0.8)', borderRadius: 4 }]
+        },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    if (models.length > 0) {
+        new Chart(document.getElementById('modelsChart'), {
+            type: 'doughnut',
+            data: {
+                labels: models.map(m => m.model),
+                datasets: [{ data: models.map(m => m.requests), backgroundColor: ['#a78bfa','#22d3ee','#4ade80','#facc15','#f87171','#fb923c','#a3e635','#e879f9'] }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'right', labels: { font: { size: 10 } } } } }
+        });
+    }
+
+    if (topKeys.length > 0) {
+        new Chart(document.getElementById('keysChart'), {
+            type: 'bar',
+            data: {
+                labels: topKeys.map(k => k.name),
+                datasets: [{ label: 'Requests', data: topKeys.map(k => k.requests), backgroundColor: 'rgba(74,222,128,0.8)', borderRadius: 4 }]
+            },
+            options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+        });
+    }
+</script>
+</th:block>
+</html>
