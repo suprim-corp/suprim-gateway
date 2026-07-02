@@ -11,7 +11,7 @@
 		<relativePath/>
 	</parent>
 
-	<groupId>dev.kiro</groupId>
+	<groupId>dev.suprim</groupId>
 	<artifactId>kiro-gateway</artifactId>
 	<version>0.2.0</version>
 	<name>kiro-gateway</name>
