@@ -1,78 +1,188 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" lang="en">
 <th:block th:fragment="content">
-<div class="space-y-6">
-    <h1 class="text-lg font-semibold tracking-tight">API Keys</h1>
+    <div class="space-y-6">
+        <h1 class="text-lg font-semibold tracking-tight">API Keys</h1>
 
-    <!-- Create Key Form -->
-    <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg space-y-3">
-        <span class="text-[10px] uppercase tracking-widest text-zinc-500">Create New Key</span>
-        <form action="/keys/create" method="post" class="flex gap-3">
-            <input name="name" type="text" placeholder="Key name" required
-                   class="flex-1 h-9 px-3 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-neon-purple">
-            <input name="rateLimitPerMin" type="number" value="60" min="1"
-                   class="w-24 h-9 px-3 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 focus:outline-none focus:border-neon-purple">
-            <button type="submit" class="h-9 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
-                Create
-            </button>
-        </form>
-        <div th:if="${createdKey}" class="border border-green-500/30 bg-green-500/5 p-3 flex items-center justify-between rounded">
-            <code class="text-xs text-neon-green" th:text="${createdKey}"></code>
-            <button onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)" class="text-zinc-400 hover:text-zinc-100 cursor-pointer text-xs">Copy</button>
+        <!-- Create Key Form -->
+        <div class="border border-zinc-800 bg-zinc-900/50 p-4 rounded-lg space-y-3">
+            <span class="text-[10px] uppercase tracking-widest text-zinc-500">Create New Key</span>
+            <form action="/keys/create" method="post" class="flex gap-3">
+                <input name="name" type="text" placeholder="Key name" required
+                       class="flex-1 h-9 px-3 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-neon-purple">
+                <input name="rateLimitPerMin" type="number" value="60" min="1"
+                       class="w-24 h-9 px-3 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 focus:outline-none focus:border-neon-purple">
+                <button type="submit"
+                        class="h-9 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
+                    Create
+                </button>
+            </form>
+            <div th:if="${createdKey}"
+                 class="border border-green-500/30 bg-green-500/5 p-3 flex items-center justify-between rounded">
+                <code class="text-xs text-neon-green" th:text="${createdKey}"></code>
+                <button onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)"
+                        class="text-zinc-400 hover:text-zinc-100 cursor-pointer text-xs">Copy
+                </button>
+            </div>
         </div>
-    </div>
 
-    <!-- Keys Table -->
-    <div class="border border-zinc-800 bg-zinc-900/50 rounded-lg overflow-hidden">
-        <table class="w-full text-xs">
-            <thead>
+        <!-- Keys Table -->
+        <div class="border border-zinc-800 bg-zinc-900/50 rounded-lg overflow-hidden">
+            <table class="w-full text-xs">
+                <thead>
                 <tr class="border-b border-zinc-800">
-                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Name</th>
-                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Prefix</th>
-                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Rate</th>
-                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Requests</th>
-                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Tokens</th>
-                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Status</th>
-                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Actions</th>
+                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                        Name
+                    </th>
+                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                        Prefix
+                    </th>
+                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                        Rate
+                    </th>
+                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                        Budget
+                    </th>
+                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                        Requests
+                    </th>
+                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                        Tokens
+                    </th>
+                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                        Status
+                    </th>
+                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                        Actions
+                    </th>
                 </tr>
-            </thead>
-            <tbody class="divide-y divide-zinc-800/50">
+                </thead>
+                <tbody class="divide-y divide-zinc-800/50">
                 <tr th:if="${keys.isEmpty()}">
-                    <td colspan="7" class="px-4 py-8 text-center text-xs text-zinc-500">No keys yet. Create one above.</td>
-                </tr>
-                <tr th:each="key : ${keys}" class="hover:bg-zinc-800/20 transition-colors">
-                    <td class="px-4 py-2.5 text-xs font-medium" th:text="${key.name()}">—</td>
-                    <td class="px-4 py-2.5 text-[10px] text-zinc-500" th:text="${key.keyPrefix() + '...'}">—</td>
-                    <td class="px-4 py-2.5 text-[10px] text-zinc-500" th:text="${key.rateLimitPerMin() + '/min'}">—</td>
-                    <td class="px-4 py-2.5 text-[10px]" th:text="${#numbers.formatInteger(key.totalRequests(), 1, 'COMMA')}">0</td>
-                    <td class="px-4 py-2.5 text-[10px]" th:text="${#numbers.formatInteger(key.totalTokens(), 1, 'COMMA')}">0</td>
-                    <td class="px-4 py-2.5">
-                        <span th:if="${key.revokedAt() != null}" class="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded">Revoked</span>
-                        <span th:if="${key.revokedAt() == null && key.enabled()}" class="text-[10px] bg-green-500/10 text-neon-green px-2 py-0.5 rounded">Active</span>
-                        <span th:if="${key.revokedAt() == null && !key.enabled()}" class="text-[10px] bg-zinc-500/10 text-zinc-400 px-2 py-0.5 rounded">Disabled</span>
-                    </td>
-                    <td class="px-4 py-2.5 flex gap-1">
-                        <form th:if="${key.revokedAt() == null}" th:action="@{/keys/{id}/toggle(id=${key.id()})}" method="post" class="inline">
-                            <button type="submit" class="text-[10px] text-zinc-400 hover:text-zinc-100 cursor-pointer px-2 py-1 border border-zinc-800 rounded"
-                                    th:text="${key.enabled() ? 'Disable' : 'Enable'}">Toggle</button>
-                        </form>
-                        <form th:if="${key.revokedAt() == null}" th:action="@{/keys/{id}/revoke(id=${key.id()})}" method="post" class="inline"
-                              onsubmit="return confirm('Revoke this key? This cannot be undone.')">
-                            <button type="submit" class="text-[10px] text-red-400 hover:text-red-300 cursor-pointer px-2 py-1 border border-zinc-800 rounded">Revoke</button>
-                        </form>
+                    <td colspan="8" class="px-4 py-8 text-center text-xs text-zinc-500">No keys yet. Create one above.
                     </td>
                 </tr>
-            </tbody>
-        </table>
-    </div>
+                <th:block th:each="key : ${keys}">
+                    <tr class="hover:bg-zinc-800/20 transition-colors">
+                        <td class="px-4 py-2.5 text-xs font-medium" th:text="${key.name()}">—</td>
+                        <td class="px-4 py-2.5 text-[10px] text-zinc-500" th:text="${key.keyPrefix() + '...'}">—</td>
+                        <td class="px-4 py-2.5 text-[10px] text-zinc-500" th:text="${key.rateLimitPerMin() + '/min'}">
+                            —
+                        </td>
+                        <td class="px-4 py-2.5 text-[10px]">
+                            <span th:if="${key.budgetPeriod() == null}" class="text-zinc-500">—</span>
+                            <span th:if="${key.budgetPeriod() != null}" class="text-neon-cyan">
+                            <span th:if="${key.budgetTokens() != null}"
+                                  th:text="${#numbers.formatInteger(key.budgetTokens(), 1, 'COMMA') + ' tok'}"></span>
+                            <span th:if="${key.budgetRequests() != null}"
+                                  th:text="${(key.budgetTokens() != null ? ' / ' : '') + #numbers.formatInteger(key.budgetRequests(), 1, 'COMMA') + ' req'}"></span>
+                            <span th:if="${key.budgetCost() != null}"
+                                  th:text="${(key.budgetTokens() != null || key.budgetRequests() != null ? ' / ' : '') + '$' + #numbers.formatDecimal(key.budgetCost() / 100.0, 1, 2)}"></span>
+                            <span th:text="${'/' + key.budgetPeriod()}"></span>
+                        </span>
+                        </td>
+                        <td class="px-4 py-2.5 text-[10px]"
+                            th:text="${#numbers.formatInteger(key.totalRequests(), 1, 'COMMA')}">0
+                        </td>
+                        <td class="px-4 py-2.5 text-[10px]"
+                            th:text="${#numbers.formatInteger(key.totalTokens(), 1, 'COMMA')}">0
+                        </td>
+                        <td class="px-4 py-2.5">
+                            <span th:if="${key.revokedAt() != null}"
+                                  class="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded">Revoked</span>
+                            <span th:if="${key.revokedAt() == null && key.enabled()}"
+                                  class="text-[10px] bg-green-500/10 text-neon-green px-2 py-0.5 rounded">Active</span>
+                            <span th:if="${key.revokedAt() == null && !key.enabled()}"
+                                  class="text-[10px] bg-zinc-500/10 text-zinc-400 px-2 py-0.5 rounded">Disabled</span>
+                        </td>
+                        <td class="px-4 py-2.5 flex gap-1">
+                            <button th:if="${key.revokedAt() == null}" type="button"
+                                    th:attr="onclick='document.getElementById(\'limits-' + ${key.id()} + '\').classList.toggle(\'hidden\')'"
+                                    class="text-[10px] text-zinc-400 hover:text-neon-cyan cursor-pointer px-2 py-1 border border-zinc-800 rounded">
+                                Edit
+                            </button>
+                            <form th:if="${key.revokedAt() == null}" th:action="@{/keys/{id}/toggle(id=${key.id()})}"
+                                  method="post" class="inline">
+                                <button type="submit"
+                                        class="text-[10px] text-zinc-400 hover:text-zinc-100 cursor-pointer px-2 py-1 border border-zinc-800 rounded"
+                                        th:text="${key.enabled() ? 'Disable' : 'Enable'}">Toggle
+                                </button>
+                            </form>
+                            <form th:if="${key.revokedAt() == null}" th:action="@{/keys/{id}/revoke(id=${key.id()})}"
+                                  method="post" class="inline"
+                                  onsubmit="return confirm('Revoke this key? This cannot be undone.')">
+                                <button type="submit"
+                                        class="text-[10px] text-red-400 hover:text-red-300 cursor-pointer px-2 py-1 border border-zinc-800 rounded">
+                                    Revoke
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    <!-- Inline edit limits form -->
+                    <tr th:id="'limits-' + ${key.id()}" class="hidden bg-zinc-900/80">
+                        <td colspan="8" class="px-4 py-3">
+                            <form th:action="@{/keys/{id}/limits(id=${key.id()})}" method="post"
+                                  class="flex flex-wrap items-end gap-3">
+                                <div class="space-y-1">
+                                    <label class="text-[10px] uppercase tracking-widest text-zinc-500">Rate/min</label>
+                                    <input name="rateLimitPerMin" type="number" min="1"
+                                           th:value="${key.rateLimitPerMin()}"
+                                           class="w-20 h-8 px-2 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 focus:outline-none focus:border-neon-purple">
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[10px] uppercase tracking-widest text-zinc-500">Period</label>
+                                    <select name="budgetPeriod"
+                                            class="w-24 h-8 px-2 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 focus:outline-none focus:border-neon-purple cursor-pointer">
+                                        <option value="" th:selected="${key.budgetPeriod() == null}">None</option>
+                                        <option value="hour" th:selected="${key.budgetPeriod() == 'hour'}">Hour</option>
+                                        <option value="day" th:selected="${key.budgetPeriod() == 'day'}">Day</option>
+                                        <option value="week" th:selected="${key.budgetPeriod() == 'week'}">Week</option>
+                                        <option value="month" th:selected="${key.budgetPeriod() == 'month'}">Month
+                                        </option>
+                                    </select>
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[10px] uppercase tracking-widest text-zinc-500">Token
+                                        limit</label>
+                                    <input name="budgetTokens" type="number" min="0" th:value="${key.budgetTokens()}"
+                                           placeholder="No limit"
+                                           class="w-24 h-8 px-2 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 focus:outline-none focus:border-neon-purple">
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[10px] uppercase tracking-widest text-zinc-500">Request
+                                        limit</label>
+                                    <input name="budgetRequests" type="number" min="0"
+                                           th:value="${key.budgetRequests()}" placeholder="No limit"
+                                           class="w-24 h-8 px-2 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 focus:outline-none focus:border-neon-purple">
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[10px] uppercase tracking-widest text-zinc-500">Cost ($)</label>
+                                    <input name="budgetCost" type="number" min="0" step="0.01"
+                                           th:value="${key.budgetCost() != null ? key.budgetCost() / 100.0 : null}"
+                                           placeholder="No limit"
+                                           class="w-24 h-8 px-2 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 focus:outline-none focus:border-neon-purple">
+                                </div>
+                                <button type="submit"
+                                        class="h-8 px-3 bg-neon-cyan text-zinc-950 font-medium rounded text-[10px] cursor-pointer hover:bg-cyan-300 transition-colors">
+                                    Save
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                </th:block>
+                </tbody>
+            </table>
+        </div>
 
-    <th:block th:if="${totalPages > 1}">
-        <nav class="flex justify-center gap-1">
-            <a th:if="${page > 1}" th:href="@{/keys(page=${page - 1})}" class="px-3 py-1 text-xs border border-zinc-800 rounded hover:bg-zinc-800 cursor-pointer">Prev</a>
-            <span class="px-3 py-1 text-xs text-zinc-500" th:text="'Page ' + ${page} + ' of ' + ${totalPages}">Page 1 of 1</span>
-            <a th:if="${page < totalPages}" th:href="@{/keys(page=${page + 1})}" class="px-3 py-1 text-xs border border-zinc-800 rounded hover:bg-zinc-800 cursor-pointer">Next</a>
-        </nav>
-    </th:block>
-</div>
+        <th:block th:if="${totalPages > 1}">
+            <nav class="flex justify-center gap-1">
+                <a th:if="${page > 1}" th:href="@{/keys(page=${page - 1})}"
+                   class="px-3 py-1 text-xs border border-zinc-800 rounded hover:bg-zinc-800 cursor-pointer">Prev</a>
+                <span class="px-3 py-1 text-xs text-zinc-500" th:text="'Page ' + ${page} + ' of ' + ${totalPages}">Page 1 of 1</span>
+                <a th:if="${page < totalPages}" th:href="@{/keys(page=${page + 1})}"
+                   class="px-3 py-1 text-xs border border-zinc-800 rounded hover:bg-zinc-800 cursor-pointer">Next</a>
+            </nav>
+        </th:block>
+    </div>
 </th:block>
 </html>

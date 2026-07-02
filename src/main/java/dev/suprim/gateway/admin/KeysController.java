@@ -67,4 +67,23 @@ class KeysController {
 		keyService.revoke(id);
 		return "redirect:/keys";
 	}
+
+	@PostMapping("/keys/{id}/limits")
+	String updateLimits(
+			@PathVariable String id,
+			@RequestParam int rateLimitPerMin,
+			@RequestParam(required = false) String budgetPeriod,
+			@RequestParam(required = false) Integer budgetTokens,
+			@RequestParam(required = false) Integer budgetRequests,
+			@RequestParam(required = false) Double budgetCost
+	) {
+		keyService.updateLimits(
+				id, rateLimitPerMin,
+				budgetPeriod != null &&
+				budgetPeriod.isBlank() ? null : budgetPeriod,
+				budgetTokens, budgetRequests,
+				budgetCost != null ? (int) Math.round(budgetCost * 100) : null
+		);
+		return "redirect:/keys";
+	}
 }

@@ -55,8 +55,8 @@ public class VirtualKeyService {
         repository.revoke(id);
     }
 
-    void updateBudget(String id, String period, Integer tokens, Integer requests, Integer cost) {
-        repository.updateBudget(id, period, tokens, requests, cost);
+    public void updateLimits(String id, int rateLimitPerMin, String budgetPeriod, Integer budgetTokens, Integer budgetRequests, Integer budgetCost) {
+        repository.updateLimits(id, rateLimitPerMin, budgetPeriod, budgetTokens, budgetRequests, budgetCost);
     }
 
     public void incrementUsage(String keyId, int tokens) {
