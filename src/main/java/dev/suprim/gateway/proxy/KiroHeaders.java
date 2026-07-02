@@ -36,8 +36,7 @@ class KiroHeaders {
 						"amz-sdk-invocation-id",
 						UUID.randomUUID().toString()
 				),
-				Map.entry("amz-sdk-request", "attempt=1; max=3"),
-				Map.entry("Connection", "close")
+				Map.entry("amz-sdk-request", "attempt=1; max=3")
 		);
 	}
 }
