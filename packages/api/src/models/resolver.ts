@@ -7,8 +7,8 @@ import { HIDDEN_MODELS, MODEL_ALIASES } from "@kiro-gateway/shared"
 export function normalizeModelName(model: string): string {
 	let name = model.trim().toLowerCase()
 
-	// Normalize context window suffix: "model [1m]" → "model[1m]" (strip space, keep suffix)
-	name = name.replace(/\s+(\[\d+[km]?\])$/i, "$1")
+	// Strip context window suffix [1m], [200k] — client-side indicator, not a model ID
+	name = name.replace(/\s*\[\d+[km]?\]$/i, "")
 
 	// 2. Handle inverted format with effort suffix: claude-4.5-opus-high → claude-opus-4.5
 	const invertedMatch = name.match(
