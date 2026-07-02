@@ -37,6 +37,8 @@ public class ModelRegistry {
 			"qwen3-coder-next"
 	);
 
+	private static final Set<String> HIDDEN_MODELS = Set.of("auto", "claude-3.7-sonnet");
+
 	private final KiroHttpClient client;
 	private final AppConfig config;
 	private final List<String> cachedModels = new CopyOnWriteArrayList<>(
@@ -88,9 +90,9 @@ public class ModelRegistry {
 
 	public List<String> getAvailableModels() {
 		Set<String> disabled = config.disabledModelsSet();
-		List<String> result = new ArrayList<>();
+		LinkedHashSet<String> result = new LinkedHashSet<>();
 		for (String id : cachedModels) {
-			if (disabled.contains(id)) continue;
+			if (disabled.contains(id) || HIDDEN_MODELS.contains(id)) continue;
 			result.add(id);
 			Matcher m = DOT_VERSION.matcher(id);
 			if (m.matches()) {
@@ -98,7 +100,7 @@ public class ModelRegistry {
 				if (!disabled.contains(hyphenated)) result.add(hyphenated);
 			}
 		}
-		return result;
+		return new ArrayList<>(result);
 	}
 
 	private List<String> parseModelIds(String json) {
