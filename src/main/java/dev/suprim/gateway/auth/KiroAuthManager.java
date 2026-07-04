@@ -36,8 +36,10 @@ public class KiroAuthManager {
 	private final AppConfig config;
 	private final ObjectMapper mapper = new ObjectMapper();
 	private final HttpClient httpClient = HttpClient.newBuilder()
-	                                                .connectTimeout(Duration.ofSeconds(
-			                                                10))
+	                                                .connectTimeout(
+			                                                Duration.ofSeconds(
+					                                                10)
+	                                                )
 	                                                .build();
 	private final ReentrantLock refreshLock = new ReentrantLock();
 
@@ -92,7 +94,8 @@ public class KiroAuthManager {
 
 	public String getAccessToken() throws Exception {
 		if (accessToken != null && expiresAt != null && Instant.now().isBefore(
-				expiresAt.minusSeconds(600))) {
+				expiresAt.minusSeconds(600))
+		) {
 			return accessToken;
 		}
 		refresh();
@@ -182,11 +185,11 @@ public class KiroAuthManager {
 					));
 		}
 		JsonNode json = mapper.readTree(response.body());
-		this.accessToken = json.get("accessToken").asText();
-		if (json.has("refreshToken")) this.refreshToken = json.get(
-				"refreshToken").asText();
-		if (json.has("expiresAt")) this.expiresAt = Instant.parse(json.get(
-				"expiresAt").asText());
+		this.accessToken = json.get("accessToken").asString();
+		if (json.has("refreshToken")) this.refreshToken = json.get("refreshToken").asString();
+		if (json.has("expiresAt")) this.expiresAt = Instant.parse(
+				json.get("expiresAt").asString()
+		);
 		saveBackToSource();
 	}
 
