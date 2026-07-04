@@ -8,6 +8,7 @@ import dev.suprim.gateway.proxy.KiroHttpClient;
 import dev.suprim.gateway.proxy.KiroHttpClient.KiroResponse;
 import dev.suprim.gateway.proxy.PayloadBuilder;
 import dev.suprim.gateway.proxy.StreamConverter;
+import dev.suprim.gateway.utils.TokenEstimator;
 import dev.suprim.gateway.virtualkey.RateLimiter;
 import dev.suprim.gateway.virtualkey.VirtualKey;
 import dev.suprim.gateway.virtualkey.VirtualKeyService;
@@ -39,11 +40,12 @@ class CompletionsController {
     private final RequestLogService logService;
     private final VirtualKeyService keyService;
     private final RateLimiter rateLimiter;
+    private final TokenEstimator tokenEstimator;
 
     CompletionsController(KiroHttpClient kiroClient, PayloadBuilder payloadBuilder,
                           StreamConverter streamConverter, KiroAuthManager auth,
                           RequestLogService logService, VirtualKeyService keyService,
-                          RateLimiter rateLimiter) {
+                          RateLimiter rateLimiter, TokenEstimator tokenEstimator) {
         this.kiroClient = kiroClient;
         this.payloadBuilder = payloadBuilder;
         this.streamConverter = streamConverter;
@@ -51,6 +53,7 @@ class CompletionsController {
         this.logService = logService;
         this.keyService = keyService;
         this.rateLimiter = rateLimiter;
+        this.tokenEstimator = tokenEstimator;
     }
 
     @SuppressWarnings("unchecked")
@@ -71,8 +74,15 @@ class CompletionsController {
         String model = (String) request.getOrDefault("model", "claude-sonnet-4-5");
         boolean stream = Boolean.TRUE.equals(request.get("stream"));
         long startTime = System.currentTimeMillis();
+        int inputTokens = 0;
 
         try {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> messages = (List<Map<String, Object>>) request.get("messages");
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> tools = (List<Map<String, Object>>) request.get("tools");
+            inputTokens = tokenEstimator.estimateRequest(messages, tools);
+
             String payload = payloadBuilder.buildOpenAiPayload(request, auth);
             String url = kiroClient.getGenerateUrl();
             KiroResponse response = kiroClient.request("POST", url, payload, stream);
@@ -80,7 +90,7 @@ class CompletionsController {
             if (response.status() != 200) {
                 String body = new String(response.body().readAllBytes());
                 int latency = (int) (System.currentTimeMillis() - startTime);
-                logService.log(keyId, null, model, model, response.status(), null, null, latency, null, stream, clientIp(httpReq), body.length() > 200 ? body.substring(0, 200) : body);
+                logService.log(keyId, null, model, model, response.status(), inputTokens, null, latency, null, stream, clientIp(httpReq), body.length() > 200 ? body.substring(0, 200) : body);
                 httpRes.setStatus(response.status());
                 httpRes.setContentType("application/json");
                 httpRes.getWriter().write("{\"error\":{\"message\":\"Upstream error\",\"type\":\"upstream_error\",\"code\":" + response.status() + "}}");
@@ -117,7 +127,7 @@ class CompletionsController {
                 writer.flush();
 
                 int latency = (int) (System.currentTimeMillis() - startTime);
-                logService.log(keyId, null, model, model, 200, null, totalTokens > 0 ? totalTokens : null, latency, null, true, clientIp(httpReq), null);
+                logService.log(keyId, null, model, model, 200, inputTokens, totalTokens > 0 ? totalTokens : null, latency, null, true, clientIp(httpReq), null);
                 if (key != null && totalTokens > 0) keyService.incrementUsage(key.id(), totalTokens);
             } else {
                 List<KiroEvent> events = KiroEventParser.parseStream(response.body());
@@ -126,12 +136,12 @@ class CompletionsController {
                 mapper.writeValue(httpRes.getWriter(), result);
 
                 int latency = (int) (System.currentTimeMillis() - startTime);
-                logService.log(keyId, null, model, model, 200, null, null, latency, null, false, clientIp(httpReq), null);
+                logService.log(keyId, null, model, model, 200, inputTokens, null, latency, null, false, clientIp(httpReq), null);
             }
         } catch (Exception e) {
             log.error("[Completions] Error: {}", e.getMessage(), e);
             int latency = (int) (System.currentTimeMillis() - startTime);
-            logService.log(keyId, null, model, model, 500, null, null, latency, null, stream, clientIp(httpReq), e.getMessage());
+            logService.log(keyId, null, model, model, 500, inputTokens, null, latency, null, stream, clientIp(httpReq), e.getMessage());
             if (!httpRes.isCommitted()) {
                 httpRes.setStatus(500);
                 httpRes.setContentType("application/json");
@@ -157,6 +167,6 @@ class CompletionsController {
 
     private int estimateTokens(String text) {
         if (text == null) return 0;
-        return Math.max(1, text.length() / 4);
+        return tokenEstimator.countTokens(text);
     }
 }

@@ -7,6 +7,7 @@ import dev.suprim.gateway.proxy.KiroEventParser.KiroEvent;
 import dev.suprim.gateway.proxy.KiroHttpClient;
 import dev.suprim.gateway.proxy.KiroHttpClient.KiroResponse;
 import dev.suprim.gateway.proxy.PayloadBuilder;
+import dev.suprim.gateway.utils.TokenEstimator;
 import dev.suprim.gateway.virtualkey.RateLimiter;
 import dev.suprim.gateway.virtualkey.VirtualKey;
 import dev.suprim.gateway.virtualkey.VirtualKeyService;
@@ -39,11 +40,13 @@ class MessagesController {
 	private final RequestLogService logService;
 	private final VirtualKeyService keyService;
 	private final RateLimiter rateLimiter;
+	private final TokenEstimator tokenEstimator;
 
 	MessagesController(
 			KiroHttpClient kiroClient, PayloadBuilder payloadBuilder,
 			KiroAuthManager auth, RequestLogService logService,
-			VirtualKeyService keyService, RateLimiter rateLimiter
+			VirtualKeyService keyService, RateLimiter rateLimiter,
+			TokenEstimator tokenEstimator
 	) {
 		this.kiroClient = kiroClient;
 		this.payloadBuilder = payloadBuilder;
@@ -51,6 +54,7 @@ class MessagesController {
 		this.logService = logService;
 		this.keyService = keyService;
 		this.rateLimiter = rateLimiter;
+		this.tokenEstimator = tokenEstimator;
 	}
 
 	@SuppressWarnings("unchecked")
@@ -81,17 +85,19 @@ class MessagesController {
 		);
 		boolean stream = Boolean.TRUE.equals(request.get("stream"));
 		long startTime = System.currentTimeMillis();
+		int inputTokens = 0;
 
 		try {
 			List<Map<String, Object>> openAiMessages = convertAnthropicToOpenAi(
 					request);
+			@SuppressWarnings("unchecked")
+			List<Map<String, Object>> tools = (List<Map<String, Object>>) request.get("tools");
+			inputTokens = tokenEstimator.estimateRequest(openAiMessages, tools);
+
 			HashMap<String, Object> openAiReq = new HashMap<>();
 			openAiReq.put("messages", openAiMessages);
 			openAiReq.put("model", model);
-			if (request.containsKey("tools")) openAiReq.put(
-					"tools",
-					request.get("tools")
-			);
+			if (tools != null) openAiReq.put("tools", tools);
 
 			String payload = payloadBuilder.buildOpenAiPayload(openAiReq, auth);
 			String url = kiroClient.getGenerateUrl();
@@ -116,7 +122,7 @@ class MessagesController {
 						model,
 						model,
 						response.status(),
-						null,
+						inputTokens,
 						null,
 						latency,
 						null,
@@ -197,10 +203,7 @@ class MessagesController {
 									             )
 							             )) + "\n\n");
 							writer.flush();
-							totalTokens += Math.max(
-									1,
-									event.content().length() / 4
-							);
+							totalTokens += tokenEstimator.countTokens(event.content());
 						}
 					}
 				}
@@ -233,7 +236,7 @@ class MessagesController {
 						model,
 						model,
 						200,
-						null,
+						inputTokens,
 						totalTokens,
 						latency,
 						null,
@@ -258,7 +261,7 @@ class MessagesController {
 				                            .toString()
 				                            .replace("-", "")
 				                            .substring(0, 20);
-				int outputTokens = Math.max(1, content.length() / 4);
+				int outputTokens = tokenEstimator.countTokens(content.toString());
 				Map<String, Object> result = Map.of(
 						"id",
 						msgId,
@@ -290,7 +293,7 @@ class MessagesController {
 						model,
 						model,
 						200,
-						null,
+						inputTokens,
 						outputTokens,
 						latency,
 						null,
@@ -308,7 +311,7 @@ class MessagesController {
 					model,
 					model,
 					500,
-					null,
+					inputTokens,
 					null,
 					latency,
 					null,

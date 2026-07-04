@@ -64,7 +64,7 @@
                             —
                         </td>
                         <td class="px-4 py-2.5 text-[10px] text-neon-yellow"
-                            th:text="${log.totalTokens() != null ? '$' + #numbers.formatDecimal((log.promptTokens() ?: 0) * 0.000003 + (log.completionTokens() ?: 0) * 0.000015, 1, 4) : '—'}">
+                            th:text="${log.cost() != null ? '$' + #numbers.formatDecimal(log.cost(), 1, 6) : '—'}">
                             —
                         </td>
                         <td class="px-4 py-2.5 text-[10px] text-zinc-500"
