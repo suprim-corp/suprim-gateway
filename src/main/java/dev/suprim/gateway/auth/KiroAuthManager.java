@@ -271,14 +271,19 @@ public class KiroAuthManager {
 			) {
 				stmt.execute("PRAGMA wal_checkpoint(PASSIVE)");
 
-				try (ResultSet rs = stmt.executeQuery(
-						"SELECT value FROM auth_kv WHERE key = 'kirocli:odic:device-registration'")) {
+				try (
+						ResultSet rs = stmt.executeQuery(
+								"SELECT value FROM auth_kv WHERE key = 'kirocli:odic:device-registration'"
+						)
+				) {
 					if (rs.next()) {
 						JsonNode reg = mapper.readTree(rs.getString("value"));
 						this.clientId = textOrNull(reg, "client_id");
 						this.clientSecret = textOrNull(reg, "client_secret");
+
 						if (reg.has("scopes") && reg.get("scopes").isArray()) {
 							this.scopes = new String[reg.get("scopes").size()];
+
 							for (int i = 0; i < reg.get("scopes").size(); i++) {
 								this.scopes[i] = reg.get("scopes")
 								                    .get(i).asString();
