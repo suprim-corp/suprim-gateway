@@ -396,7 +396,7 @@ public class KiroAuthManager {
 
 	private static String textOrNull(JsonNode node, String field) {
 		return node.has(field) && !node.get(field).isNull() ? node.get(field)
-		                                                          .asText() : null;
+		                                                          .asString() : null;
 	}
 
 	private static Path resolvePath(String path) {
