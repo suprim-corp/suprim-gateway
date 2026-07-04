@@ -1,31 +1,51 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" lang="en">
 <th:block th:fragment="content">
-<div class="space-y-6">
-    <div class="flex items-center justify-between">
-        <h1 class="text-lg font-semibold tracking-tight">Logs</h1>
-        <span class="text-[10px] text-zinc-500" th:text="${total + ' total'}">0 total</span>
-    </div>
+    <div class="space-y-6">
+        <div class="flex items-center justify-between">
+            <h1 class="text-lg font-semibold tracking-tight">Logs</h1>
+            <span class="text-[10px] text-zinc-500" th:text="${total + ' total'}">0 total</span>
+        </div>
 
-    <div class="border border-zinc-800 bg-zinc-900/50 rounded-lg overflow-hidden"
-         hx-get="/logs" hx-trigger="every 3s" hx-select="#logs-table" hx-target="#logs-table" hx-swap="outerHTML">
-        <div class="max-h-[calc(100vh-220px)] overflow-auto">
-            <table id="logs-table" class="w-full text-xs">
-                <thead class="sticky top-0 bg-zinc-900 z-10">
+        <div class="border border-zinc-800 bg-zinc-900/50 rounded-lg overflow-hidden"
+             hx-get="/logs" hx-trigger="every 3s" hx-select="#logs-table" hx-target="#logs-table" hx-swap="outerHTML">
+            <div class="max-h-[calc(100vh-220px)] overflow-auto">
+                <table id="logs-table" class="w-full text-xs">
+                    <thead class="sticky top-0 bg-zinc-900 z-10">
                     <tr class="border-b border-zinc-800">
-                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Status</th>
-                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Model</th>
-                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">In</th>
-                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Out</th>
-                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Cost</th>
-                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Latency</th>
-                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Stream</th>
-                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Key</th>
-                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">IP</th>
-                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">Time</th>
+                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                            Status
+                        </th>
+                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                            Model
+                        </th>
+                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                            In
+                        </th>
+                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                            Out
+                        </th>
+                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                            Cost
+                        </th>
+                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                            Latency
+                        </th>
+                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                            Stream
+                        </th>
+                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                            Key
+                        </th>
+                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                            IP
+                        </th>
+                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                            Time
+                        </th>
                     </tr>
-                </thead>
-                <tbody class="divide-y divide-zinc-800/50">
+                    </thead>
+                    <tbody class="divide-y divide-zinc-800/50">
                     <tr th:if="${logs.isEmpty()}">
                         <td colspan="10" class="px-4 py-8 text-center text-xs text-zinc-500">No requests yet</td>
                     </tr>
@@ -35,30 +55,47 @@
                                   class="text-[10px] font-medium" th:text="${log.status()}">200</span>
                         </td>
                         <td class="px-4 py-2.5 text-[10px]" th:text="${log.model()}">—</td>
-                        <td class="px-4 py-2.5 text-[10px] text-zinc-500" th:text="${log.promptTokens() != null ? #numbers.formatInteger(log.promptTokens(), 1, 'COMMA') : '—'}">—</td>
-                        <td class="px-4 py-2.5 text-[10px] text-zinc-500" th:text="${log.completionTokens() != null ? #numbers.formatInteger(log.completionTokens(), 1, 'COMMA') : '—'}">—</td>
-                        <td class="px-4 py-2.5 text-[10px] text-neon-yellow" th:text="${log.totalTokens() != null ? '$' + #numbers.formatDecimal(log.promptTokens() * 0.000003 + log.completionTokens() * 0.000015, 1, 4) : '—'}">—</td>
-                        <td class="px-4 py-2.5 text-[10px] text-zinc-500" th:text="${log.latencyMs() != null ? log.latencyMs() + 'ms' : '—'}">—</td>
+                        <td class="px-4 py-2.5 text-[10px] text-zinc-500"
+                            th:text="${log.promptTokens() != null ? #numbers.formatInteger(log.promptTokens(), 1, 'COMMA') : '—'}">
+                            —
+                        </td>
+                        <td class="px-4 py-2.5 text-[10px] text-zinc-500"
+                            th:text="${log.completionTokens() != null ? #numbers.formatInteger(log.completionTokens(), 1, 'COMMA') : '—'}">
+                            —
+                        </td>
+                        <td class="px-4 py-2.5 text-[10px] text-neon-yellow"
+                            th:text="${log.totalTokens() != null ? '$' + #numbers.formatDecimal((log.promptTokens() ?: 0) * 0.000003 + (log.completionTokens() ?: 0) * 0.000015, 1, 4) : '—'}">
+                            —
+                        </td>
+                        <td class="px-4 py-2.5 text-[10px] text-zinc-500"
+                            th:text="${log.latencyMs() != null ? log.latencyMs() + 'ms' : '—'}">—
+                        </td>
                         <td class="px-4 py-2.5 text-[10px]">
-                            <span th:if="${log.streaming() != null && log.streaming()}" class="text-neon-cyan">SSE</span>
-                            <span th:if="${log.streaming() == null || !log.streaming()}" class="text-zinc-500">sync</span>
+                            <span th:if="${log.streaming() != null && log.streaming()}"
+                                  class="text-neon-cyan">SSE</span>
+                            <span th:if="${log.streaming() == null || !log.streaming()}"
+                                  class="text-zinc-500">sync</span>
                         </td>
                         <td class="px-4 py-2.5 text-[10px] text-zinc-500" th:text="${log.virtualKeyId() ?: '—'}">—</td>
                         <td class="px-4 py-2.5 text-[10px] text-zinc-500" th:text="${log.clientIp() ?: '—'}">—</td>
-                        <td class="px-4 py-2.5 text-[10px] text-zinc-500" th:text="${#temporals.format(#temporals.createNow(), 'yyyy-MM-dd HH:mm')}">—</td>
+                        <td class="px-4 py-2.5 text-[10px] text-zinc-500"
+                            th:text="${#temporals.format(#temporals.createNow(), 'yyyy-MM-dd HH:mm')}">—
+                        </td>
                     </tr>
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            </div>
         </div>
-    </div>
 
-    <th:block th:if="${totalPages > 1}">
-        <nav class="flex justify-center gap-1">
-            <a th:if="${page > 1}" th:href="@{/logs(page=${page - 1})}" class="px-3 py-1 text-xs border border-zinc-800 rounded hover:bg-zinc-800 cursor-pointer">Prev</a>
-            <span class="px-3 py-1 text-xs text-zinc-500" th:text="'Page ' + ${page} + ' of ' + ${totalPages}">Page 1 of 1</span>
-            <a th:if="${page < totalPages}" th:href="@{/logs(page=${page + 1})}" class="px-3 py-1 text-xs border border-zinc-800 rounded hover:bg-zinc-800 cursor-pointer">Next</a>
-        </nav>
-    </th:block>
-</div>
+        <th:block th:if="${totalPages > 1}">
+            <nav class="flex justify-center gap-1">
+                <a th:if="${page > 1}" th:href="@{/logs(page=${page - 1})}"
+                   class="px-3 py-1 text-xs border border-zinc-800 rounded hover:bg-zinc-800 cursor-pointer">Prev</a>
+                <span class="px-3 py-1 text-xs text-zinc-500" th:text="'Page ' + ${page} + ' of ' + ${totalPages}">Page 1 of 1</span>
+                <a th:if="${page < totalPages}" th:href="@{/logs(page=${page + 1})}"
+                   class="px-3 py-1 text-xs border border-zinc-800 rounded hover:bg-zinc-800 cursor-pointer">Next</a>
+            </nav>
+        </th:block>
+    </div>
 </th:block>
 </html>
