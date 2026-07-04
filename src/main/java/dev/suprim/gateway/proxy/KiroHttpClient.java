@@ -38,7 +38,9 @@ public class KiroHttpClient {
 		                            .build();
 	}
 
-	public record KiroResponse(int status, InputStream body, String contentType) {}
+	public record KiroResponse(
+			int status, InputStream body, String contentType
+	) {}
 
 	public KiroResponse request(
 			String method,
@@ -117,6 +119,11 @@ public class KiroHttpClient {
 
 				String contentType = response.headers().firstValue(
 						"content-type").orElse("");
+				log.error(
+						"[Kiro] Upstream returned {}: content-type={}",
+						status,
+						contentType
+				);
 				return new KiroResponse(status, response.body(), contentType);
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
