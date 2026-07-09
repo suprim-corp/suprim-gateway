@@ -1,5 +1,7 @@
 services:
   kiro-gateway:
+    container_name: kijaro
+    image: suprim/kijaro:${COMMIT_HASH}
     build: .
     ports:
       - "${WEB_PORT:-127.0.0.1:3001}:8080"
