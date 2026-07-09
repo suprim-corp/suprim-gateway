@@ -161,7 +161,13 @@ public class ProxyFacade {
 		);
 		writer.flush();
 
-		publishLog(req, result.outputTokens(), true, startTime, result.firstTokenMs());
+		publishLog(
+				req,
+				result.outputTokens(),
+				true,
+				startTime,
+				result.firstTokenMs()
+		);
 		if (req.virtualKeyId() != null && result.outputTokens() > 0)
 			keyService.incrementUsage(
 					req.virtualKeyId(),
@@ -226,8 +232,22 @@ public class ProxyFacade {
 			case RESPONSES -> {
 				if ("content".equals(event.type()) && event.content() != null)
 					yield streamConverter.toResponsesTextDelta(event.content());
-				if ("tool_use".equals(event.type()) && event.toolStop())
+				if ("tool_use".equals(event.type()) && event.toolStop()) {
+					log.info(
+							"[Proxy] tool_use event: name={}, input={}",
+							event.toolName(),
+							event.toolInput() != null ? event.toolInput()
+							                                 .substring(
+									                                 0,
+									                                 Math.min(
+											                                 200,
+											                                 event.toolInput()
+											                                      .length()
+									                                 )
+							                                 ) : "null"
+					);
 					yield streamConverter.toResponsesToolCall(event, 1);
+				}
 				yield null;
 			}
 		};
@@ -319,7 +339,8 @@ public class ProxyFacade {
 				               .completionTokens(outputTokens >
 				                                 0 ? outputTokens : null)
 				               .latencyMs(latency)
-				               .firstTokenMs(firstTokenMs != null ? firstTokenMs.intValue() : null)
+				               .firstTokenMs(firstTokenMs !=
+				                             null ? firstTokenMs.intValue() : null)
 				               .streaming(streaming)
 				               .clientIp(req.clientIp())
 				               .build()

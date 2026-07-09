@@ -79,7 +79,12 @@ public class KiroEventDispatcher {
 		String input = null;
 		if (toolNode.has("input")) {
 			JsonNode inputNode = toolNode.get("input");
-			input = inputNode.isString() ? inputNode.asString() : inputNode.toString();
+			if (inputNode.isString()) {
+				input = inputNode.asString();
+			} else if (inputNode.isObject()) {
+				toolArgs.setLength(0);
+				input = inputNode.toString();
+			}
 		}
 		boolean stop = toolNode.has("stop") && toolNode.get("stop").asBoolean();
 		String toolUseId = toolNode.has("toolUseId") ? toolNode.get("toolUseId")
