@@ -43,16 +43,23 @@ final class ToolConverter {
 		spec.put("name", name);
 
 		if (description != null) {
-			spec.put("description", description.length() > 10237 ? description.substring(0, 10237) + "..." : description);
+			spec.put(
+					"description",
+					description.length() > 10237 ?
+							description.substring(0, 10237) +
+							"..." : description
+			);
 		}
 
+		ObjectNode inputSchema = mapper.createObjectNode();
 		if (parameters != null) {
-			spec.set("inputSchema", mapper.valueToTree(parameters));
+			inputSchema.set("json", mapper.valueToTree(parameters));
 		} else {
-			ObjectNode emptySchema = mapper.createObjectNode();
-			emptySchema.put("type", "object");
-			spec.set("inputSchema", emptySchema);
+			ObjectNode emptyObj = mapper.createObjectNode();
+			emptyObj.put("type", "object");
+			inputSchema.set("json", emptyObj);
 		}
+		spec.set("inputSchema", inputSchema);
 
 		ObjectNode wrapper = mapper.createObjectNode();
 		wrapper.set("toolSpecification", spec);
