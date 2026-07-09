@@ -59,15 +59,15 @@
                         </td>
                         <td class="px-4 py-2.5 text-[10px]" th:text="${log.model()}">—</td>
                         <td class="px-4 py-2.5 text-[10px] text-zinc-500"
-                            th:text="${log.promptTokens() != null ? #numbers.formatInteger(log.promptTokens(), 1, 'COMMA') : '—'}">
+                            th:text="${log.usage().promptTokens() != null ? #numbers.formatInteger(log.usage().promptTokens(), 1, 'COMMA') : '—'}">
                             —
                         </td>
                         <td class="px-4 py-2.5 text-[10px] text-zinc-500"
-                            th:text="${log.completionTokens() != null ? #numbers.formatInteger(log.completionTokens(), 1, 'COMMA') : '—'}">
+                            th:text="${log.usage().completionTokens() != null ? #numbers.formatInteger(log.usage().completionTokens(), 1, 'COMMA') : '—'}">
                             —
                         </td>
                         <td class="px-4 py-2.5 text-[10px] text-neon-yellow"
-                            th:text="${log.cost() != null ? '$' + #numbers.formatDecimal(log.cost(), 1, 6) : '—'}">
+                            th:text="${log.usage().cost() != null ? '$' + #numbers.formatDecimal(log.usage().cost(), 1, 6) : '—'}">
                             —
                         </td>
                         <td class="px-4 py-2.5 text-[10px] text-zinc-500"

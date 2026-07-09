@@ -3,6 +3,7 @@ package dev.suprim.gateway.admin;
 import dev.suprim.gateway.logging.RequestLog;
 import dev.suprim.gateway.logging.RequestLogService;
 import dev.suprim.gateway.utils.PricingService;
+import lombok.Builder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -19,12 +20,18 @@ class LogsController {
 	private final RequestLogService logService;
 	private final PricingService pricingService;
 
+	@Builder
 	public record LogRow(
 			String id, String virtualKeyId, String accountId, String model,
-			String requestedModel, int status, Integer promptTokens,
-			Integer completionTokens, Integer totalTokens, Integer latencyMs,
+			String requestedModel, int status, Integer latencyMs,
 			Integer firstTokenMs, Boolean streaming, String clientIp,
-			String errorMessage, long createdAt, Double cost
+			String errorMessage, long createdAt, Usage usage
+	) {}
+
+	@Builder
+	public record Usage(
+			Integer promptTokens, Integer completionTokens,
+			Integer totalTokens, Double cost
 	) {}
 
 	@GetMapping("/logs")
@@ -34,20 +41,30 @@ class LogsController {
 		int total = logService.getTotal();
 		int totalPages = (int) Math.ceil((double) total / PAGE_SIZE);
 
-		List<LogRow> rows = logs.stream().map(l -> new LogRow(
-				l.id(), l.virtualKeyId(), l.accountId(), l.model(),
-				l.requestedModel(), l.status(), l.promptTokens(),
-				l.completionTokens(), l.totalTokens(), l.latencyMs(),
-				l.firstTokenMs(), l.streaming(), l.clientIp(),
-				l.errorMessage(), l.createdAt(),
-				l.promptTokens() != null && l.completionTokens() != null
-						? pricingService.calculateCost(
-						l.model(),
-						l.promptTokens(),
-						l.completionTokens()
-				)
-						: null
-		)).toList();
+		List<LogRow> rows = logs.stream()
+		                        .map(l -> LogRow.builder()
+				                        .id(l.id())
+				                        .virtualKeyId(l.virtualKeyId())
+				                        .accountId(l.accountId())
+				                        .model(l.model())
+				                        .requestedModel(l.requestedModel())
+				                        .status(l.status())
+				                        .latencyMs(l.latencyMs())
+				                        .firstTokenMs(l.firstTokenMs())
+				                        .streaming(l.streaming())
+				                        .clientIp(l.clientIp())
+				                        .errorMessage(l.errorMessage())
+				                        .createdAt(l.createdAt())
+				                        .usage(Usage.builder()
+						                        .promptTokens(l.promptTokens())
+						                        .completionTokens(l.completionTokens())
+						                        .totalTokens(l.totalTokens())
+						                        .cost(l.promptTokens() != null && l.completionTokens() != null
+								                        ? pricingService.calculateCost(l.model(), l.promptTokens(), l.completionTokens())
+								                        : null)
+						                        .build())
+				                        .build())
+		                        .toList();
 
 		model.addAttribute("logs", rows);
 		model.addAttribute("total", total);
