@@ -2,6 +2,7 @@ package dev.suprim.gateway.proxy;
 
 import dev.suprim.gateway.auth.KiroAuthManager;
 import dev.suprim.gateway.config.AppConfig;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -14,6 +15,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Map;
 
+@RequiredArgsConstructor
 @Component
 public class KiroHttpClient {
 
@@ -23,20 +25,10 @@ public class KiroHttpClient {
 	private final KiroAuthManager auth;
 	private final KiroHeaders kiroHeaders;
 	private final AppConfig config;
-	private final HttpClient httpClient;
-
-	KiroHttpClient(
-			KiroAuthManager auth,
-			KiroHeaders kiroHeaders,
-			AppConfig config
-	) {
-		this.auth = auth;
-		this.kiroHeaders = kiroHeaders;
-		this.config = config;
-		this.httpClient = HttpClient.newBuilder()
-		                            .connectTimeout(Duration.ofSeconds(10))
-		                            .build();
-	}
+	private final HttpClient httpClient =
+			HttpClient.newBuilder()
+			          .connectTimeout(Duration.ofSeconds(10))
+			          .build();
 
 	public record KiroResponse(
 			int status, InputStream body, String contentType

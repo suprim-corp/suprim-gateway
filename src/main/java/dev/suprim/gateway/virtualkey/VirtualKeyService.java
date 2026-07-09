@@ -1,19 +1,17 @@
 package dev.suprim.gateway.virtualkey;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
 import java.util.List;
 import java.util.UUID;
 
+@RequiredArgsConstructor
 @Service
 public class VirtualKeyService {
 
 	private final VirtualKeyRepository repository;
-
-	VirtualKeyService(VirtualKeyRepository repository) {
-		this.repository = repository;
-	}
 
 	public VirtualKey resolveByRawKey(String rawKey) {
 		if (rawKey == null || !rawKey.startsWith("sk-")) return null;

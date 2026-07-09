@@ -3,6 +3,7 @@ package dev.suprim.gateway.admin;
 import dev.suprim.gateway.logging.RequestLogService;
 import dev.suprim.gateway.virtualkey.VirtualKey;
 import dev.suprim.gateway.virtualkey.VirtualKeyService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,16 +14,12 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
+@RequiredArgsConstructor
 @Controller
 class DashboardController {
 
     private final RequestLogService logService;
     private final VirtualKeyService keyService;
-
-    DashboardController(RequestLogService logService, VirtualKeyService keyService) {
-        this.logService = logService;
-        this.keyService = keyService;
-    }
 
     @GetMapping("/")
     String dashboard(Model model) {
@@ -54,7 +51,7 @@ class DashboardController {
         return raw.stream().map(row -> {
             long bucket = ((Number) row.get("bucket")).longValue();
             String time = formatter.format(Instant.ofEpochMilli(bucket));
-            return Map.<String, Object>of(
+            return Map.of(
                     "time", time,
                     "requests", row.get("requests"),
                     "errors", row.get("errors"),

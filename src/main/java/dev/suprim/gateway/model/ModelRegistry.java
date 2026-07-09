@@ -2,6 +2,8 @@ package dev.suprim.gateway.model;
 
 import dev.suprim.gateway.config.AppConfig;
 import dev.suprim.gateway.proxy.KiroHttpClient;
+import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -13,6 +15,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+@RequiredArgsConstructor
 @Component
 public class ModelRegistry {
 
@@ -44,9 +47,8 @@ public class ModelRegistry {
 	private final List<String> cachedModels = new CopyOnWriteArrayList<>(
 			FALLBACK_MODELS);
 
-	ModelRegistry(KiroHttpClient client, AppConfig config) {
-		this.client = client;
-		this.config = config;
+	@PostConstruct
+	void init() {
 		refreshModels();
 	}
 

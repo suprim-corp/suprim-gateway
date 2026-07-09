@@ -139,6 +139,7 @@ VPN_PROXY_URL=""
 | GET    | `/v1/models`           | Virtual Key | List models               |
 | POST   | `/v1/chat/completions` | Virtual Key | Chat completions (OpenAI) |
 | POST   | `/v1/messages`         | Virtual Key | Messages (Anthropic)      |
+| POST   | `/v1/responses`        | Virtual Key | Responses (OpenAI)        |
 
 ### Admin Dashboard
 

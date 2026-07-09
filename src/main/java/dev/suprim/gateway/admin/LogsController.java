@@ -3,6 +3,7 @@ package dev.suprim.gateway.admin;
 import dev.suprim.gateway.logging.RequestLog;
 import dev.suprim.gateway.logging.RequestLogService;
 import dev.suprim.gateway.utils.PricingService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,20 +11,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 
+@RequiredArgsConstructor
 @Controller
 class LogsController {
 
 	private static final int PAGE_SIZE = 50;
 	private final RequestLogService logService;
 	private final PricingService pricingService;
-
-	LogsController(
-			RequestLogService logService,
-			PricingService pricingService
-	) {
-		this.logService = logService;
-		this.pricingService = pricingService;
-	}
 
 	public record LogRow(
 			String id, String virtualKeyId, String accountId, String model,

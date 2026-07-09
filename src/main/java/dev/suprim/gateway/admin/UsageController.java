@@ -1,6 +1,7 @@
 package dev.suprim.gateway.admin;
 
 import dev.suprim.gateway.logging.RequestLogService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,14 +13,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
+@RequiredArgsConstructor
 @Controller
 class UsageController {
 
     private final RequestLogService logService;
-
-    UsageController(RequestLogService logService) {
-        this.logService = logService;
-    }
 
     @GetMapping("/usage")
     String usage(@RequestParam(defaultValue = "24") int hours, Model model) {

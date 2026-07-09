@@ -3,6 +3,7 @@ package dev.suprim.gateway.admin;
 import dev.suprim.gateway.virtualkey.VirtualKey;
 import dev.suprim.gateway.virtualkey.VirtualKeyService;
 import dev.suprim.gateway.virtualkey.VirtualKeyService.CreateKeyResult;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,15 +14,12 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.util.List;
 
+@RequiredArgsConstructor
 @Controller
 class KeysController {
 
 	private static final int PAGE_SIZE = 20;
 	private final VirtualKeyService keyService;
-
-	KeysController(VirtualKeyService keyService) {
-		this.keyService = keyService;
-	}
 
 	@GetMapping("/keys")
 	String keys(

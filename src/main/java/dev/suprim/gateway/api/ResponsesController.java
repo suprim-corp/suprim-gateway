@@ -1,5 +1,6 @@
 package dev.suprim.gateway.api;
 
+import dev.suprim.gateway.proxy.PayloadBuilder;
 import dev.suprim.gateway.proxy.ProxyFacade;
 import dev.suprim.gateway.utils.ErrorResponse;
 import dev.suprim.gateway.utils.RequestContext;
@@ -13,20 +14,22 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @RequiredArgsConstructor
 @RestController
-class CompletionsController {
+class ResponsesController {
 
 	private final ProxyFacade proxyFacade;
+	private final PayloadBuilder payloadBuilder;
 	private final RateLimiter rateLimiter;
 	private final TokenEstimator tokenEstimator;
 
 	@SuppressWarnings("unchecked")
-	@PostMapping("/v1/chat/completions")
-	void completions(
+	@PostMapping("/v1/responses")
+	void responses(
 			@RequestBody Map<String, Object> request,
 			HttpServletRequest httpReq, HttpServletResponse httpRes
 	) throws Exception {
@@ -45,17 +48,35 @@ class CompletionsController {
 				"model",
 				"claude-sonnet-4-5"
 		);
+		Object input = request.get("input");
 		boolean stream = Boolean.TRUE.equals(request.get("stream"));
-		List<Map<String, Object>> messages = (List<Map<String, Object>>) request.get(
-				"messages");
+
+		if (input == null) {
+			ErrorResponse.badRequest(httpRes, "model and input are required");
+			return;
+		}
+
+		List<Map<String, Object>> messages = payloadBuilder.convertResponsesInput(
+				input);
 		List<Map<String, Object>> tools = (List<Map<String, Object>>) request.get(
 				"tools");
 		int inputTokens = tokenEstimator.estimateRequest(messages, tools);
 
+		HashMap<String, Object> openAiReq = new HashMap<>();
+		openAiReq.put("messages", messages);
+		openAiReq.put("model", model);
+		if (tools != null) openAiReq.put("tools", tools);
+		if (request.containsKey("temperature")) openAiReq.put(
+				"temperature",
+				request.get("temperature")
+		);
+		if (request.containsKey("max_output_tokens"))
+			openAiReq.put("max_tokens", request.get("max_output_tokens"));
+
 		proxyFacade.handle(
 				ProxyFacade.buildRequest(
-						request,
-						ProxyFacade.Format.OPENAI,
+						openAiReq,
+						ProxyFacade.Format.RESPONSES,
 						stream,
 						model,
 						inputTokens,

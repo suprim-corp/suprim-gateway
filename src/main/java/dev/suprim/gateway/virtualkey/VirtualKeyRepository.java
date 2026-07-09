@@ -1,5 +1,6 @@
 package dev.suprim.gateway.virtualkey;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -9,6 +10,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
 
+@RequiredArgsConstructor
 @Repository
 class VirtualKeyRepository {
 
@@ -42,10 +44,6 @@ class VirtualKeyRepository {
 			null ? rs.getLong("last_used_at") : null,
 			rs.getLong("created_at")
 	);
-
-	VirtualKeyRepository(JdbcTemplate jdbc) {
-		this.jdbc = jdbc;
-	}
 
 	VirtualKey findByKeyHash(String hash) {
 		List<VirtualKey> results = jdbc.query(

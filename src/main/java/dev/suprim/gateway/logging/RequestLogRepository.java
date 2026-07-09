@@ -1,5 +1,6 @@
 package dev.suprim.gateway.logging;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -7,6 +8,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Map;
 
+@RequiredArgsConstructor
 @Repository
 class RequestLogRepository {
 
@@ -29,10 +31,6 @@ class RequestLogRepository {
             rs.getString("error_message"),
             rs.getLong("created_at")
     );
-
-    RequestLogRepository(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
-    }
 
     void insert(RequestLog log) {
         jdbc.update("""

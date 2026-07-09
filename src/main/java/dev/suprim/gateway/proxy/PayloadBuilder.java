@@ -2,6 +2,7 @@ package dev.suprim.gateway.proxy;
 
 import dev.suprim.gateway.auth.KiroAuthManager;
 import dev.suprim.gateway.model.ModelResolver;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -12,16 +13,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+@RequiredArgsConstructor
 @Component
 public class PayloadBuilder {
 
     private static final int MAX_PAYLOAD_BYTES = 600_000;
     private final ObjectMapper mapper = new ObjectMapper();
     private final ModelResolver modelResolver;
-
-    PayloadBuilder(ModelResolver modelResolver) {
-        this.modelResolver = modelResolver;
-    }
 
     @SuppressWarnings("unchecked")
     public String buildOpenAiPayload(Map<String, Object> request, KiroAuthManager auth) throws Exception {
@@ -39,7 +37,7 @@ public class PayloadBuilder {
         String systemPrompt = null;
         int startIdx = 0;
         if (!messages.isEmpty() && "system".equals(messages.getFirst().get("role"))) {
-            systemPrompt = extractTextContent(messages.getFirst());
+            systemPrompt = ContentExtractor.fromMessage(messages.getFirst());
             startIdx = 1;
         }
 
@@ -52,20 +50,20 @@ public class PayloadBuilder {
             String role = (String) msg.get("role");
 
             if (i == messages.size() - 1 && "user".equals(role)) {
-                currentContent = extractTextContent(msg);
+                currentContent = ContentExtractor.fromMessage(msg);
                 continue;
             }
 
             if ("user".equals(role)) {
                 ObjectNode entry = mapper.createObjectNode();
                 ObjectNode userInput = entry.putObject("userInputMessage");
-                userInput.put("content", extractTextContent(msg));
+                userInput.put("content", ContentExtractor.fromMessage(msg));
                 userInput.put("modelId", modelId);
                 userInput.put("origin", "AI_EDITOR");
                 history.add(entry);
             } else if ("assistant".equals(role)) {
                 ObjectNode entry = mapper.createObjectNode();
-                entry.put("assistantResponseMessage", extractTextContent(msg));
+                entry.put("assistantResponseMessage", ContentExtractor.fromMessage(msg));
                 history.add(entry);
             } else if ("tool".equals(role)) {
                 if (currentToolResults == null) currentToolResults = new ArrayList<>();
@@ -88,7 +86,7 @@ public class PayloadBuilder {
             ObjectNode ctx = userInputMessage.putObject("userInputMessageContext");
             ArrayNode toolsNode = ctx.putArray("tools");
             for (Map<String, Object> tool : tools) {
-                ObjectNode converted = convertTool(tool);
+                ObjectNode converted = ToolConverter.toKiroTool(tool, mapper);
                 if (converted != null) toolsNode.add(converted);
             }
         }
@@ -101,7 +99,7 @@ public class PayloadBuilder {
             for (Map<String, Object> tr : currentToolResults) {
                 ObjectNode resultObj = mapper.createObjectNode();
                 resultObj.put("toolUseId", (String) tr.get("tool_call_id"));
-                resultObj.put("content", extractTextContent(tr));
+                resultObj.put("content", ContentExtractor.fromMessage(tr));
                 resultsNode.add(resultObj);
             }
         }
@@ -128,33 +126,7 @@ public class PayloadBuilder {
         return json;
     }
 
-    @SuppressWarnings("unchecked")
-    private String extractTextContent(Map<String, Object> msg) {
-        Object content = msg.get("content");
-        if (content instanceof String s) return s;
-        if (content instanceof List<?> list) {
-            StringBuilder sb = new StringBuilder();
-            for (Object item : list) {
-                if (item instanceof Map<?, ?> m) {
-                    if ("text".equals(m.get("type"))) sb.append(m.get("text"));
-                }
-            }
-            return sb.toString();
-        }
-        return "";
-    }
-
-    @SuppressWarnings("unchecked")
-    private ObjectNode convertTool(Map<String, Object> tool) {
-        if (!"function".equals(tool.get("type"))) return null;
-        Map<String, Object> fn = (Map<String, Object>) tool.get("function");
-        if (fn == null) return null;
-        ObjectNode node = mapper.createObjectNode();
-        node.put("name", (String) fn.get("name"));
-        if (fn.containsKey("description")) node.put("description", (String) fn.get("description"));
-        if (fn.containsKey("parameters")) {
-            node.set("inputSchema", mapper.valueToTree(fn.get("parameters")));
-        }
-        return node;
+    public List<Map<String, Object>> convertResponsesInput(Object input) {
+        return ResponsesInputConverter.convert(input);
     }
 }
