@@ -29,7 +29,16 @@ public class KiroCredentialStore {
 			JsonNode root = mapper.readTree(Files.readString(STORE_PATH));
 			JsonNode arr = root.get("accounts");
 			if (arr == null || !arr.isArray()) return accounts;
+
 			for (JsonNode node : arr) {
+				if (node.has("profileArn") || node.has("clientId") || node.has(
+						"authType")) {
+					log.warn(
+							"[CredStore] Legacy camelCase format detected, deleting file");
+					Files.delete(STORE_PATH);
+					return List.of();
+				}
+
 				accounts.add(
 						StoredAccount.builder()
 						             .profileArn(
@@ -38,18 +47,8 @@ public class KiroCredentialStore {
 										             "profile_arn"
 								             )
 						             )
-						             .authType(
-								             textOrNull(
-										             node,
-										             "auth_type"
-								             )
-						             )
-						             .clientId(
-								             textOrNull(
-										             node,
-										             "client_id"
-								             )
-						             )
+						             .authType(textOrNull(node, "auth_type"))
+						             .clientId(textOrNull(node, "client_id"))
 						             .clientSecret(
 								             textOrNull(
 										             node,
@@ -68,22 +67,10 @@ public class KiroCredentialStore {
 										             "refresh_token"
 								             )
 						             )
-						             .expiresAt(
-								             textOrNull(
-										             node,
-										             "expires_at"
-								             ) != null ? Instant.parse(
-										             node.get("expires_at")
-										                 .asString()) : null
-						             )
+						             .expiresAt(parseExpires(node))
 						             .scopes(parseScopes(node.get("scopes")))
 						             .region(textOrNull(node, "region"))
-						             .apiRegion(
-								             textOrNull(
-										             node,
-										             "api_region"
-								             )
-						             )
+						             .apiRegion(textOrNull(node, "api_region"))
 						             .build()
 				);
 			}
@@ -131,16 +118,25 @@ public class KiroCredentialStore {
 		return Files.exists(STORE_PATH);
 	}
 
+	private static Instant parseExpires(JsonNode node) {
+		String val = textOrNull(node, "expires_at");
+		return val != null ? Instant.parse(val) : null;
+	}
+
 	private static String textOrNull(JsonNode node, String field) {
 		return node.has(field) && !node.get(field).isNull() ? node.get(field)
 		                                                          .asString() : null;
 	}
 
 	private static String[] parseScopes(JsonNode node) {
-		if (node == null || !node.isArray()) return null;
+		if (node == null || !node.isArray()) {
+			return null;
+		}
 		String[] scopes = new String[node.size()];
-		for (int i = 0; i < node.size(); i++)
+		for (int i = 0; i < node.size(); i++) {
 			scopes[i] = node.get(i).asString();
+		}
+
 		return scopes;
 	}
 }
