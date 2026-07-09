@@ -10,7 +10,7 @@ RUN bash -c "source /root/.sdkman/bin/sdkman-init.sh && mvn dependency:go-offlin
 
 COPY src/ src/
 RUN bash -c "source /root/.sdkman/bin/sdkman-init.sh && mvn package -DskipTests -q -B" && \
-    java -Djarmode=layertools -jar target/*.jar extract --destination target/extracted
+    java -Djarmode=tools -jar target/*.jar extract --layers --destination target/extracted
 
 FROM gcr.io/distroless/java-base-debian12:nonroot
 WORKDIR /app
