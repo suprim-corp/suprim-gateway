@@ -66,7 +66,10 @@ public class KiroAuthManager {
 		this.profileArn = config.profileArn();
 
 		// credential store có sẵn → dùng luôn, không cần đọc Kiro DB
-		Optional<KiroCredentials> fromStore = CredentialStoreReader.read(credentialStore);
+		Optional<KiroCredentials> fromStore = CredentialStoreReader.read(
+				credentialStore
+		);
+
 		if (fromStore.isPresent()) {
 			applyCredentials(fromStore.get());
 			log.info(
@@ -82,7 +85,8 @@ public class KiroAuthManager {
 		if (config.cliDbFile() != null && !config.cliDbFile().isBlank()) {
 			credSourceType = "sqlite";
 			credSourcePath = config.cliDbFile();
-		} else if (config.credsFile() != null && !config.credsFile().isBlank()) {
+		} else if (config.credsFile() != null &&
+		           !config.credsFile().isBlank()) {
 			credSourceType = "json";
 			credSourcePath = config.credsFile();
 		}
@@ -242,9 +246,10 @@ public class KiroAuthManager {
 			throw new RuntimeException(msg);
 		}
 		JsonNode json = mapper.readTree(response.body());
-		this.accessToken = json.has("access_token") && !json.get("access_token").isNull()
-				? json.get("access_token").asString()
-				: json.get("accessToken").asString();
+		this.accessToken =
+				json.has("access_token") && !json.get("access_token").isNull()
+						? json.get("access_token").asString()
+						: json.get("accessToken").asString();
 		if (json.has("refresh_token")) {
 			this.refreshToken = json.get("refresh_token").asString();
 		} else if (json.has("refreshToken")) {
@@ -269,6 +274,15 @@ public class KiroAuthManager {
 
 	private void bootstrapStore() {
 		if (refreshToken == null && accessToken == null) return;
+		try {
+			refresh();
+		} catch (Exception e) {
+			log.warn(
+					"[Auth] Bootstrap refresh failed, not saving to store: {}",
+					e.getMessage()
+			);
+			return;
+		}
 		saveToStore();
 		log.info(
 				"[Auth] Bootstrapped credential store from {}",
