@@ -2,9 +2,10 @@ services:
   kiro-gateway:
     build: .
     ports:
-      - "${HOST_PORT:-3000}:8080"
+      - "${WEB_PORT:-127.0.0.1:3001}:8080"
     volumes:
-      - ./data:/app/data
+      - ./data:/app/packages/data
+      - ${KIRO_CREDS_HOST_PATH}:/app/creds:ro
     env_file:
       - .env
     restart: unless-stopped

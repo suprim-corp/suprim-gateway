@@ -12,7 +12,7 @@ COPY src/ src/
 RUN bash -c "source /root/.sdkman/bin/sdkman-init.sh && mvn package -DskipTests -q -B" && \
     java -Djarmode=tools -jar target/*.jar extract --layers --destination target/extracted
 
-FROM eclipse-temurin:26-jre-noble AS runtime
+FROM eclipse-temurin:26-jre-alpine AS runtime
 WORKDIR /app
 
 COPY --from=builder /build/target/extracted/dependencies/ ./
