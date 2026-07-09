@@ -159,7 +159,9 @@ public class KiroAuthManager {
 			}
 			if (System.currentTimeMillis() - lastRefreshFailure <
 			    REFRESH_COOLDOWN_MS) {
-				throw new RuntimeException("Token refresh on cooldown");
+				throw new RuntimeException(
+						"Token refresh on cooldown (last failure <60s ago). " +
+						"Most likely client registration expired — re-open Kiro IDE to re-authorize, then restart gateway.");
 			}
 
 			log.info("[Auth] Refreshing token via {}", authType);
@@ -241,13 +243,15 @@ public class KiroAuthManager {
 		);
 		if (response.statusCode() != 200) {
 			String responseBody = response.body();
-			throw new RuntimeException(
-					"SSO OIDC refresh failed (" + response.statusCode() +
-					"): " +
-					responseBody.substring(
-							0,
-							Math.min(300, responseBody.length())
-					));
+			String detail = responseBody.substring(
+					0, Math.min(300, responseBody.length()));
+			String msg = responseBody.contains("invalid_client")
+					?
+					"SSO OIDC client registration expired (~90 days). Re-open Kiro IDE to re-authorize, then restart gateway. Raw: " +
+					detail
+					: "SSO OIDC refresh failed (" + response.statusCode() +
+					  "): " + detail;
+			throw new RuntimeException(msg);
 		}
 		JsonNode json = mapper.readTree(response.body());
 		this.accessToken = textOrNull(json, "access_token") != null
@@ -285,18 +289,19 @@ public class KiroAuthManager {
 	}
 
 	private void saveToStore() {
-		StoredAccount account = StoredAccount.builder()
-		                                     .profileArn(profileArn)
-		                                     .authType(authType.name())
-		                                     .clientId(clientId)
-		                                     .clientSecret(clientSecret)
-		                                     .accessToken(accessToken)
-		                                     .refreshToken(refreshToken)
-		                                     .expiresAt(expiresAt)
-		                                     .scopes(scopes)
-		                                     .region(config.region())
-		                                     .apiRegion(config.apiRegion())
-		                                     .build();
+		StoredAccount account =
+				StoredAccount.builder()
+				             .profileArn(profileArn)
+				             .authType(authType.name())
+				             .clientId(clientId)
+				             .clientSecret(clientSecret)
+				             .accessToken(accessToken)
+				             .refreshToken(refreshToken)
+				             .expiresAt(expiresAt)
+				             .scopes(scopes)
+				             .region(config.region())
+				             .apiRegion(config.apiRegion())
+				             .build();
 		credentialStore.save(List.of(account));
 	}
 
