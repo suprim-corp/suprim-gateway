@@ -96,7 +96,20 @@ public class KiroEventDispatcher {
 		String toolUseId = toolNode.has("toolUseId") ? toolNode.get("toolUseId")
 		                                                       .asString() : null;
 
-		if (name != null) {
+		if (name != null && currentToolName == null) {
+			currentToolName = name;
+			currentToolId =
+					toolUseId != null ? toolUseId : "tool_" + System.nanoTime();
+			toolArgs.setLength(0);
+		} else if (name != null && !name.equals(currentToolName)) {
+			// New tool starting — finish previous if any
+			if (currentToolName != null) {
+				events.add(KiroEvent.toolUse(
+						currentToolName,
+						toolArgs.toString(),
+						currentToolId
+				));
+			}
 			currentToolName = name;
 			currentToolId =
 					toolUseId != null ? toolUseId : "tool_" + System.nanoTime();
