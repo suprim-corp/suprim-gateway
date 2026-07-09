@@ -11,6 +11,10 @@ spring:
   thymeleaf:
     cache: false
 
+logging:
+  level:
+    dev.suprim.gateway: ${LOG_LEVEL:info}
+
 kiro:
   admin-api-key: ${ADMIN_API_KEY:admin}
   creds-file: ${KIRO_CREDS_FILE:}
