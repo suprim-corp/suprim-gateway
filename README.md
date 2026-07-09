@@ -1,6 +1,8 @@
 # Kiro Gateway
 
-![Kiro](https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png" width="120" />
+</p>
 
 Proxy gateway for Kiro API (AWS Q Developer) — OpenAI-compatible API with admin dashboard and virtual key system.
 

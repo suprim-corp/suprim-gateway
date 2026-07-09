@@ -32,6 +32,9 @@
                             Time to First Token
                         </th>
                         <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                            Duration
+                        </th>
+                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
                             Stream
                         </th>
                         <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
@@ -69,6 +72,9 @@
                         </td>
                         <td class="px-4 py-2.5 text-[10px] text-zinc-500"
                             th:text="${log.firstTokenMs() != null ? #numbers.formatInteger(log.firstTokenMs(), 1, 'COMMA') + 'ms' : '—'}">—
+                        </td>
+                        <td class="px-4 py-2.5 text-[10px] text-zinc-500"
+                            th:text="${log.latencyMs() != null ? #numbers.formatInteger(log.latencyMs(), 1, 'COMMA') + 'ms' : '—'}">—
                         </td>
                         <td class="px-4 py-2.5 text-[10px]">
                             <span th:if="${log.streaming() != null && log.streaming()}"
