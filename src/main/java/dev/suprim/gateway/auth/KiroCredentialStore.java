@@ -19,7 +19,11 @@ public class KiroCredentialStore {
 
 	private static final Logger log = LoggerFactory.getLogger(
 			KiroCredentialStore.class);
-	private static final Path STORE_PATH = Path.of("./data/credentials.json");
+	private static final Path STORE_PATH = Path.of(
+			System.getenv("DATABASE_PATH") != null
+					? Path.of(System.getenv("DATABASE_PATH")).getParent().resolve("credentials.json").toString()
+					: "./data/credentials.json"
+	);
 	private final ObjectMapper mapper = new ObjectMapper();
 
 	public List<StoredAccount> load() {
