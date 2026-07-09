@@ -12,7 +12,7 @@ COPY src/ src/
 RUN bash -c "source /root/.sdkman/bin/sdkman-init.sh && mvn package -DskipTests -q -B" && \
     java -Djarmode=tools -jar target/*.jar extract --layers --destination target/extracted
 
-FROM gcr.io/distroless/java-base-debian12:nonroot
+FROM eclipse-temurin:26-jre-noble AS runtime
 WORKDIR /app
 
 COPY --from=builder /build/target/extracted/dependencies/ ./
