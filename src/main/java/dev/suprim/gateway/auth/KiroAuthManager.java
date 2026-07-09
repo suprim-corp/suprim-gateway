@@ -234,6 +234,7 @@ public class KiroAuthManager {
 		}
 	}
 
+	// AWS SSO OIDC accepts camelCase keys (ref: Kiro-Go/auth/oidc.go)
 	private void refreshSsoOidc() throws Exception {
 		String url = "https://oidc." + config.region() + ".amazonaws.com/token";
 		ObjectNode payload = mapper.createObjectNode();
