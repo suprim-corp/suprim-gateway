@@ -115,6 +115,28 @@ public class KiroAuthManager {
 		refresh();
 	}
 
+	public ImportResult importAccount(ImportRequest req) throws Exception {
+		ImportResult result = KiroAccountImporter.execute(
+				req, credentialStore, httpClient
+		);
+		List<StoredAccount> before = credentialStore.load();
+		boolean shouldApply = before.size() == 1 ||
+		                      (profileArn != null &&
+		                       profileArn.equals(result.profileArn())
+		                      );
+		if (shouldApply) {
+			StoredAccount acc = result.account();
+			this.accessToken = acc.accessToken();
+			this.refreshToken = acc.refreshToken();
+			this.expiresAt = acc.expiresAt();
+			this.clientId = acc.clientId();
+			this.clientSecret = acc.clientSecret();
+			this.authType = KiroCredentials.AuthType.valueOf(acc.authType());
+			if (acc.profileArn() != null) this.profileArn = acc.profileArn();
+		}
+		return result;
+	}
+
 	String getRegion() {
 		return config.region();
 	}
@@ -194,7 +216,8 @@ public class KiroAuthManager {
 			);
 		}
 		this.accessToken = result.accessToken();
-		if (result.refreshToken() != null) this.refreshToken = result.refreshToken();
+		if (result.refreshToken() != null)
+			this.refreshToken = result.refreshToken();
 		if (result.expiresAt() != null) this.expiresAt = result.expiresAt();
 	}
 

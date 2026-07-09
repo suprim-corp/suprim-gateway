@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -45,9 +46,9 @@ class SecurityConfig {
     SecurityFilterChain webFilterChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher("/**")
-                .csrf(csrf -> csrf.disable())
+                .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/login", "/css/**", "/js/**", "/error").permitAll()
+                        .requestMatchers("/login", "/css/**", "/js/**", "/error", "/auth/import").permitAll()
                         .anyRequest().authenticated()
                 )
                 .formLogin(form -> form

@@ -8,5 +8,6 @@ import java.time.Instant;
 public record RefreshResult(
 		String accessToken,
 		String refreshToken,
-		Instant expiresAt
+		Instant expiresAt,
+		String profileArn
 ) {}

@@ -90,6 +90,7 @@ public final class SsoOidcTokenRefresher {
 		                    .accessToken(accessToken)
 		                    .refreshToken(newRefreshToken)
 		                    .expiresAt(expiresAt)
+		                    .profileArn(coalesce(json, "profileArn", "profile_arn"))
 		                    .build();
 	}
 

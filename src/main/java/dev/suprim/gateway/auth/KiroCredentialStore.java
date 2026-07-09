@@ -114,6 +114,35 @@ public class KiroCredentialStore {
 		}
 	}
 
+	public void upsert(StoredAccount account) {
+		List<StoredAccount> accounts = load();
+		List<StoredAccount> updated = new ArrayList<>(accounts.size() + 1);
+		boolean replaced = false;
+		for (StoredAccount existing : accounts) {
+			if (matches(existing, account)) {
+				updated.add(account);
+				replaced = true;
+			} else {
+				updated.add(existing);
+			}
+		}
+		if (!replaced) updated.add(account);
+		save(updated);
+	}
+
+	private static boolean matches(
+			StoredAccount existing,
+			StoredAccount incoming
+	) {
+		if (incoming.profileArn() != null && existing.profileArn() != null) {
+			return existing.profileArn().equals(incoming.profileArn());
+		}
+		if (incoming.clientId() != null && existing.clientId() != null) {
+			return existing.clientId().equals(incoming.clientId());
+		}
+		return false;
+	}
+
 	public boolean exists() {
 		return Files.exists(STORE_PATH);
 	}

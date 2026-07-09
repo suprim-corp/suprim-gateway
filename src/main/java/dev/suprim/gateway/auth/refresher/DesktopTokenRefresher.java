@@ -65,6 +65,7 @@ public final class DesktopTokenRefresher {
 		                    .accessToken(textOrNull(json, "accessToken"))
 		                    .refreshToken(textOrNull(json, "refreshToken"))
 		                    .expiresAt(json.has("expiresAt") ? Instant.parse(json.get("expiresAt").asString()) : null)
+		                    .profileArn(textOrNull(json, "profileArn"))
 		                    .build();
 	}
 
