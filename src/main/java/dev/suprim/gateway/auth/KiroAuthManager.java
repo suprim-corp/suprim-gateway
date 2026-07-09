@@ -2,6 +2,9 @@ package dev.suprim.gateway.auth;
 
 import dev.suprim.gateway.auth.reader.CredentialStoreReader;
 import dev.suprim.gateway.auth.reader.KiroSourceReader;
+import dev.suprim.gateway.auth.refresher.DesktopTokenRefresher;
+import dev.suprim.gateway.auth.refresher.RefreshResult;
+import dev.suprim.gateway.auth.refresher.SsoOidcTokenRefresher;
 import dev.suprim.gateway.config.AppConfig;
 import jakarta.annotation.PostConstruct;
 import lombok.Getter;
@@ -9,19 +12,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.node.ArrayNode;
-import tools.jackson.databind.node.ObjectNode;
 
-import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -33,7 +28,6 @@ public class KiroAuthManager {
 
 	private final AppConfig config;
 	private final KiroCredentialStore credentialStore;
-	private final ObjectMapper mapper = new ObjectMapper();
 	private final HttpClient httpClient = HttpClient.newBuilder()
 	                                                .connectTimeout(
 			                                                Duration.ofSeconds(
@@ -182,115 +176,26 @@ public class KiroAuthManager {
 	}
 
 	private void doRefresh() throws Exception {
+		RefreshResult result;
 		if (authType == KiroCredentials.AuthType.KIRO_DESKTOP) {
-			refreshDesktop();
+			result = DesktopTokenRefresher.refresh(
+					refreshToken,
+					config.region(),
+					httpClient
+			);
 		} else {
-			refreshSsoOidc();
-		}
-	}
-
-	private void refreshDesktop() throws Exception {
-		String url = "https://prod." + config.region() +
-		             ".auth.desktop.kiro.dev/refreshToken";
-		String body = mapper.writeValueAsString(
-				Map.of(
-						"refreshToken",
-						refreshToken
-				)
-		);
-		HttpRequest request = HttpRequest.newBuilder()
-		                                 .uri(URI.create(url))
-		                                 .header(
-				                                 "Content-Type",
-				                                 "application/json"
-		                                 )
-		                                 .POST(
-				                                 HttpRequest.BodyPublishers.ofString(
-						                                 body
-				                                 )
-		                                 )
-		                                 .build();
-		HttpResponse<String> response = httpClient.send(
-				request,
-				HttpResponse.BodyHandlers.ofString()
-		);
-		if (response.statusCode() != 200) {
-			String responseBody = response.body();
-			throw new RuntimeException(
-					"Desktop refresh failed (" + response.statusCode() + "): " +
-					responseBody.substring(
-							0,
-							Math.min(300, responseBody.length())
-					)
+			result = SsoOidcTokenRefresher.refresh(
+					refreshToken,
+					clientId,
+					clientSecret,
+					scopes,
+					config.region(),
+					httpClient
 			);
 		}
-		JsonNode json = mapper.readTree(response.body());
-		this.accessToken = json.get("accessToken").asString();
-		if (json.has("refreshToken")) {
-			this.refreshToken = json.get("refreshToken").asString();
-		}
-		if (json.has("expiresAt")) {
-			this.expiresAt = Instant.parse(json.get("expiresAt").asString());
-		}
-	}
-
-	// AWS SSO OIDC accepts camelCase keys (ref: Kiro-Go/auth/oidc.go)
-	private void refreshSsoOidc() throws Exception {
-		String url = "https://oidc." + config.region() + ".amazonaws.com/token";
-		ObjectNode payload = mapper.createObjectNode();
-		payload.put("grantType", "refresh_token");
-		payload.put("clientId", clientId);
-		payload.put("clientSecret", clientSecret);
-		payload.put("refreshToken", refreshToken);
-		if (scopes != null && scopes.length > 0) {
-			ArrayNode arr = payload.putArray("scope");
-			for (String s : scopes) arr.add(s);
-		}
-		HttpRequest request = HttpRequest.newBuilder()
-		                                 .uri(URI.create(url))
-		                                 .header(
-				                                 "Content-Type",
-				                                 "application/json"
-		                                 )
-		                                 .POST(
-				                                 HttpRequest.BodyPublishers.ofString(
-						                                 mapper.writeValueAsString(
-								                                 payload
-						                                 )
-				                                 )
-		                                 )
-		                                 .build();
-		HttpResponse<String> response = httpClient.send(
-				request,
-				HttpResponse.BodyHandlers.ofString()
-		);
-		if (response.statusCode() != 200) {
-			String responseBody = response.body();
-			String detail = responseBody.substring(
-					0, Math.min(300, responseBody.length())
-			);
-			String msg = responseBody.contains("invalid_client")
-					?
-					"SSO OIDC client registration expired (~90 days). Re-open Kiro IDE to re-authorize, then restart gateway. Raw: " +
-					detail
-					: "SSO OIDC refresh failed (" + response.statusCode() +
-					  "): " + detail;
-			throw new RuntimeException(msg);
-		}
-		JsonNode json = mapper.readTree(response.body());
-		this.accessToken =
-				json.has("access_token") && !json.get("access_token").isNull()
-						? json.get("access_token").asString()
-						: json.get("accessToken").asString();
-		if (json.has("refresh_token")) {
-			this.refreshToken = json.get("refresh_token").asString();
-		} else if (json.has("refreshToken")) {
-			this.refreshToken = json.get("refreshToken").asString();
-		}
-		int expiresIn = json.has("expires_in") ? json.get("expires_in").asInt()
-				: (json.has("expiresIn") ? json.get("expiresIn")
-				                               .asInt() : 3600);
-		this.expiresAt = Instant.now().plusSeconds(expiresIn);
+		this.accessToken = result.accessToken();
+		if (result.refreshToken() != null) this.refreshToken = result.refreshToken();
+		if (result.expiresAt() != null) this.expiresAt = result.expiresAt();
 	}
 
 	private void applyCredentials(KiroCredentials creds) {
