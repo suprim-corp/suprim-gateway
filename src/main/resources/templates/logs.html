@@ -68,7 +68,7 @@
                             —
                         </td>
                         <td class="px-4 py-2.5 text-[10px] text-zinc-500"
-                            th:text="${log.latencyMs() != null ? log.latencyMs() + 'ms' : '—'}">—
+                            th:text="${log.latencyMs() != null ? #numbers.formatInteger(log.latencyMs(), 1, 'COMMA') + 'ms' : '—'}">—
                         </td>
                         <td class="px-4 py-2.5 text-[10px]">
                             <span th:if="${log.streaming() != null && log.streaming()}"
