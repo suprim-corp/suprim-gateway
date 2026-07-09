@@ -5,6 +5,7 @@ import dev.suprim.gateway.utils.TokenEstimator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.util.List;
 
@@ -25,9 +26,10 @@ public class StreamHandler {
 			long startTime
 	) throws Exception {
 		KiroEventParser parser = new KiroEventParser();
+		StreamingContentFilter filter = new StreamingContentFilter();
 		StringBuilder fullText = new StringBuilder();
-		int outputTokens = 0;
-		long firstTokenMs = -1;
+		int[] outputTokens = {0};
+		long[] firstTokenMs = {-1};
 
 		byte[] buf = new byte[8192];
 		int read;
@@ -37,25 +39,50 @@ public class StreamHandler {
 			List<KiroEvent> events = parser.feed(chunk);
 			for (KiroEvent event : events) {
 				if ("reasoning".equals(event.type())) continue;
-				String sse = eventWriter.convert(event);
+				if ("content".equals(event.type()) && event.content() != null) {
+					filter.accept(event.content(), filtered -> {
+						if (filtered.isEmpty()) return;
+						if (firstTokenMs[0] < 0) {
+							firstTokenMs[0] = System.currentTimeMillis() - startTime;
+						}
+						fullText.append(filtered);
+						outputTokens[0] += tokenEstimator.countTokens(filtered);
+						try {
+							String sse = eventWriter.convert(KiroEvent.content(filtered));
+							if (sse != null) {
+								writer.write(sse);
+								writer.flush();
+							}
+						} catch (Exception e) {
+							throw new RuntimeException(e);
+						}
+					});
+				} else {
+					String sse = eventWriter.convert(event);
+					if (sse != null) {
+						writer.write(sse);
+						writer.flush();
+					}
+				}
+			}
+		}
+		filter.flush(filtered -> {
+			if (filtered.isEmpty()) return;
+			fullText.append(filtered);
+			try {
+				String sse = eventWriter.convert(KiroEvent.content(filtered));
 				if (sse != null) {
 					writer.write(sse);
 					writer.flush();
 				}
-				if ("content".equals(event.type()) && event.content() != null) {
-					if (firstTokenMs < 0) {
-						firstTokenMs = System.currentTimeMillis() - startTime;
-					}
-					fullText.append(event.content());
-					outputTokens += tokenEstimator.countTokens(event.content());
-				}
+			} catch (Exception e) {
+				throw new RuntimeException(e);
 			}
-		}
-		String finalContent = ThinkingExtractor.strip(fullText.toString());
+		});
 		return new StreamResult(
-				finalContent,
-				outputTokens,
-				firstTokenMs < 0 ? 0 : firstTokenMs
+				fullText.toString(),
+				outputTokens[0],
+				firstTokenMs[0] < 0 ? 0 : firstTokenMs[0]
 		);
 	}
 
