@@ -134,7 +134,8 @@ public class ProxyFacade {
 			ProxyRequest req,
 			long startTime
 	) throws Exception {
-		httpRes.setContentType("text/event-stream");
+		httpRes.setCharacterEncoding("UTF-8");
+		httpRes.setContentType("text/event-stream; charset=utf-8");
 		httpRes.setHeader("Cache-Control", "no-cache");
 		PrintWriter writer = httpRes.getWriter();
 		String id = generateId(req.format());
@@ -178,7 +179,8 @@ public class ProxyFacade {
 		int outputTokens = streamHandler.countTokens(content);
 		String id = generateId(req.format());
 
-		httpRes.setContentType("application/json");
+		httpRes.setCharacterEncoding("UTF-8");
+		httpRes.setContentType("application/json; charset=utf-8");
 		mapper.writeValue(
 				httpRes.getWriter(),
 				nonStreamBody(
