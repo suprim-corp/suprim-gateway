@@ -19,25 +19,38 @@ final class ToolConverter {
 		}
 
 		Map<String, Object> fn = (Map<String, Object>) tool.get("function");
-
 		if (fn == null) {
 			return null;
 		}
 
-		ObjectNode node = mapper.createObjectNode();
-		node.put("name", (String) fn.get("name"));
+		String name = (String) fn.get("name");
+		if (name == null || name.isBlank()) {
+			return null;
+		}
+
+		ObjectNode spec = mapper.createObjectNode();
+		spec.put("name", name);
 
 		if (fn.containsKey("description")) {
-			node.put(
-					"description",
-					(String) fn.get("description")
-			);
+			String desc = (String) fn.get("description");
+			if (desc != null) {
+				spec.put("description",
+						desc.length() > 10237 ?
+								desc.substring(0, 10237) + "..." : desc
+				);
+			}
 		}
 
 		if (fn.containsKey("parameters")) {
-			node.set("inputSchema", mapper.valueToTree(fn.get("parameters")));
+			spec.set("inputSchema", mapper.valueToTree(fn.get("parameters")));
+		} else {
+			ObjectNode emptySchema = mapper.createObjectNode();
+			emptySchema.put("type", "object");
+			spec.set("inputSchema", emptySchema);
 		}
 
-		return node;
+		ObjectNode wrapper = mapper.createObjectNode();
+		wrapper.set("toolSpecification", spec);
+		return wrapper;
 	}
 }
