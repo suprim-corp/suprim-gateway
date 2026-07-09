@@ -1,8 +1,11 @@
 package dev.suprim.gateway.proxy;
 
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.util.Iterator;
 import java.util.Map;
 
 final class ToolConverter {
@@ -53,7 +56,11 @@ final class ToolConverter {
 
 		ObjectNode inputSchema = mapper.createObjectNode();
 		if (parameters != null) {
-			inputSchema.set("json", mapper.valueToTree(parameters));
+			JsonNode schemaNode = mapper.valueToTree(parameters);
+			if (schemaNode.isObject()) {
+				cleanSchema((ObjectNode) schemaNode);
+			}
+			inputSchema.set("json", schemaNode);
 		} else {
 			ObjectNode emptyObj = mapper.createObjectNode();
 			emptyObj.put("type", "object");
@@ -64,5 +71,30 @@ final class ToolConverter {
 		ObjectNode wrapper = mapper.createObjectNode();
 		wrapper.set("toolSpecification", spec);
 		return wrapper;
+	}
+
+	private static void cleanSchema(ObjectNode node) {
+		node.remove("additionalProperties");
+
+		// required must be non-empty array
+		JsonNode required = node.get("required");
+		if (required != null) {
+			if (!required.isArray() || required.isEmpty()) {
+				node.remove("required");
+			}
+		}
+
+		for (Map.Entry<String, JsonNode> entry : node.properties()) {
+			JsonNode value = entry.getValue();
+			if (value.isObject()) {
+				cleanSchema((ObjectNode) value);
+			} else if (value.isArray()) {
+				for (JsonNode item : value) {
+					if (item.isObject()) {
+						cleanSchema((ObjectNode) item);
+					}
+				}
+			}
+		}
 	}
 }
