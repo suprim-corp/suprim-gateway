@@ -194,9 +194,6 @@ public class PayloadBuilder {
         // Truncate history if payload too large
         String json = mapper.writeValueAsString(root);
         log.debug("[Payload] size={}, history={}, hasTools={}, hasToolResults={}", json.length(), history.size(), hasTools, hasCurrentToolResults);
-        if (hasTools) {
-            log.debug("[Payload] tools raw: {}", tools);
-        }
         while (json.length() > MAX_PAYLOAD_BYTES && history.size() > 2) {
             // Keep priming pair (first 2 if system prompt exists), drop oldest after that
             int removeIdx = !systemPrompt.isEmpty() && history.size() > 2 ? 2 : 0;

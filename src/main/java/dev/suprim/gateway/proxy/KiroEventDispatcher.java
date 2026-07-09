@@ -1,15 +1,11 @@
 package dev.suprim.gateway.proxy;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class KiroEventDispatcher {
-
-	private static final Logger log = LoggerFactory.getLogger(KiroEventDispatcher.class);
 
 	private String currentToolName;
 	private String currentToolId;
@@ -78,8 +74,6 @@ public class KiroEventDispatcher {
 	private void processToolEvent(JsonNode toolNode, List<KiroEvent> events) {
 		if (toolNode == null) return;
 
-		log.debug("[ToolEvent] raw: {}", toolNode.toString().length() > 300 ? toolNode.toString().substring(0, 300) : toolNode.toString());
-
 		String name = toolNode.has("name") ? toolNode.get("name")
 		                                             .asString() : null;
 		String input = null;
@@ -103,13 +97,13 @@ public class KiroEventDispatcher {
 			toolArgs.setLength(0);
 		} else if (name != null && !name.equals(currentToolName)) {
 			// New tool starting — finish previous if any
-			if (currentToolName != null) {
-				events.add(KiroEvent.toolUse(
-						currentToolName,
-						toolArgs.toString(),
-						currentToolId
-				));
-			}
+			events.add(
+					KiroEvent.toolUse(
+							currentToolName,
+							toolArgs.toString(),
+							currentToolId
+					)
+			);
 			currentToolName = name;
 			currentToolId =
 					toolUseId != null ? toolUseId : "tool_" + System.nanoTime();
@@ -119,11 +113,13 @@ public class KiroEventDispatcher {
 			toolArgs.append(input);
 		}
 		if (stop && currentToolName != null) {
-			events.add(KiroEvent.toolUse(
-					currentToolName,
-					toolArgs.toString(),
-					currentToolId
-			));
+			events.add(
+					KiroEvent.toolUse(
+							currentToolName,
+							toolArgs.toString(),
+							currentToolId
+					)
+			);
 			currentToolName = null;
 			currentToolId = null;
 			toolArgs.setLength(0);

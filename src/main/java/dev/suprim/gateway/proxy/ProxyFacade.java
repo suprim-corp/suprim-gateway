@@ -232,22 +232,8 @@ public class ProxyFacade {
 			case RESPONSES -> {
 				if ("content".equals(event.type()) && event.content() != null)
 					yield streamConverter.toResponsesTextDelta(event.content());
-				if ("tool_use".equals(event.type()) && event.toolStop()) {
-					log.info(
-							"[Proxy] tool_use event: name={}, input={}",
-							event.toolName(),
-							event.toolInput() != null ? event.toolInput()
-							                                 .substring(
-									                                 0,
-									                                 Math.min(
-											                                 200,
-											                                 event.toolInput()
-											                                      .length()
-									                                 )
-							                                 ) : "null"
-					);
+				if ("tool_use".equals(event.type()) && event.toolStop())
 					yield streamConverter.toResponsesToolCall(event, 1);
-				}
 				yield null;
 			}
 		};
