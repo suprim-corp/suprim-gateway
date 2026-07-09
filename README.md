@@ -6,63 +6,92 @@ Proxy gateway for Kiro API (AWS Q Developer) — OpenAI-compatible API with admi
 
 ## Stack
 
-| Layer         | Tech                     | Version |
-|---------------|--------------------------|---------|
-| Runtime       | Bun                      | 1.3.14+ |
-| Backend       | Elysia                   | 1.4.x   |
-| Frontend      | Next.js                  | 16.2    |
-| Database      | SQLite (bun:sqlite)      | native  |
-| ORM           | Drizzle                  | 1.x     |
-| UI            | shadcn/ui (CLI v4, Luma) | latest  |
-| Data fetching | TanStack Query           | v5      |
-| Styling       | Tailwind CSS             | 4.x     |
-| Linter        | Biome                    | latest  |
-| Test          | Vitest                   | latest  |
-| Monorepo      | Turborepo                | latest  |
+| Layer    | Tech                           | Version |
+|----------|--------------------------------|---------|
+| Runtime  | Java (Corretto)                | 26      |
+| Backend  | Spring Boot                    | 4.1.0   |
+| Template | Thymeleaf                      | 4.x     |
+| Database | SQLite (Flyway migrations)     | JDBC    |
+| HTTP     | java.net.http.HttpClient       | stdlib  |
+| UI       | Tailwind CSS + HTMX + Chart.js | CDN     |
+| Build    | Maven                          | 3.9+    |
+| JSON     | Jackson 3                      | 3.x     |
+| Tokens   | jtokkit (cl100k_base)          | 1.1.0   |
 
 ## Features
 
 - **OpenAI-compatible API** — `/v1/chat/completions`, `/v1/models`
 - **Anthropic Messages API** — `/v1/messages` (native Claude SDK support)
-- **Responses API** — `/v1/responses` (OpenAI Responses format)
 - **Streaming SSE** — real-time response streaming
-- **Multi-account** — multiple Kiro accounts with automatic failover
 - **Virtual Keys** — create and manage API keys per user, rate limit, model whitelist
-- **Dashboard** — web UI for logs, account management, keys, health monitoring
-- **Auth** — supports Kiro Desktop Auth + AWS SSO OIDC
+- **Dashboard** — Thymeleaf server-rendered UI with HTMX live polling
+- **Auth** — supports Kiro Desktop Auth + AWS SSO OIDC + Kiro CLI SQLite
 - **Model resolver** — auto-normalizes model names (dots, dashes, date suffixes)
+- **Dynamic model registry** — fetches available models from Kiro API, caches locally
+- **Token estimation** — jtokkit (cl100k_base) with Claude correction factor
+- **Per-model pricing** — cost tracking per request in logs
 - **Retry logic** — auto-retry on 403/429/5xx with exponential backoff
 
 ## Project Structure
 
 ```
 kiro-gateway/
-├── package.json              # Bun workspaces
-├── turbo.json
-├── tsconfig.base.json
-├── .env.example
-├── packages/
-│   ├── api/                  # Elysia backend
-│   │   └── src/
-│   │       ├── index.ts      # Entry point
-│   │       ├── config.ts     # Env config (Zod)
-│   │       ├── db/           # Drizzle schema + migrations
-│   │       ├── auth/         # Token lifecycle
-│   │       ├── kiro/         # HTTP client, headers, stream parser
-│   │       ├── models/       # Name normalization + resolution
-│   │       ├── streaming/    # Kiro → OpenAI SSE converter
-│   │       ├── converters/   # OpenAI request → Kiro payload
-│   │       ├── virtual-keys/ # CRUD, rate limiter, auth middleware
-│   │       ├── routes/       # openai.ts, admin.ts, health.ts
-│   │       └── logging/      # Request logger
-│   ├── web/                  # Next.js 16.2 dashboard
-│   │   └── src/app/
-│   │       ├── page.tsx            # Dashboard (stats overview)
-│   │       ├── logs/page.tsx       # Request logs
-│   │       ├── accounts/page.tsx   # Account management
-│   │       ├── keys/page.tsx       # Virtual key management
-│   │       └── settings/page.tsx   # Settings
-│   └── shared/               # Shared types + constants
+├── pom.xml
+├── .env
+├── src/main/java/dev/suprim/gateway/
+│   ├── KiroGatewayApplication.java
+│   ├── config/
+│   │   ├── AppConfig.java              # @ConfigurationProperties
+│   │   └── SecurityConfig.java         # Spring Security (form login)
+│   ├── auth/
+│   │   ├── KiroAuthManager.java        # Token lifecycle (refresh, multi-source)
+│   │   └── KiroCredentials.java        # Token holder
+│   ├── proxy/
+│   │   ├── KiroHttpClient.java         # Upstream HTTP + retry
+│   │   ├── KiroHeaders.java            # Spoofed headers
+│   │   ├── KiroEventParser.java        # AWS event stream binary parser
+│   │   ├── StreamConverter.java        # Kiro events → OpenAI SSE
+│   │   └── PayloadBuilder.java         # OpenAI request → Kiro format
+│   ├── model/
+│   │   ├── ModelResolver.java          # Name normalization
+│   │   └── ModelRegistry.java          # Dynamic model fetch + cache
+│   ├── virtualkey/
+│   │   ├── VirtualKey.java
+│   │   ├── VirtualKeyRepository.java
+│   │   ├── VirtualKeyService.java
+│   │   ├── VirtualKeyAuthFilter.java
+│   │   └── RateLimiter.java            # Sliding window in-memory
+│   ├── logging/
+│   │   ├── RequestLog.java
+│   │   ├── RequestLogRepository.java
+│   │   └── RequestLogService.java
+│   ├── utils/
+│   │   ├── TokenEstimator.java         # jtokkit cl100k_base + 1.15x factor
+│   │   └── PricingService.java         # Per-model cost calculation
+│   ├── api/                            # REST controllers (proxy)
+│   │   ├── CompletionsController.java  # POST /v1/chat/completions
+│   │   ├── MessagesController.java     # POST /v1/messages
+│   │   ├── ModelsController.java       # GET /v1/models
+│   │   └── HealthController.java       # GET /health
+│   └── admin/                          # Thymeleaf controllers (dashboard)
+│       ├── DashboardController.java
+│       ├── LogsController.java
+│       ├── KeysController.java
+│       ├── UsageController.java
+│       ├── SettingsController.java
+│       └── LoginController.java
+├── src/main/resources/
+│   ├── application.yml
+│   ├── db/migration/V1__initial_schema.sql
+│   └── templates/
+│       ├── layout.html
+│       ├── fragments/ (head, sidebar)
+│       ├── dashboard.html
+│       ├── logs.html
+│       ├── keys.html
+│       ├── usage.html
+│       ├── settings.html
+│       └── login.html
 ```
 
 ## Quick Start
@@ -72,19 +101,15 @@ kiro-gateway/
 git clone https://github.com/sant1ago/kiro-gateway.git
 cd kiro-gateway
 
-# Install
-bun install
-
 # Configure
 cp .env.example .env
-bun run generate:key    # Generate ADMIN_API_KEY and write to .env
 # Edit .env with your credentials
 
-# Dev
-bun dev           # Start both backend + frontend
-bun dev:api       # Backend only (:3001, internal)
-bun dev:web       # Dashboard + API proxy (:3000)
+# Build & run
+./mvnw spring-boot:run
 ```
+
+App starts on http://localhost:3001 — serves both dashboard and proxy API.
 
 ## Configuration
 
@@ -94,15 +119,14 @@ KIRO_CREDS_FILE="~/.aws/sso/cache/kiro-auth-token.json"
 # or
 REFRESH_TOKEN="your_refresh_token"
 # or
-KIRO_CLI_DB_FILE="~/.local/share/kiro-cli/data.sqlite3"
+KIRO_CLI_DB_FILE="~/Library/Application Support/kiro-cli/data.sqlite3"
 
 # Admin
-ADMIN_API_KEY="your-admin-secret"    # or: bun run generate:key
+ADMIN_API_KEY="your-admin-secret"
 
 # Optional
 KIRO_REGION="us-east-1"
 VPN_PROXY_URL=""
-HOST="127.0.0.1"                     # 0.0.0.0 for container
 ```
 
 ## API Endpoints
@@ -115,29 +139,23 @@ HOST="127.0.0.1"                     # 0.0.0.0 for container
 | GET    | `/v1/models`           | Virtual Key | List models               |
 | POST   | `/v1/chat/completions` | Virtual Key | Chat completions (OpenAI) |
 | POST   | `/v1/messages`         | Virtual Key | Messages (Anthropic)      |
-| POST   | `/v1/responses`        | Virtual Key | Responses (OpenAI)        |
 
-### Admin API (Dashboard)
+### Admin Dashboard
 
-| Method                | Path              | Auth      | Description         |
-|-----------------------|-------------------|-----------|---------------------|
-| GET                   | `/admin/stats`    | Admin Key | Dashboard stats     |
-| GET                   | `/admin/logs`     | Admin Key | Request logs        |
-| GET/POST              | `/admin/accounts` | Admin Key | Manage accounts     |
-| GET/POST/PATCH/DELETE | `/admin/keys`     | Admin Key | Manage virtual keys |
+| Path        | Description       |
+|-------------|-------------------|
+| `/`         | Dashboard (stats) |
+| `/logs`     | Request logs      |
+| `/keys`     | Virtual key CRUD  |
+| `/usage`    | Usage charts      |
+| `/settings` | Settings          |
+| `/login`    | Login page        |
 
 ## Virtual Keys
 
-Virtual keys let you create multiple API keys for different users:
-
 ```bash
-# Create key via dashboard or API
-curl -X POST http://localhost:3000/api/admin/keys \
-  -H "Authorization: Bearer $ADMIN_API_KEY" \
-  -d '{"name": "user-1", "rateLimitPerMin": 30, "allowedModels": ["claude-sonnet-4.5"]}'
-
-# Use virtual key
-curl http://localhost:3000/v1/chat/completions \
+# Use virtual key with OpenAI SDK
+curl http://localhost:3001/v1/chat/completions \
   -H "Authorization: Bearer sk-kiro-xxxxx" \
   -d '{"model": "claude-sonnet-4-5", "messages": [{"role": "user", "content": "Hello!"}], "stream": true}'
 ```
@@ -148,92 +166,58 @@ Each virtual key has:
 - Model whitelist (restrict which models can be used)
 - Usage tracking (request count, tokens used)
 - Enable/disable toggle
-- Revoke (permanent, cannot be re-enabled)
+- Revoke (permanent)
 
 ## Supported Models
 
-| Model             | Description                |
-|-------------------|----------------------------|
-| claude-sonnet-4.5 | Balanced, great for coding |
-| claude-haiku-4.5  | Fast, cheap                |
-| claude-sonnet-4   | Previous gen               |
-| deepseek-v3.2     | Open MoE 685B              |
-| glm-5             | Open MoE 744B              |
-| qwen3-coder-next  | Coding-focused             |
+| Model             | Input $/1M | Output $/1M |
+|-------------------|------------|-------------|
+| auto              | 3.00       | 15.00       |
+| claude-sonnet-4   | 3.00       | 15.00       |
+| claude-sonnet-4.5 | 3.00       | 15.00       |
+| claude-sonnet-4.6 | 3.00       | 15.00       |
+| claude-opus-4     | 5.00       | 25.00       |
+| claude-opus-4.5   | 5.00       | 25.00       |
+| claude-opus-4.6   | 5.00       | 25.00       |
+| claude-haiku-4.5  | 1.00       | 5.00        |
+| claude-3.7-sonnet | 3.00       | 15.00       |
+| deepseek-v3.2     | 0.62       | 1.85        |
+| deepseek-3.2      | 0.62       | 1.85        |
+| glm-5             | 1.00       | 3.20        |
+| minimax-m2.5      | 0.30       | 1.20        |
+| minimax-m2.1      | 0.30       | 1.20        |
+| qwen3-coder-next  | 0.15       | 1.20        |
 
 Model names are auto-normalized — `claude-sonnet-4-5`, `claude-sonnet-4.5`, `claude-sonnet-4-5-20250929` all work.
 
-## Docker
+## Kiro CLI Auth (Recommended)
+
+Install and login with [Kiro CLI](https://kiro.dev/docs/cli/installation/) on the host machine:
 
 ```bash
-# Build & run
-docker compose up -d
-
-# Rebuild
-docker compose up -d --build
-
-# Logs
-docker compose logs -f
-```
-
-Image: ~57MB (Alpine + UPX-compressed Bun). Only exposes port 3000 (Next.js), API runs internally on 3001.
-
-SQLite data persists via volume `./data`. Set `DATABASE_PATH` in `.env`:
-
-```env
-DATABASE_PATH=/app/data/gateway.db
-```
-
-Port is configurable via `WEB_PORT` (default 3000):
-
-```env
-WEB_PORT=8080
-```
-
-### Credentials Volume
-
-Container supports two credential sources:
-
-**Option 1: Kiro CLI SQLite (recommended)**
-
-Install and login with [Kiro CLI](https://kiro.dev/docs/cli/installation/) on the host machine first:
-
-```bash
-# Ubuntu
-wget https://desktop-release.q.us-east-1.amazonaws.com/latest/kiro-cli.deb
-sudo dpkg -i kiro-cli.deb
+# macOS
+brew install kiro-cli
 
 # Then authenticate
 kiro
 ```
 
-Then configure the mount in `.env`:
+Gateway reads tokens directly from the CLI's SQLite database and persists refreshed tokens back. Both gateway and
+kiro-cli share the same token chain.
+
+Set in `.env`:
 
 ```env
-KIRO_CLI_HOST_PATH="/root/.local/share/kiro-cli"
+KIRO_CLI_DB_FILE="~/Library/Application Support/kiro-cli/data.sqlite3"
 ```
-
-Gateway reads tokens directly from the CLI's SQLite database and persists refreshed tokens back. Both gateway and kiro-cli share the same token chain — as long as one of them keeps running, the token stays alive.
-
-**Option 2: JSON credential file (legacy)**
-
-```env
-KIRO_CREDS_HOST_PATH="/root/.aws/sso/cache"
-```
-
-Directory must contain `kiro-auth-token.json` and `{clientIdHash}.json` (device registration).
-
-Note: If the gateway container stops for longer than the token TTL (~1 hour), the refresh token expires and you'll need to re-login with `kiro-cli auth login` on the host.
 
 ## Development
 
 ```bash
-bun test          # Run tests
-bun lint          # Biome lint + format check
-bun build         # Build all packages
-bun db:generate   # Generate Drizzle migrations
-bun db:migrate    # Run migrations
-bun generate:key  # Generate admin key → .env
+./mvnw spring-boot:run          # Run (port 3001)
+./mvnw compile                  # Compile only
+./mvnw package -DskipTests      # Build JAR
+java -jar target/*.jar          # Run JAR
 ```
 
 ## License
