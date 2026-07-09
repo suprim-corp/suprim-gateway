@@ -18,12 +18,23 @@ final class ToolConverter {
 			return null;
 		}
 
+		String name;
+		String description;
+		Object parameters;
+
+		// OpenAI chat format: {type: "function", function: {name, description, parameters}}
 		Map<String, Object> fn = (Map<String, Object>) tool.get("function");
-		if (fn == null) {
-			return null;
+		if (fn != null) {
+			name = (String) fn.get("name");
+			description = (String) fn.get("description");
+			parameters = fn.get("parameters");
+		} else {
+			// Responses API format: {type: "function", name, description, parameters}
+			name = (String) tool.get("name");
+			description = (String) tool.get("description");
+			parameters = tool.get("parameters");
 		}
 
-		String name = (String) fn.get("name");
 		if (name == null || name.isBlank()) {
 			return null;
 		}
@@ -31,18 +42,12 @@ final class ToolConverter {
 		ObjectNode spec = mapper.createObjectNode();
 		spec.put("name", name);
 
-		if (fn.containsKey("description")) {
-			String desc = (String) fn.get("description");
-			if (desc != null) {
-				spec.put("description",
-						desc.length() > 10237 ?
-								desc.substring(0, 10237) + "..." : desc
-				);
-			}
+		if (description != null) {
+			spec.put("description", description.length() > 10237 ? description.substring(0, 10237) + "..." : description);
 		}
 
-		if (fn.containsKey("parameters")) {
-			spec.set("inputSchema", mapper.valueToTree(fn.get("parameters")));
+		if (parameters != null) {
+			spec.set("inputSchema", mapper.valueToTree(parameters));
 		} else {
 			ObjectNode emptySchema = mapper.createObjectNode();
 			emptySchema.put("type", "object");
