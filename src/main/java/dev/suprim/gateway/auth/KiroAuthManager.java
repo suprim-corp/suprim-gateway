@@ -1,5 +1,7 @@
 package dev.suprim.gateway.auth;
 
+import dev.suprim.gateway.auth.reader.CredentialStoreReader;
+import dev.suprim.gateway.auth.reader.KiroSourceReader;
 import dev.suprim.gateway.config.AppConfig;
 import jakarta.annotation.PostConstruct;
 import lombok.Getter;
@@ -16,16 +18,11 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
 
 @Component
@@ -69,36 +66,27 @@ public class KiroAuthManager {
 		this.profileArn = config.profileArn();
 
 		// credential store có sẵn → dùng luôn, không cần đọc Kiro DB
-		if (credentialStore.exists()) {
-			List<StoredAccount> accounts = credentialStore.load();
-			if (!accounts.isEmpty()) {
-				loadFromStore(accounts.getFirst());
-				detectAuthType();
-				log.info(
-						"[Auth] Initialized from credential store: type={}, region={}, apiRegion={}",
-						authType,
-						config.region(),
-						config.apiRegion()
-				);
-				return;
-			}
+		Optional<KiroCredentials> fromStore = CredentialStoreReader.read(credentialStore);
+		if (fromStore.isPresent()) {
+			applyCredentials(fromStore.get());
+			log.info(
+					"[Auth] Initialized from credential store: type={}, region={}, apiRegion={}",
+					authType,
+					config.region(),
+					config.apiRegion()
+			);
+			return;
 		}
 
 		// fallback: đọc từ Kiro DB / JSON config, rồi bootstrap vào store
 		if (config.cliDbFile() != null && !config.cliDbFile().isBlank()) {
 			credSourceType = "sqlite";
 			credSourcePath = config.cliDbFile();
-			loadFromSqlite(resolvePath(credSourcePath));
-		} else if (config.credsFile() != null &&
-		           !config.credsFile().isBlank()) {
+		} else if (config.credsFile() != null && !config.credsFile().isBlank()) {
 			credSourceType = "json";
 			credSourcePath = config.credsFile();
-			loadFromJson(resolvePath(credSourcePath));
-		} else if (config.refreshToken() != null &&
-		           !config.refreshToken().isBlank()) {
-			this.refreshToken = config.refreshToken();
 		}
-		detectAuthType();
+		KiroSourceReader.read(config).ifPresent(this::applyCredentials);
 		bootstrapStore();
 		log.info(
 				"[Auth] Initialized: type={}, region={}, apiRegion={}",
@@ -254,7 +242,7 @@ public class KiroAuthManager {
 			throw new RuntimeException(msg);
 		}
 		JsonNode json = mapper.readTree(response.body());
-		this.accessToken = textOrNull(json, "access_token") != null
+		this.accessToken = json.has("access_token") && !json.get("access_token").isNull()
 				? json.get("access_token").asString()
 				: json.get("accessToken").asString();
 		if (json.has("refresh_token")) {
@@ -268,15 +256,15 @@ public class KiroAuthManager {
 		this.expiresAt = Instant.now().plusSeconds(expiresIn);
 	}
 
-	private void loadFromStore(StoredAccount account) {
-		this.profileArn = account.profileArn() !=
-		                  null ? account.profileArn() : this.profileArn;
-		this.clientId = account.clientId();
-		this.clientSecret = account.clientSecret();
-		this.accessToken = account.accessToken();
-		this.refreshToken = account.refreshToken();
-		this.expiresAt = account.expiresAt();
-		this.scopes = account.scopes();
+	private void applyCredentials(KiroCredentials creds) {
+		if (creds.profileArn() != null) this.profileArn = creds.profileArn();
+		this.clientId = creds.clientId();
+		this.clientSecret = creds.clientSecret();
+		this.accessToken = creds.accessToken();
+		this.refreshToken = creds.refreshToken();
+		this.expiresAt = creds.expiresAt();
+		this.scopes = creds.scopes();
+		this.authType = creds.authType();
 	}
 
 	private void bootstrapStore() {
@@ -303,137 +291,5 @@ public class KiroAuthManager {
 				             .apiRegion(config.apiRegion())
 				             .build();
 		credentialStore.save(List.of(account));
-	}
-
-	private void loadFromJson(Path path) {
-		try {
-			if (!Files.exists(path)) {
-				log.warn("[Auth] JSON creds not found: {}", path);
-				return;
-			}
-			JsonNode json = mapper.readTree(Files.readString(path));
-			this.accessToken = textOrNull(json, "accessToken");
-			this.refreshToken = textOrNull(json, "refreshToken");
-			if (json.has("expiresAt")) {
-				this.expiresAt = Instant.parse(
-						json.get("expiresAt").asString()
-				);
-			}
-			if (json.has("profileArn") && this.profileArn == null) {
-				this.profileArn = json.get("profileArn").asString();
-			}
-
-			this.clientId = textOrNull(json, "clientId");
-			this.clientSecret = textOrNull(json, "clientSecret");
-		} catch (Exception e) {
-			log.error("[Auth] Failed to load JSON creds: {}", e.getMessage());
-		}
-	}
-
-	private void loadFromSqlite(Path path) {
-		try {
-			if (!Files.exists(path)) {
-				log.warn("[Auth] SQLite DB not found: {}", path);
-				return;
-			}
-			String jdbcUrl = "jdbc:sqlite:" + path;
-			try (
-					Connection conn = DriverManager.getConnection(jdbcUrl);
-					Statement stmt = conn.createStatement()
-			) {
-				stmt.execute("PRAGMA wal_checkpoint(PASSIVE)");
-
-				try (ResultSet rs = stmt.executeQuery(
-						"SELECT value FROM auth_kv WHERE key = 'kirocli:odic:device-registration'")) {
-					if (rs.next()) {
-						JsonNode reg = mapper.readTree(rs.getString("value"));
-						this.clientId = textOrNull(reg, "client_id");
-						this.clientSecret = textOrNull(reg, "client_secret");
-						if (reg.has("scopes") && reg.get("scopes").isArray()) {
-							this.scopes = new String[reg.get("scopes").size()];
-							for (int i = 0; i < reg.get("scopes").size(); i++) {
-								this.scopes[i] = reg.get("scopes")
-								                    .get(i)
-								                    .asString();
-							}
-						}
-					}
-				}
-
-				String[] tokenKeys = {"kirocli:social:token", "kirocli:odic:token", "codewhisperer:odic:token"};
-				for (String key : tokenKeys) {
-					try (ResultSet rs = stmt.executeQuery(
-							"SELECT value FROM auth_kv WHERE key = '" + key +
-							"'")) {
-						if (rs.next()) {
-							JsonNode json = mapper.readTree(rs.getString("value"));
-							this.accessToken = textOrNull(json, "access_token");
-							if (this.accessToken == null) {
-								this.accessToken = textOrNull(
-										json,
-										"accessToken"
-								);
-							}
-
-							this.refreshToken = textOrNull(
-									json,
-									"refresh_token"
-							);
-
-							if (this.refreshToken == null) {
-								this.refreshToken = textOrNull(
-										json,
-										"refreshToken"
-								);
-							}
-
-							String exp = textOrNull(json, "expires_at");
-							if (exp == null) exp = textOrNull(
-									json,
-									"expiresAt"
-							);
-							if (exp != null)
-								this.expiresAt = Instant.parse(exp);
-							if (this.clientId == null) {
-								this.clientId = textOrNull(json, "client_id");
-							}
-
-							if (this.clientSecret == null) {
-								this.clientSecret = textOrNull(
-										json,
-										"client_secret"
-								);
-							}
-
-							if (this.accessToken != null ||
-							    this.refreshToken != null) break;
-						}
-					}
-				}
-			}
-		} catch (Exception e) {
-			log.error("[Auth] Failed to load SQLite creds: {}", e.getMessage());
-		}
-	}
-
-	private void detectAuthType() {
-		if (clientId != null && clientSecret != null) {
-			this.authType = KiroCredentials.AuthType.AWS_SSO_OIDC;
-		} else {
-			this.authType = KiroCredentials.AuthType.KIRO_DESKTOP;
-		}
-	}
-
-	private static String textOrNull(JsonNode node, String field) {
-		return node.has(field) && !node.get(field).isNull() ? node.get(field)
-		                                                          .asString() : null;
-	}
-
-	private static Path resolvePath(String path) {
-		if (path.startsWith("~")) {
-			return Path.of(System.getProperty("user.home"))
-			           .resolve(path.substring(2));
-		}
-		return Path.of(path);
 	}
 }

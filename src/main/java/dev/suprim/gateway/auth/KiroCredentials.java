@@ -1,7 +1,10 @@
 package dev.suprim.gateway.auth;
 
+import lombok.Builder;
+
 import java.time.Instant;
 
+@Builder
 public record KiroCredentials(
         String accessToken,
         String refreshToken,
