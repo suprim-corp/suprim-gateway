@@ -11,7 +11,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Instant;
 
-// AWS SSO OIDC accepts camelCase keys (ref: Kiro-Go/auth/oidc.go)
+/**
+ * Refreshes access token via AWS SSO OIDC endpoint.
+ * <p>AWS SSO OIDC accepts camelCase keys (ref: Kiro-Go/auth/oidc.go).</p>
+ */
 public final class SsoOidcTokenRefresher {
 
 	private static final ObjectMapper mapper = new ObjectMapper();
@@ -90,6 +93,7 @@ public final class SsoOidcTokenRefresher {
 		                    .build();
 	}
 
+	/** Returns the first non-null string value found among the given field names. */
 	private static String coalesce(JsonNode node, String... fields) {
 		for (String field : fields) {
 			if (node.has(field) && !node.get(field).isNull()) {
@@ -99,6 +103,7 @@ public final class SsoOidcTokenRefresher {
 		return null;
 	}
 
+	/** Returns the first int value found among the given field names, or defaultValue if none present. */
 	private static int intOrDefault(
 			JsonNode node,
 			int defaultValue,

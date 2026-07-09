@@ -10,6 +10,7 @@ import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.util.Map;
 
+/** Refreshes access token via Kiro Desktop social auth endpoint. */
 public final class DesktopTokenRefresher {
 
 	private static final ObjectMapper mapper = new ObjectMapper();
