@@ -33,35 +33,44 @@ public class StreamHandler {
 
 		byte[] buf = new byte[8192];
 		int read;
-		while ((read = response.body().read(buf)) != -1) {
-			byte[] chunk = new byte[read];
-			System.arraycopy(buf, 0, chunk, 0, read);
-			List<KiroEvent> events = parser.feed(chunk);
-			for (KiroEvent event : events) {
-				if ("reasoning".equals(event.type())) continue;
-				if ("content".equals(event.type()) && event.content() != null) {
-					filter.accept(event.content(), filtered -> {
-						if (filtered.isEmpty()) return;
-						if (firstTokenMs[0] < 0) {
-							firstTokenMs[0] = System.currentTimeMillis() - startTime;
+		try (InputStream body = response.body()) {
+			while ((read = body.read(buf)) != -1) {
+				byte[] chunk = new byte[read];
+				System.arraycopy(buf, 0, chunk, 0, read);
+				List<KiroEvent> events = parser.feed(chunk);
+				for (KiroEvent event : events) {
+					if ("reasoning".equals(event.type())) continue;
+					if ("content".equals(event.type()) &&
+					    event.content() != null) {
+						filter.accept(
+								event.content(), filtered -> {
+									if (filtered.isEmpty()) return;
+									if (firstTokenMs[0] < 0) {
+										firstTokenMs[0] =
+												System.currentTimeMillis() -
+												startTime;
+									}
+									fullText.append(filtered);
+									outputTokens[0] += tokenEstimator.countTokens(
+											filtered);
+									try {
+										String sse = eventWriter.convert(
+												KiroEvent.content(filtered));
+										if (sse != null) {
+											writer.write(sse);
+											writer.flush();
+										}
+									} catch (Exception e) {
+										throw new RuntimeException(e);
+									}
+								}
+						);
+					} else {
+						String sse = eventWriter.convert(event);
+						if (sse != null) {
+							writer.write(sse);
+							writer.flush();
 						}
-						fullText.append(filtered);
-						outputTokens[0] += tokenEstimator.countTokens(filtered);
-						try {
-							String sse = eventWriter.convert(KiroEvent.content(filtered));
-							if (sse != null) {
-								writer.write(sse);
-								writer.flush();
-							}
-						} catch (Exception e) {
-							throw new RuntimeException(e);
-						}
-					});
-				} else {
-					String sse = eventWriter.convert(event);
-					if (sse != null) {
-						writer.write(sse);
-						writer.flush();
 					}
 				}
 			}
