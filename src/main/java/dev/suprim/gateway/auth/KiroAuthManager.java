@@ -237,10 +237,10 @@ public class KiroAuthManager {
 	private void refreshSsoOidc() throws Exception {
 		String url = "https://oidc." + config.region() + ".amazonaws.com/token";
 		ObjectNode payload = mapper.createObjectNode();
-		payload.put("grant_type", "refresh_token");
-		payload.put("client_id", clientId);
-		payload.put("client_secret", clientSecret);
-		payload.put("refresh_token", refreshToken);
+		payload.put("grantType", "refresh_token");
+		payload.put("clientId", clientId);
+		payload.put("clientSecret", clientSecret);
+		payload.put("refreshToken", refreshToken);
 		if (scopes != null && scopes.length > 0) {
 			ArrayNode arr = payload.putArray("scope");
 			for (String s : scopes) arr.add(s);
