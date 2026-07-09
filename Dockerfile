@@ -1,8 +1,9 @@
 FROM eclipse-temurin:26-jdk-noble AS builder
 WORKDIR /build
 
-RUN curl -s "https://get.sdkman.io" | bash && \
-    bash -c "source /root/.sdkman/bin/sdkman-init.sh && sdk install maven"
+RUN apt-get update && apt-get install -y --no-install-recommends curl zip unzip bash && \
+    curl -s "https://get.sdkman.io" | bash && \
+    bash -c "source /root/.sdkman/bin/sdkman-init.sh && sdk install maven 3.9.16"
 
 COPY pom.xml ./
 RUN bash -c "source /root/.sdkman/bin/sdkman-init.sh && mvn dependency:go-offline -q -B"
