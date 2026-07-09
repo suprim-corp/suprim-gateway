@@ -2,11 +2,14 @@ package dev.suprim.gateway.auth;
 
 import dev.suprim.gateway.config.AppConfig;
 import jakarta.annotation.PostConstruct;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.net.URI;
@@ -17,15 +20,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
-
-import tools.jackson.databind.node.ArrayNode;
 
 @Component
 public class KiroAuthManager {
@@ -34,11 +35,13 @@ public class KiroAuthManager {
 	private static final long REFRESH_COOLDOWN_MS = 60_000;
 
 	private final AppConfig config;
+	private final KiroCredentialStore credentialStore;
 	private final ObjectMapper mapper = new ObjectMapper();
 	private final HttpClient httpClient = HttpClient.newBuilder()
 	                                                .connectTimeout(
 			                                                Duration.ofSeconds(
-					                                                10)
+					                                                10
+			                                                )
 	                                                )
 	                                                .build();
 	private final ReentrantLock refreshLock = new ReentrantLock();
@@ -46,6 +49,7 @@ public class KiroAuthManager {
 	private String accessToken;
 	private String refreshToken;
 	private Instant expiresAt;
+	@Getter
 	private String profileArn;
 	private String clientId;
 	private String clientSecret;
@@ -55,13 +59,32 @@ public class KiroAuthManager {
 	private String credSourceType;
 	private String credSourcePath;
 
-	KiroAuthManager(AppConfig config) {
+	KiroAuthManager(AppConfig config, KiroCredentialStore credentialStore) {
 		this.config = config;
+		this.credentialStore = credentialStore;
 	}
 
 	@PostConstruct
 	void init() {
 		this.profileArn = config.profileArn();
+
+		// credential store có sẵn → dùng luôn, không cần đọc Kiro DB
+		if (credentialStore.exists()) {
+			List<StoredAccount> accounts = credentialStore.load();
+			if (!accounts.isEmpty()) {
+				loadFromStore(accounts.getFirst());
+				detectAuthType();
+				log.info(
+						"[Auth] Initialized from credential store: type={}, region={}, apiRegion={}",
+						authType,
+						config.region(),
+						config.apiRegion()
+				);
+				return;
+			}
+		}
+
+		// fallback: đọc từ Kiro DB / JSON config, rồi bootstrap vào store
 		if (config.cliDbFile() != null && !config.cliDbFile().isBlank()) {
 			credSourceType = "sqlite";
 			credSourcePath = config.cliDbFile();
@@ -76,6 +99,7 @@ public class KiroAuthManager {
 			this.refreshToken = config.refreshToken();
 		}
 		detectAuthType();
+		bootstrapStore();
 		log.info(
 				"[Auth] Initialized: type={}, region={}, apiRegion={}",
 				authType,
@@ -94,8 +118,7 @@ public class KiroAuthManager {
 
 	public String getAccessToken() throws Exception {
 		if (accessToken != null && expiresAt != null && Instant.now().isBefore(
-				expiresAt.minusSeconds(600))
-		) {
+				expiresAt.minusSeconds(600))) {
 			return accessToken;
 		}
 		refresh();
@@ -106,16 +129,25 @@ public class KiroAuthManager {
 		refresh();
 	}
 
-	public String getProfileArn() {
-		return profileArn;
-	}
-
 	String getRegion() {
 		return config.region();
 	}
 
 	String getApiRegion() {
 		return config.apiRegion();
+	}
+
+	@Scheduled(fixedDelay = 2_700_000)
+		// 45 phút
+	void scheduledRefresh() {
+		if (refreshToken == null) return;
+		try {
+			log.info("[Auth] Scheduled token refresh");
+			refresh();
+			log.info("[Auth] Scheduled refresh OK, expires at {}", expiresAt);
+		} catch (Exception e) {
+			log.warn("[Auth] Scheduled refresh failed: {}", e.getMessage());
+		}
 	}
 
 	private void refresh() throws Exception {
@@ -130,23 +162,13 @@ public class KiroAuthManager {
 				throw new RuntimeException("Token refresh on cooldown");
 			}
 
-			if (credSourceType != null) {
-				if ("sqlite".equals(credSourceType)) loadFromSqlite(resolvePath(
-						credSourcePath));
-				else if ("json".equals(credSourceType))
-					loadFromJson(resolvePath(credSourcePath));
-				if (accessToken != null && expiresAt != null &&
-				    Instant.now().isBefore(expiresAt.minusSeconds(600))) {
-					return;
-				}
-			}
-
 			log.info("[Auth] Refreshing token via {}", authType);
 			if (authType == KiroCredentials.AuthType.KIRO_DESKTOP) {
 				refreshDesktop();
 			} else {
 				refreshSsoOidc();
 			}
+			saveToStore();
 		} catch (Exception e) {
 			lastRefreshFailure = System.currentTimeMillis();
 			throw e;
@@ -186,11 +208,10 @@ public class KiroAuthManager {
 		}
 		JsonNode json = mapper.readTree(response.body());
 		this.accessToken = json.get("accessToken").asString();
-		if (json.has("refreshToken")) this.refreshToken = json.get("refreshToken").asString();
-		if (json.has("expiresAt")) this.expiresAt = Instant.parse(
-				json.get("expiresAt").asString()
-		);
-		saveBackToSource();
+		if (json.has("refreshToken")) this.refreshToken = json.get(
+				"refreshToken").asString();
+		if (json.has("expiresAt")) this.expiresAt = Instant.parse(json.get(
+				"expiresAt").asString());
 	}
 
 	private void refreshSsoOidc() throws Exception {
@@ -222,23 +243,61 @@ public class KiroAuthManager {
 			String responseBody = response.body();
 			throw new RuntimeException(
 					"SSO OIDC refresh failed (" + response.statusCode() +
-					"): " + responseBody.substring(
+					"): " +
+					responseBody.substring(
 							0,
 							Math.min(300, responseBody.length())
 					));
 		}
 		JsonNode json = mapper.readTree(response.body());
-		this.accessToken = textOrNull(json, "access_token") != null ? json.get(
-				"access_token").asText() : json.get("accessToken").asText();
-		if (json.has("refresh_token")) this.refreshToken = json.get(
-				"refresh_token").asText();
-		else if (json.has("refreshToken")) this.refreshToken = json.get(
-				"refreshToken").asText();
-		int expiresIn = json.has("expires_in") ? json.get("expires_in")
-		                                             .asInt() : (json.has(
-				"expiresIn") ? json.get("expiresIn").asInt() : 3600);
+		this.accessToken = textOrNull(json, "access_token") != null
+				? json.get("access_token").asString()
+				: json.get("accessToken").asString();
+		if (json.has("refresh_token")) {
+			this.refreshToken = json.get("refresh_token").asString();
+		} else if (json.has("refreshToken")) {
+			this.refreshToken = json.get("refreshToken").asString();
+		}
+		int expiresIn = json.has("expires_in") ? json.get("expires_in").asInt()
+				: (json.has("expiresIn") ? json.get("expiresIn")
+				                               .asInt() : 3600);
 		this.expiresAt = Instant.now().plusSeconds(expiresIn);
-		saveBackToSource();
+	}
+
+	private void loadFromStore(StoredAccount account) {
+		this.profileArn = account.profileArn() !=
+		                  null ? account.profileArn() : this.profileArn;
+		this.clientId = account.clientId();
+		this.clientSecret = account.clientSecret();
+		this.accessToken = account.accessToken();
+		this.refreshToken = account.refreshToken();
+		this.expiresAt = account.expiresAt();
+		this.scopes = account.scopes();
+	}
+
+	private void bootstrapStore() {
+		if (refreshToken == null && accessToken == null) return;
+		saveToStore();
+		log.info(
+				"[Auth] Bootstrapped credential store from {}",
+				credSourceType
+		);
+	}
+
+	private void saveToStore() {
+		StoredAccount account = StoredAccount.builder()
+		                                     .profileArn(profileArn)
+		                                     .authType(authType.name())
+		                                     .clientId(clientId)
+		                                     .clientSecret(clientSecret)
+		                                     .accessToken(accessToken)
+		                                     .refreshToken(refreshToken)
+		                                     .expiresAt(expiresAt)
+		                                     .scopes(scopes)
+		                                     .region(config.region())
+		                                     .apiRegion(config.apiRegion())
+		                                     .build();
+		credentialStore.save(List.of(account));
 	}
 
 	private void loadFromJson(Path path) {
@@ -250,10 +309,15 @@ public class KiroAuthManager {
 			JsonNode json = mapper.readTree(Files.readString(path));
 			this.accessToken = textOrNull(json, "accessToken");
 			this.refreshToken = textOrNull(json, "refreshToken");
-			if (json.has("expiresAt")) this.expiresAt = Instant.parse(json.get(
-					"expiresAt").asText());
-			if (json.has("profileArn") && this.profileArn == null)
-				this.profileArn = json.get("profileArn").asText();
+			if (json.has("expiresAt")) {
+				this.expiresAt = Instant.parse(
+						json.get("expiresAt").asString()
+				);
+			}
+			if (json.has("profileArn") && this.profileArn == null) {
+				this.profileArn = json.get("profileArn").asString();
+			}
+
 			this.clientId = textOrNull(json, "clientId");
 			this.clientSecret = textOrNull(json, "clientSecret");
 		} catch (Exception e) {
@@ -274,22 +338,18 @@ public class KiroAuthManager {
 			) {
 				stmt.execute("PRAGMA wal_checkpoint(PASSIVE)");
 
-				try (
-						ResultSet rs = stmt.executeQuery(
-								"SELECT value FROM auth_kv WHERE key = 'kirocli:odic:device-registration'"
-						)
-				) {
+				try (ResultSet rs = stmt.executeQuery(
+						"SELECT value FROM auth_kv WHERE key = 'kirocli:odic:device-registration'")) {
 					if (rs.next()) {
 						JsonNode reg = mapper.readTree(rs.getString("value"));
 						this.clientId = textOrNull(reg, "client_id");
 						this.clientSecret = textOrNull(reg, "client_secret");
-
 						if (reg.has("scopes") && reg.get("scopes").isArray()) {
 							this.scopes = new String[reg.get("scopes").size()];
-
 							for (int i = 0; i < reg.get("scopes").size(); i++) {
 								this.scopes[i] = reg.get("scopes")
-								                    .get(i).asString();
+								                    .get(i)
+								                    .asString();
 							}
 						}
 					}
@@ -303,20 +363,25 @@ public class KiroAuthManager {
 						if (rs.next()) {
 							JsonNode json = mapper.readTree(rs.getString("value"));
 							this.accessToken = textOrNull(json, "access_token");
-							if (this.accessToken == null)
+							if (this.accessToken == null) {
 								this.accessToken = textOrNull(
 										json,
 										"accessToken"
 								);
+							}
+
 							this.refreshToken = textOrNull(
 									json,
 									"refresh_token"
 							);
-							if (this.refreshToken == null)
+
+							if (this.refreshToken == null) {
 								this.refreshToken = textOrNull(
 										json,
 										"refreshToken"
 								);
+							}
+
 							String exp = textOrNull(json, "expires_at");
 							if (exp == null) exp = textOrNull(
 									json,
@@ -324,13 +389,17 @@ public class KiroAuthManager {
 							);
 							if (exp != null)
 								this.expiresAt = Instant.parse(exp);
-							if (this.clientId == null)
+							if (this.clientId == null) {
 								this.clientId = textOrNull(json, "client_id");
-							if (this.clientSecret == null)
+							}
+
+							if (this.clientSecret == null) {
 								this.clientSecret = textOrNull(
 										json,
 										"client_secret"
 								);
+							}
+
 							if (this.accessToken != null ||
 							    this.refreshToken != null) break;
 						}
@@ -339,50 +408,6 @@ public class KiroAuthManager {
 			}
 		} catch (Exception e) {
 			log.error("[Auth] Failed to load SQLite creds: {}", e.getMessage());
-		}
-	}
-
-	private void saveBackToSource() {
-		if (credSourceType == null) return;
-		try {
-			if ("json".equals(credSourceType)) {
-				Path path = resolvePath(credSourcePath);
-				JsonNode json = Files.exists(path) ? mapper.readTree(Files.readString(
-						path)) : mapper.createObjectNode();
-				ObjectNode obj = (ObjectNode) json;
-				obj.put("accessToken", accessToken);
-				obj.put("refreshToken", refreshToken);
-				if (expiresAt != null) obj.put(
-						"expiresAt",
-						expiresAt.toString()
-				);
-				Files.writeString(
-						path,
-						mapper.writerWithDefaultPrettyPrinter()
-						      .writeValueAsString(obj)
-				);
-			} else if ("sqlite".equals(credSourceType)) {
-				Path path = resolvePath(credSourcePath);
-				String jdbcUrl = "jdbc:sqlite:" + path;
-				try (Connection conn = DriverManager.getConnection(jdbcUrl);
-				     PreparedStatement stmt = conn.prepareStatement(
-						     "UPDATE auth_kv SET value = ? WHERE key = 'kirocli:odic:token'")) {
-					ObjectNode obj = mapper.createObjectNode();
-					obj.put("access_token", accessToken);
-					obj.put("refresh_token", refreshToken);
-					if (expiresAt != null) obj.put(
-							"expires_at",
-							expiresAt.toString()
-					);
-					stmt.setString(1, mapper.writeValueAsString(obj));
-					stmt.executeUpdate();
-				}
-			}
-		} catch (Exception e) {
-			log.warn(
-					"[Auth] Failed to save refreshed token back: {}",
-					e.getMessage()
-			);
 		}
 	}
 
