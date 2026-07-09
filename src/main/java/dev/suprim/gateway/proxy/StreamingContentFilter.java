@@ -12,6 +12,7 @@ public class StreamingContentFilter {
 	);
 
 	private final StringBuilder buffer = new StringBuilder();
+	private final StringBuilder textBatch = new StringBuilder();
 	private int depth = 0;
 	private String activeTag = null;
 
@@ -30,6 +31,7 @@ public class StreamingContentFilter {
 			}
 
 			if (c == '<') {
+				flushTextBatch(emit);
 				buffer.append(c);
 				continue;
 			}
@@ -43,31 +45,38 @@ public class StreamingContentFilter {
 
 					if (FILTERED_TAGS.contains(tagName)) {
 						if (isClosing) {
-							// Orphaned closing tag — drop
 							buffer.setLength(0);
 						} else {
 							activeTag = tagName;
 							depth = 1;
 						}
 					} else {
-						emit.accept(tag);
+						textBatch.append(tag);
 						buffer.setLength(0);
 					}
 				}
 				continue;
 			}
 
-			emit.accept(String.valueOf(c));
+			textBatch.append(c);
 		}
+		flushTextBatch(emit);
 	}
 
 	public void flush(Consumer<String> emit) {
 		if (!buffer.isEmpty() && activeTag == null) {
-			emit.accept(buffer.toString());
+			textBatch.append(buffer);
+			buffer.setLength(0);
 		}
-		buffer.setLength(0);
+		flushTextBatch(emit);
 		activeTag = null;
 		depth = 0;
+	}
+
+	private void flushTextBatch(Consumer<String> emit) {
+		if (textBatch.isEmpty()) return;
+		emit.accept(textBatch.toString());
+		textBatch.setLength(0);
 	}
 
 	private void trackDepth(char c) {
@@ -75,7 +84,6 @@ public class StreamingContentFilter {
 		String buf = buffer.toString();
 		String closingTag = "</" + activeTag + ">";
 		String openingTag = "<" + activeTag + ">";
-		// Check for nested opens/closes from the current buffer tail
 		if (buf.endsWith(closingTag)) {
 			depth--;
 		} else if (buf.endsWith(openingTag)) {
