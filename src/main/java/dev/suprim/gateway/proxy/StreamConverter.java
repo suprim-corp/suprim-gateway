@@ -461,6 +461,20 @@ public class StreamConverter {
 		       + toResponsesSse(
 				Map.of(
 						"type",
+						"response.function_call_arguments.delta",
+						"item_id",
+						fcId,
+						"call_id",
+						callId,
+						"output_index",
+						outputIndex,
+						"delta",
+						args
+				)
+		)
+		       + toResponsesSse(
+				Map.of(
+						"type",
 						"response.function_call_arguments.done",
 						"item_id",
 						fcId,
