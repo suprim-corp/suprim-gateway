@@ -93,12 +93,6 @@ public class ProxyFacade {
 				response.status(),
 				body.length() > 500 ? body.substring(0, 500) : body
 		);
-		if (response.status() == 400) {
-			try {
-				String reqJson = mapper.writeValueAsString(req.openAiRequest());
-				log.error("[Proxy] Request payload (400): {}", reqJson.length() > 2000 ? reqJson.substring(0, 2000) : reqJson);
-			} catch (Exception ignored) {}
-		}
 		int latency = (int) (System.currentTimeMillis() - startTime);
 		logPublisher.publish(
 				RequestLogEvent.builder()
@@ -217,7 +211,7 @@ public class ProxyFacade {
 	}
 
 	private String convertEvent(
-			KiroEventParser.KiroEvent event,
+			KiroEvent event,
 			Format format,
 			String model,
 			String id
@@ -272,16 +266,7 @@ public class ProxyFacade {
 	) {
 		return switch (format) {
 			case OPENAI -> streamConverter.toOpenAiNonStreaming(
-					List.of(
-							new KiroEventParser.KiroEvent(
-									"content",
-									content,
-									null,
-									null,
-									null,
-									false
-							)
-					), model
+					List.of(KiroEvent.content(content)), model
 			);
 			case ANTHROPIC -> streamConverter.toAnthropicNonStreaming(
 					id,

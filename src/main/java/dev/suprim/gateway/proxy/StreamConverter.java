@@ -1,6 +1,5 @@
 package dev.suprim.gateway.proxy;
 
-import dev.suprim.gateway.proxy.KiroEventParser.KiroEvent;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 

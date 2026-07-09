@@ -1,6 +1,5 @@
 package dev.suprim.gateway.proxy;
 
-import dev.suprim.gateway.proxy.KiroEventParser.KiroEvent;
 import dev.suprim.gateway.proxy.KiroHttpClient.KiroResponse;
 import dev.suprim.gateway.utils.TokenEstimator;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +14,9 @@ public class StreamHandler {
 
 	private final TokenEstimator tokenEstimator;
 
-	public record StreamResult(String content, int outputTokens, long firstTokenMs) {}
+	public record StreamResult(
+			String content, int outputTokens, long firstTokenMs
+	) {}
 
 	public StreamResult streamToWriter(
 			KiroResponse response,
@@ -35,6 +36,7 @@ public class StreamHandler {
 			System.arraycopy(buf, 0, chunk, 0, read);
 			List<KiroEvent> events = parser.feed(chunk);
 			for (KiroEvent event : events) {
+				if ("reasoning".equals(event.type())) continue;
 				String sse = eventWriter.convert(event);
 				if (sse != null) {
 					writer.write(sse);
@@ -49,18 +51,24 @@ public class StreamHandler {
 				}
 			}
 		}
-		return new StreamResult(fullText.toString(), outputTokens, firstTokenMs < 0 ? 0 : firstTokenMs);
+		String finalContent = ThinkingExtractor.strip(fullText.toString());
+		return new StreamResult(
+				finalContent,
+				outputTokens,
+				firstTokenMs < 0 ? 0 : firstTokenMs
+		);
 	}
 
 	public String collectContent(KiroResponse response) throws Exception {
 		List<KiroEvent> events = KiroEventParser.parseStream(response.body());
 		StringBuilder content = new StringBuilder();
 		for (KiroEvent event : events) {
+			if ("reasoning".equals(event.type())) continue;
 			if ("content".equals(event.type()) && event.content() != null) {
 				content.append(event.content());
 			}
 		}
-		return content.toString();
+		return ThinkingExtractor.strip(content.toString());
 	}
 
 	public int countTokens(String text) {

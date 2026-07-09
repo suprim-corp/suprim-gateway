@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,8 +57,16 @@ class ResponsesController {
 			return;
 		}
 
-		List<Map<String, Object>> messages = payloadBuilder.convertResponsesInput(
-				input);
+		List<Map<String, Object>> messages = new ArrayList<>(
+				payloadBuilder.convertResponsesInput(input)
+		);
+
+		// instructions → system message
+		Object instructions = request.get("instructions");
+		if (instructions instanceof String instr && !instr.isBlank()) {
+			messages.addFirst(Map.of("role", "system", "content", instr));
+		}
+
 		List<Map<String, Object>> tools = (List<Map<String, Object>>) request.get(
 				"tools");
 		int inputTokens = tokenEstimator.estimateRequest(messages, tools);
