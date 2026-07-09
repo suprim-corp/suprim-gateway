@@ -8,7 +8,9 @@ public class StreamingContentFilter {
 	private static final Set<String> FILTERED_TAGS = Set.of(
 			"thinking",
 			"tool_use",
-			"tool_result"
+			"tool_result",
+			"tool_call",
+			"tool_response"
 	);
 
 	private final StringBuilder buffer = new StringBuilder();

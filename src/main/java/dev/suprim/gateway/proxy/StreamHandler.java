@@ -3,8 +3,6 @@ package dev.suprim.gateway.proxy;
 import dev.suprim.gateway.proxy.KiroHttpClient.KiroResponse;
 import dev.suprim.gateway.utils.TokenEstimator;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -15,7 +13,6 @@ import java.util.List;
 @Component
 public class StreamHandler {
 
-	private static final Logger log = LoggerFactory.getLogger(StreamHandler.class);
 	private final TokenEstimator tokenEstimator;
 
 	public record StreamResult(
@@ -45,7 +42,6 @@ public class StreamHandler {
 					if ("reasoning".equals(event.type())) continue;
 					if ("content".equals(event.type()) &&
 					    event.content() != null) {
-						log.debug("[Stream] content event: {}", event.content().length() > 200 ? event.content().substring(0, 200) : event.content());
 						filter.accept(
 								event.content(), filtered -> {
 									if (filtered.isEmpty()) return;
