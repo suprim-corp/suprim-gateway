@@ -9,16 +9,12 @@ COPY pom.xml ./
 RUN bash -c "source /root/.sdkman/bin/sdkman-init.sh && mvn dependency:go-offline -q -B"
 
 COPY src/ src/
-RUN bash -c "source /root/.sdkman/bin/sdkman-init.sh && mvn package -DskipTests -q -B" && \
-    java -Djarmode=tools -jar target/*.jar extract --layers --destination target/extracted
+RUN bash -c "source /root/.sdkman/bin/sdkman-init.sh && mvn package -DskipTests -q -B"
 
 FROM eclipse-temurin:26-jre-alpine AS runtime
 WORKDIR /app
 
-COPY --from=builder /build/target/extracted/dependencies/ ./
-COPY --from=builder /build/target/extracted/spring-boot-loader/ ./
-COPY --from=builder /build/target/extracted/snapshot-dependencies/ ./
-COPY --from=builder /build/target/extracted/application/ ./
+COPY --from=builder /build/target/kiro-gateway-*.jar app.jar
 
 EXPOSE 8080
 
@@ -27,4 +23,4 @@ ENTRYPOINT ["java", \
     "-XX:MaxRAMPercentage=75.0", \
     "-XX:+ExitOnOutOfMemoryError", \
     "-Djava.security.egd=file:/dev/./urandom", \
-    "org.springframework.boot.loader.launch.JarLauncher"]
+    "-jar", "app.jar"]
