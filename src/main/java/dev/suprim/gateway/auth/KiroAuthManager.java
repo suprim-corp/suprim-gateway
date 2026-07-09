@@ -157,10 +157,20 @@ public class KiroAuthManager {
 			}
 
 			log.info("[Auth] Refreshing token via {}", authType);
-			if (authType == KiroCredentials.AuthType.KIRO_DESKTOP) {
-				refreshDesktop();
-			} else {
-				refreshSsoOidc();
+			try {
+				doRefresh();
+			} catch (Exception e) {
+				log.warn(
+						"[Auth] Refresh failed, reloading from Kiro DB: {}",
+						e.getMessage()
+				);
+				Optional<KiroCredentials> reloaded = KiroSourceReader.read(
+						config);
+				if (reloaded.isEmpty()) {
+					throw e;
+				}
+				applyCredentials(reloaded.get());
+				doRefresh();
 			}
 			saveToStore();
 		} catch (Exception e) {
@@ -171,21 +181,34 @@ public class KiroAuthManager {
 		}
 	}
 
+	private void doRefresh() throws Exception {
+		if (authType == KiroCredentials.AuthType.KIRO_DESKTOP) {
+			refreshDesktop();
+		} else {
+			refreshSsoOidc();
+		}
+	}
+
 	private void refreshDesktop() throws Exception {
 		String url = "https://prod." + config.region() +
 		             ".auth.desktop.kiro.dev/refreshToken";
-		String body = mapper.writeValueAsString(Map.of(
-				"refreshToken",
-				refreshToken
-		));
+		String body = mapper.writeValueAsString(
+				Map.of(
+						"refreshToken",
+						refreshToken
+				)
+		);
 		HttpRequest request = HttpRequest.newBuilder()
 		                                 .uri(URI.create(url))
 		                                 .header(
 				                                 "Content-Type",
 				                                 "application/json"
 		                                 )
-		                                 .POST(HttpRequest.BodyPublishers.ofString(
-				                                 body))
+		                                 .POST(
+				                                 HttpRequest.BodyPublishers.ofString(
+						                                 body
+				                                 )
+		                                 )
 		                                 .build();
 		HttpResponse<String> response = httpClient.send(
 				request,
@@ -198,14 +221,17 @@ public class KiroAuthManager {
 					responseBody.substring(
 							0,
 							Math.min(300, responseBody.length())
-					));
+					)
+			);
 		}
 		JsonNode json = mapper.readTree(response.body());
 		this.accessToken = json.get("accessToken").asString();
-		if (json.has("refreshToken")) this.refreshToken = json.get(
-				"refreshToken").asString();
-		if (json.has("expiresAt")) this.expiresAt = Instant.parse(json.get(
-				"expiresAt").asString());
+		if (json.has("refreshToken")) {
+			this.refreshToken = json.get("refreshToken").asString();
+		}
+		if (json.has("expiresAt")) {
+			this.expiresAt = Instant.parse(json.get("expiresAt").asString());
+		}
 	}
 
 	private void refreshSsoOidc() throws Exception {
@@ -225,9 +251,13 @@ public class KiroAuthManager {
 				                                 "Content-Type",
 				                                 "application/json"
 		                                 )
-		                                 .POST(HttpRequest.BodyPublishers.ofString(
-				                                 mapper.writeValueAsString(
-						                                 payload)))
+		                                 .POST(
+				                                 HttpRequest.BodyPublishers.ofString(
+						                                 mapper.writeValueAsString(
+								                                 payload
+						                                 )
+				                                 )
+		                                 )
 		                                 .build();
 		HttpResponse<String> response = httpClient.send(
 				request,
@@ -236,7 +266,8 @@ public class KiroAuthManager {
 		if (response.statusCode() != 200) {
 			String responseBody = response.body();
 			String detail = responseBody.substring(
-					0, Math.min(300, responseBody.length()));
+					0, Math.min(300, responseBody.length())
+			);
 			String msg = responseBody.contains("invalid_client")
 					?
 					"SSO OIDC client registration expired (~90 days). Re-open Kiro IDE to re-authorize, then restart gateway. Raw: " +
