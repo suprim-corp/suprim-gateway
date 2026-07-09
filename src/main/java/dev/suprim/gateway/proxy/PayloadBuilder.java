@@ -3,6 +3,8 @@ package dev.suprim.gateway.proxy;
 import dev.suprim.gateway.auth.KiroAuthManager;
 import dev.suprim.gateway.model.ModelResolver;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -19,6 +21,7 @@ public class PayloadBuilder {
 
     private static final int MAX_PAYLOAD_BYTES = 900_000;
     private static final int MAX_TOOL_RESULT_CONTENT_LEN = 4000;
+    private static final Logger log = LoggerFactory.getLogger(PayloadBuilder.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final ModelResolver modelResolver;
 
@@ -190,6 +193,7 @@ public class PayloadBuilder {
 
         // Truncate history if payload too large
         String json = mapper.writeValueAsString(root);
+        log.debug("[Payload] size={}, history={}, hasTools={}, hasToolResults={}", json.length(), history.size(), hasTools, hasCurrentToolResults);
         while (json.length() > MAX_PAYLOAD_BYTES && history.size() > 2) {
             // Keep priming pair (first 2 if system prompt exists), drop oldest after that
             int removeIdx = !systemPrompt.isEmpty() && history.size() > 2 ? 2 : 0;
