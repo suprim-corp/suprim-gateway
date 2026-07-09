@@ -1,11 +1,15 @@
 package dev.suprim.gateway.proxy;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class KiroEventDispatcher {
+
+	private static final Logger log = LoggerFactory.getLogger(KiroEventDispatcher.class);
 
 	private String currentToolName;
 	private String currentToolId;
@@ -73,6 +77,8 @@ public class KiroEventDispatcher {
 
 	private void processToolEvent(JsonNode toolNode, List<KiroEvent> events) {
 		if (toolNode == null) return;
+
+		log.debug("[ToolEvent] raw: {}", toolNode.toString().length() > 300 ? toolNode.toString().substring(0, 300) : toolNode.toString());
 
 		String name = toolNode.has("name") ? toolNode.get("name")
 		                                             .asString() : null;
