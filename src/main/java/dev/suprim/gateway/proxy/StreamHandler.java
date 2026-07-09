@@ -15,16 +15,18 @@ public class StreamHandler {
 
 	private final TokenEstimator tokenEstimator;
 
-	public record StreamResult(String content, int outputTokens) {}
+	public record StreamResult(String content, int outputTokens, long firstTokenMs) {}
 
 	public StreamResult streamToWriter(
 			KiroResponse response,
 			PrintWriter writer,
-			EventWriter eventWriter
+			EventWriter eventWriter,
+			long startTime
 	) throws Exception {
 		KiroEventParser parser = new KiroEventParser();
 		StringBuilder fullText = new StringBuilder();
 		int outputTokens = 0;
+		long firstTokenMs = -1;
 
 		byte[] buf = new byte[8192];
 		int read;
@@ -39,12 +41,15 @@ public class StreamHandler {
 					writer.flush();
 				}
 				if ("content".equals(event.type()) && event.content() != null) {
+					if (firstTokenMs < 0) {
+						firstTokenMs = System.currentTimeMillis() - startTime;
+					}
 					fullText.append(event.content());
 					outputTokens += tokenEstimator.countTokens(event.content());
 				}
 			}
 		}
-		return new StreamResult(fullText.toString(), outputTokens);
+		return new StreamResult(fullText.toString(), outputTokens, firstTokenMs < 0 ? 0 : firstTokenMs);
 	}
 
 	public String collectContent(KiroResponse response) throws Exception {

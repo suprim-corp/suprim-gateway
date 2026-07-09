@@ -145,7 +145,8 @@ public class ProxyFacade {
 		StreamHandler.StreamResult result = streamHandler.streamToWriter(
 				response,
 				writer,
-				event -> convertEvent(event, req.format(), req.model(), id)
+				event -> convertEvent(event, req.format(), req.model(), id),
+				startTime
 		);
 
 		writer.write(
@@ -159,7 +160,7 @@ public class ProxyFacade {
 		);
 		writer.flush();
 
-		publishLog(req, result.outputTokens(), true, startTime);
+		publishLog(req, result.outputTokens(), true, startTime, result.firstTokenMs());
 		if (req.virtualKeyId() != null && result.outputTokens() > 0)
 			keyService.incrementUsage(
 					req.virtualKeyId(),
@@ -190,7 +191,7 @@ public class ProxyFacade {
 				)
 		);
 
-		publishLog(req, outputTokens, false, startTime);
+		publishLog(req, outputTokens, false, startTime, null);
 		if (req.virtualKeyId() != null && outputTokens > 0)
 			keyService.incrementUsage(req.virtualKeyId(), outputTokens);
 	}
@@ -311,7 +312,8 @@ public class ProxyFacade {
 			ProxyRequest req,
 			int outputTokens,
 			boolean streaming,
-			long startTime
+			long startTime,
+			Long firstTokenMs
 	) {
 		int latency = (int) (System.currentTimeMillis() - startTime);
 		logPublisher.publish(
@@ -324,6 +326,7 @@ public class ProxyFacade {
 				               .completionTokens(outputTokens >
 				                                 0 ? outputTokens : null)
 				               .latencyMs(latency)
+				               .firstTokenMs(firstTokenMs != null ? firstTokenMs.intValue() : null)
 				               .streaming(streaming)
 				               .clientIp(req.clientIp())
 				               .build()
