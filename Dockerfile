@@ -15,7 +15,11 @@ RUN bash -c "source /root/.sdkman/bin/sdkman-init.sh && mvn package -DskipTests 
 FROM eclipse-temurin:26-jre-alpine AS runtime
 WORKDIR /app
 
+RUN mkdir -p data
+
 COPY --from=builder /build/target/extracted/ ./
+
+VOLUME ["/app/data"]
 
 EXPOSE 8080
 
