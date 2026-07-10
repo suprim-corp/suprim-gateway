@@ -71,6 +71,16 @@ class ProxyClientFactoryTest {
 	}
 
 	@Test
+	void build_proxyUsernameOnly_noAuthenticator() {
+		ProxyEntry entry = ProxyEntry.parse("http|admin@proxy.host:8080");
+
+		HttpClient client = ProxyClientFactory.build(entry);
+
+		assertNotNull(client);
+		assertFalse(client.authenticator().isPresent());
+	}
+
+	@Test
 	void build_proxySelector_connectFailed_doesNotThrow() {
 		ProxyEntry entry = ProxyEntry.parse("http|proxy.host:8080");
 
@@ -82,5 +92,24 @@ class ProxyClientFactoryTest {
 				InetSocketAddress.createUnresolved("proxy.host", 8080),
 				new java.io.IOException("test")
 		));
+	}
+
+	@Test
+	void createAuthenticator_returnsCorrectCredentials() {
+		ProxyEntry entry = ProxyEntry.parse("http|myuser:mypass@proxy.host:8080");
+
+		Authenticator auth = ProxyClientFactory.createAuthenticator(entry);
+		Authenticator.setDefault(auth);
+
+		try {
+			java.net.PasswordAuthentication pa = Authenticator.requestPasswordAuthentication(
+					"proxy.host", null, 8080, "http", "", "basic"
+			);
+			assertNotNull(pa);
+			assertEquals("myuser", pa.getUserName());
+			assertEquals("mypass", new String(pa.getPassword()));
+		} finally {
+			Authenticator.setDefault(null);
+		}
 	}
 }

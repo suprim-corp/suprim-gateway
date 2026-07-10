@@ -59,7 +59,7 @@ public class ProxyClientFactory {
 		};
 	}
 
-	private static Authenticator createAuthenticator(ProxyEntry entry) {
+	static Authenticator createAuthenticator(ProxyEntry entry) {
 		return new Authenticator() {
 			@Override
 			protected PasswordAuthentication getPasswordAuthentication() {
