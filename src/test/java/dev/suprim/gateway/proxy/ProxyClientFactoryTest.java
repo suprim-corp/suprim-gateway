@@ -2,7 +2,13 @@ package dev.suprim.gateway.proxy;
 
 import org.junit.jupiter.api.Test;
 
+import java.net.Authenticator;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.net.ProxySelector;
+import java.net.URI;
 import java.net.http.HttpClient;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -13,6 +19,7 @@ class ProxyClientFactoryTest {
 		HttpClient client = ProxyClientFactory.build(null);
 
 		assertNotNull(client);
+		assertFalse(client.proxy().isPresent());
 	}
 
 	@Test
@@ -22,6 +29,11 @@ class ProxyClientFactoryTest {
 		HttpClient client = ProxyClientFactory.build(entry);
 
 		assertNotNull(client);
+		assertTrue(client.proxy().isPresent());
+		ProxySelector selector = client.proxy().get();
+		List<Proxy> proxies = selector.select(URI.create("https://example.com"));
+		assertEquals(1, proxies.size());
+		assertEquals(Proxy.Type.HTTP, proxies.getFirst().type());
 	}
 
 	@Test
@@ -31,6 +43,11 @@ class ProxyClientFactoryTest {
 		HttpClient client = ProxyClientFactory.build(entry);
 
 		assertNotNull(client);
+		assertTrue(client.proxy().isPresent());
+		ProxySelector selector = client.proxy().get();
+		List<Proxy> proxies = selector.select(URI.create("https://example.com"));
+		assertEquals(1, proxies.size());
+		assertEquals(Proxy.Type.SOCKS, proxies.getFirst().type());
 	}
 
 	@Test
@@ -51,5 +68,19 @@ class ProxyClientFactoryTest {
 
 		assertNotNull(client);
 		assertFalse(client.authenticator().isPresent());
+	}
+
+	@Test
+	void build_proxySelector_connectFailed_doesNotThrow() {
+		ProxyEntry entry = ProxyEntry.parse("http|proxy.host:8080");
+
+		HttpClient client = ProxyClientFactory.build(entry);
+		ProxySelector selector = client.proxy().get();
+
+		assertDoesNotThrow(() -> selector.connectFailed(
+				URI.create("https://example.com"),
+				InetSocketAddress.createUnresolved("proxy.host", 8080),
+				new java.io.IOException("test")
+		));
 	}
 }

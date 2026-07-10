@@ -81,4 +81,22 @@ class ProxyEntryTest {
 
 		assertEquals("http|host:8080", entry.maskedUrl());
 	}
+
+	@Test
+	void parse_usernameOnly_noPassword() {
+		ProxyEntry entry = ProxyEntry.parse("http|admin@host:8080");
+
+		assertEquals(ProxyEntry.Scheme.HTTP, entry.scheme());
+		assertEquals("host", entry.host());
+		assertEquals(8080, entry.port());
+		assertEquals("admin", entry.username());
+		assertNull(entry.password());
+	}
+
+	@Test
+	void maskedUrl_usernameOnly_noPassword() {
+		ProxyEntry entry = ProxyEntry.parse("http|admin@host:8080");
+
+		assertEquals("http|admin@host:8080", entry.maskedUrl());
+	}
 }

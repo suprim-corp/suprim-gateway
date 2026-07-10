@@ -80,6 +80,18 @@ class ProxyListLoaderTest {
 	}
 
 	@Test
+	void load_proxiesNotArray_returnsEmptyList() throws IOException {
+		Path file = tempDir.resolve("proxies.json");
+		Files.writeString(file, """
+				{ "proxies": "not-an-array" }
+				""");
+
+		List<ProxyEntry> result = ProxyListLoader.load(file);
+
+		assertTrue(result.isEmpty());
+	}
+
+	@Test
 	void load_ignoresSchemaField() throws IOException {
 		Path file = tempDir.resolve("proxies.json");
 		Files.writeString(file, """

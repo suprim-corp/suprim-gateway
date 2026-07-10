@@ -57,8 +57,8 @@ public class ProxyChain {
 		ProxyEntry next = rotator.current();
 		log.warn(
 				"[Proxy] {} failed, switching to {}",
-				failed != null ? failed.maskedUrl() : "direct",
-				next != null ? next.maskedUrl() : "direct"
+				failed.maskedUrl(),
+				next.maskedUrl()
 		);
 		currentClient = ProxyClientFactory.build(next);
 	}
