@@ -33,6 +33,7 @@ Proxy gateway for Kiro API (AWS Q Developer) — OpenAI-compatible API with admi
 - **Token estimation** — jtokkit (cl100k_base) with Claude correction factor
 - **Per-model pricing** — cost tracking per request in logs
 - **Retry logic** — auto-retry on 403/429/5xx with exponential backoff
+- **Proxy chain** — HTTP/SOCKS5 proxy list with automatic failover (geo-bypass)
 
 ## Project Structure
 
@@ -128,8 +129,29 @@ ADMIN_API_KEY="your-admin-secret"
 
 # Optional
 KIRO_REGION="us-east-1"
-VPN_PROXY_URL=""
 ```
+
+## Proxy Configuration
+
+Create `data/proxies.json` to route upstream calls through proxies:
+
+```json
+{
+	"proxies": [
+		"socks5|user:pass@sg-proxy.example.com:1080",
+		"http|user:pass@us-proxy.example.com:8080"
+	]
+}
+```
+
+- Format: `scheme|[user:pass@]host:port`
+- Supported schemes: `http`, `socks5`
+- Order = priority — first proxy is preferred, rest are fallback
+- On failure (connection error, timeout) → automatically switches to next proxy
+- File missing or empty array → direct connection (no proxy)
+- Passwords are masked in all logs
+
+Override file path via env var: `PROXY_FILE="/custom/path/proxies.json"`
 
 ## API Endpoints
 
