@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-final class ContentExtractor {
+public final class ContentExtractor {
 
 	private ContentExtractor() {}
 
@@ -66,6 +66,18 @@ final class ContentExtractor {
 			}
 		}
 		return images;
+	}
+
+	public static boolean hasImageBlock(List<?> list) {
+		for (Object item : list) {
+			if (item instanceof Map<?, ?> m) {
+				String type = (String) m.get("type");
+				if ("image".equals(type) || "image_url".equals(type) || "input_image".equals(type)) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	static String fromResponsesBlock(Object content) {

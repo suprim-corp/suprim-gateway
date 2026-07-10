@@ -1,6 +1,6 @@
 package dev.suprim.gateway.api;
 
-import dev.suprim.gateway.proxy.PayloadBuilder;
+import dev.suprim.gateway.proxy.ContentExtractor;
 import dev.suprim.gateway.proxy.ProxyFacade;
 import dev.suprim.gateway.utils.ErrorResponse;
 import dev.suprim.gateway.utils.RequestContext;
@@ -104,7 +104,7 @@ class MessagesController {
 			for (Map<String, Object> msg : messages) {
 				String role = (String) msg.get("role");
 				Object content = msg.get("content");
-				if (content instanceof List<?> list && hasImageBlock(list)) {
+				if (content instanceof List<?> list && ContentExtractor.hasImageBlock(list)) {
 					result.add(Map.of("role", role, "content", list));
 				} else {
 					String textContent;
@@ -128,18 +128,5 @@ class MessagesController {
 		}
 
 		return result;
-	}
-
-	private boolean hasImageBlock(List<?> list) {
-		for (Object item : list) {
-			if (item instanceof Map<?, ?> m) {
-				String type = (String) m.get("type");
-				if ("image".equals(type) || "image_url".equals(type) ||
-				    "input_image".equals(type)) {
-					return true;
-				}
-			}
-		}
-		return false;
 	}
 }

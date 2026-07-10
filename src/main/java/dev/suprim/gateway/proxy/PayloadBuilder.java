@@ -92,7 +92,6 @@ public class PayloadBuilder {
 				if (isLast) {
 					currentContent = content != null ? content : "";
 					currentImages = images;
-					log.debug("[Payload] lastUserMsg images={}", images.size());
 				} else {
 					ObjectNode entry = mapper.createObjectNode();
 					ObjectNode userMsg = entry.putObject("userInputMessage");
