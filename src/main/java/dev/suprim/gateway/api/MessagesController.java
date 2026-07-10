@@ -104,25 +104,42 @@ class MessagesController {
 			for (Map<String, Object> msg : messages) {
 				String role = (String) msg.get("role");
 				Object content = msg.get("content");
-				String textContent;
-				if (content instanceof String s) {
-					textContent = s;
-				} else if (content instanceof List<?> list) {
-					StringBuilder sb = new StringBuilder();
-					for (Object item : list) {
-						if (item instanceof Map<?, ?> m) {
-							if ("text".equals(m.get("type"))) sb.append(m.get(
-									"text"));
-						}
-					}
-					textContent = sb.toString();
+				if (content instanceof List<?> list && hasImageBlock(list)) {
+					result.add(Map.of("role", role, "content", list));
 				} else {
-					textContent = content != null ? content.toString() : "";
+					String textContent;
+					if (content instanceof String s) {
+						textContent = s;
+					} else if (content instanceof List<?> list2) {
+						StringBuilder sb = new StringBuilder();
+						for (Object item : list2) {
+							if (item instanceof Map<?, ?> m) {
+								if ("text".equals(m.get("type")))
+									sb.append(m.get("text"));
+							}
+						}
+						textContent = sb.toString();
+					} else {
+						textContent = content != null ? content.toString() : "";
+					}
+					result.add(Map.of("role", role, "content", textContent));
 				}
-				result.add(Map.of("role", role, "content", textContent));
 			}
 		}
 
 		return result;
+	}
+
+	private boolean hasImageBlock(List<?> list) {
+		for (Object item : list) {
+			if (item instanceof Map<?, ?> m) {
+				String type = (String) m.get("type");
+				if ("image".equals(type) || "image_url".equals(type) ||
+				    "input_image".equals(type)) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 }
