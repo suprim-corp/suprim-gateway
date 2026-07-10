@@ -7,12 +7,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.Map;
 
 @RequiredArgsConstructor
@@ -25,10 +25,7 @@ public class KiroHttpClient {
 	private final KiroAuthManager auth;
 	private final KiroHeaders kiroHeaders;
 	private final AppConfig config;
-	private final HttpClient httpClient =
-			HttpClient.newBuilder()
-			          .connectTimeout(Duration.ofSeconds(10))
-			          .build();
+	private final ProxyChain proxyChain;
 
 	public record KiroResponse(
 			int status, InputStream body, String contentType
@@ -42,6 +39,34 @@ public class KiroHttpClient {
 	) throws Exception {
 		int maxRetries = stream ? config.firstTokenMaxRetries() : 3;
 
+		proxyChain.resetAttempts();
+
+		while (true) {
+			HttpClient client = proxyChain.currentClient();
+			if (client == null) {
+				throw new IOException("[Proxy] All proxies exhausted");
+			}
+
+			try {
+				return doRequest(client, method, url, body, stream, maxRetries);
+			} catch (IOException e) {
+				if (!proxyChain.hasProxies()) {
+					throw e;
+				}
+				log.warn("[Proxy] Error with current proxy: {}", e.getMessage());
+				proxyChain.onFailure();
+			}
+		}
+	}
+
+	private KiroResponse doRequest(
+			HttpClient client,
+			String method,
+			String url,
+			String body,
+			boolean stream,
+			int maxRetries
+	) throws Exception {
 		HttpResponse<InputStream> lastResponse = null;
 		Exception lastError = null;
 
@@ -60,7 +85,7 @@ public class KiroHttpClient {
 					reqBuilder.GET();
 				}
 
-				HttpResponse<InputStream> response = httpClient.send(
+				HttpResponse<InputStream> response = client.send(
 						reqBuilder.build(),
 						HttpResponse.BodyHandlers.ofInputStream()
 				);
@@ -119,6 +144,8 @@ public class KiroHttpClient {
 				return new KiroResponse(status, response.body(), contentType);
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
+				throw e;
+			} catch (IOException e) {
 				throw e;
 			} catch (Exception e) {
 				lastError = e;

@@ -15,7 +15,7 @@ public record AppConfig(
 		String profileArn,
 		String region,
 		String apiRegion,
-		String vpnProxyUrl,
+		String proxyFile,
 		int firstTokenTimeout,
 		int streamingReadTimeout,
 		int firstTokenMaxRetries,

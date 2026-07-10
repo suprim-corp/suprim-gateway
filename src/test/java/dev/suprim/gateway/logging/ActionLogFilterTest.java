@@ -1,5 +1,6 @@
 package dev.suprim.gateway.logging;
 
+import dev.suprim.gateway.proxy.ProxyChain;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.Test;
@@ -10,12 +11,14 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ActionLogFilterTest {
 
-	private final ActionLogFilter filter = new ActionLogFilter();
+	private final ProxyChain proxyChain = ProxyChain.of(Path.of("nonexistent.json"));
+	private final ActionLogFilter filter = new ActionLogFilter(proxyChain);
 
 	@ParameterizedTest
 	@ValueSource(strings = {

@@ -23,7 +23,7 @@ kiro:
   profile-arn: ${PROFILE_ARN:}
   region: ${KIRO_REGION:us-east-1}
   api-region: ${KIRO_API_REGION:}
-  vpn-proxy-url: ${VPN_PROXY_URL:}
+  proxy-file: ${PROXY_FILE:data/proxies.json}
   first-token-timeout: ${FIRST_TOKEN_TIMEOUT:15}
   streaming-read-timeout: ${STREAMING_READ_TIMEOUT:300}
   first-token-max-retries: ${FIRST_TOKEN_MAX_RETRIES:3}

@@ -28,9 +28,10 @@ class ActionLoggerTest {
 	@Test
 	void logRequest_basicGetNoBody() {
 		ListAppender<ILoggingEvent> appender = captureLog();
-		ActionLogger.logRequest("GET", "/v1/models", "127.0.0.1", null, null);
+		ActionLogger.logRequest("GET", "/v1/models", "127.0.0.1", null, null, "DIRECT");
 		String msg = lastMessage(appender);
-		assertThat(msg).contains("→ GET /v1/models");
+		assertThat(msg).contains("GET");
+		assertThat(msg).contains("/v1/models");
 		assertThat(msg).contains("127.0.0.1");
 		assertThat(msg).doesNotContain("body:");
 	}
@@ -38,13 +39,7 @@ class ActionLoggerTest {
 	@Test
 	void logRequest_withQueryString() {
 		ListAppender<ILoggingEvent> appender = captureLog();
-		ActionLogger.logRequest(
-				"GET",
-				"/v1/models",
-				"10.0.0.1",
-				"page=1",
-				null
-		);
+		ActionLogger.logRequest("GET", "/v1/models", "10.0.0.1", "page=1", null, "DIRECT");
 		String msg = lastMessage(appender);
 		assertThat(msg).contains("?page=1");
 	}
@@ -52,13 +47,7 @@ class ActionLoggerTest {
 	@Test
 	void logRequest_withBody() {
 		ListAppender<ILoggingEvent> appender = captureLog();
-		ActionLogger.logRequest(
-				"POST",
-				"/v1/chat/completions",
-				"10.0.0.1",
-				null,
-				"{\"model\":\"claude\"}"
-		);
+		ActionLogger.logRequest("POST", "/v1/chat/completions", "10.0.0.1", null, "{\"model\":\"claude\"}", "DIRECT");
 		String msg = lastMessage(appender);
 		assertThat(msg).contains("body:");
 		assertThat(msg).contains("\"model\":\"claude\"");
@@ -68,7 +57,7 @@ class ActionLoggerTest {
 	void logRequest_masksSensitiveFields() {
 		ListAppender<ILoggingEvent> appender = captureLog();
 		String body = "{\"password\":\"hunter2\",\"token\":\"abc123\",\"secret\":\"xyz\",\"api_key\":\"key1\",\"apikey\":\"key2\",\"authorization\":\"Bearer x\",\"refresh_token\":\"rt\",\"access_token\":\"at\",\"credentials\":\"cred\"}";
-		ActionLogger.logRequest("POST", "/auth", "10.0.0.1", null, body);
+		ActionLogger.logRequest("POST", "/auth", "10.0.0.1", null, body, "DIRECT");
 		String msg = lastMessage(appender);
 		assertThat(msg).doesNotContain("hunter2");
 		assertThat(msg).doesNotContain("abc123");
@@ -82,7 +71,7 @@ class ActionLoggerTest {
 	void logRequest_truncatesLongBody() {
 		ListAppender<ILoggingEvent> appender = captureLog();
 		String longBody = "x".repeat(600);
-		ActionLogger.logRequest("POST", "/api", "10.0.0.1", null, longBody);
+		ActionLogger.logRequest("POST", "/api", "10.0.0.1", null, longBody, "DIRECT");
 		String msg = lastMessage(appender);
 		assertThat(msg).contains("...[truncated]");
 		assertThat(msg).doesNotContain("x".repeat(600));
@@ -91,7 +80,7 @@ class ActionLoggerTest {
 	@Test
 	void logRequest_blankBodyNotLogged() {
 		ListAppender<ILoggingEvent> appender = captureLog();
-		ActionLogger.logRequest("POST", "/api", "10.0.0.1", null, "   ");
+		ActionLogger.logRequest("POST", "/api", "10.0.0.1", null, "   ", "DIRECT");
 		String msg = lastMessage(appender);
 		assertThat(msg).doesNotContain("body:");
 	}
@@ -99,7 +88,7 @@ class ActionLoggerTest {
 	@Test
 	void logRequest_emptyQueryNotShown() {
 		ListAppender<ILoggingEvent> appender = captureLog();
-		ActionLogger.logRequest("GET", "/api", "10.0.0.1", "", null);
+		ActionLogger.logRequest("GET", "/api", "10.0.0.1", "", null, "DIRECT");
 		String msg = lastMessage(appender);
 		assertThat(msg).doesNotContain("?");
 	}
@@ -107,14 +96,7 @@ class ActionLoggerTest {
 	@Test
 	void logResponse_2xxGreenColorAndDuration() {
 		ListAppender<ILoggingEvent> appender = captureLog();
-		ActionLogger.logResponse(
-				"GET",
-				"/v1/models",
-				200,
-				"{\"data\":[]}",
-				42,
-				null
-		);
+		ActionLogger.logResponse("GET", "/v1/models", 200, "{\"data\":[]}", 42, null);
 		String msg = lastMessage(appender);
 		assertThat(msg).contains("← 200");
 		assertThat(msg).contains("(42ms)");
@@ -124,14 +106,7 @@ class ActionLoggerTest {
 	@Test
 	void logResponse_4xxYellowColor() {
 		ListAppender<ILoggingEvent> appender = captureLog();
-		ActionLogger.logResponse(
-				"POST",
-				"/v1/chat/completions",
-				401,
-				null,
-				10,
-				null
-		);
+		ActionLogger.logResponse("POST", "/v1/chat/completions", 401, null, 10, null);
 		String msg = lastMessage(appender);
 		assertThat(msg).contains("[33m");
 		assertThat(msg).contains("← 401");
@@ -243,14 +218,7 @@ class ActionLoggerTest {
 	@Test
 	void logResponse_jsonObjectSummarized() {
 		ListAppender<ILoggingEvent> appender = captureLog();
-		ActionLogger.logResponse(
-				"POST",
-				"/api",
-				200,
-				"{\"id\":\"123\",\"choices\":[]}",
-				50,
-				null
-		);
+		ActionLogger.logResponse("POST", "/api", 200, "{\"id\":\"123\",\"choices\":[]}", 50, null);
 		String msg = lastMessage(appender);
 		assertThat(msg).contains("response: {id, choices}");
 	}
@@ -259,7 +227,7 @@ class ActionLoggerTest {
 	void logRequest_maskingCaseInsensitive() {
 		ListAppender<ILoggingEvent> appender = captureLog();
 		String body = "{\"Password\":\"secret123\",\"TOKEN\":\"val\"}";
-		ActionLogger.logRequest("POST", "/auth", "10.0.0.1", null, body);
+		ActionLogger.logRequest("POST", "/auth", "10.0.0.1", null, body, "DIRECT");
 		String msg = lastMessage(appender);
 		assertThat(msg).doesNotContain("secret123");
 		assertThat(msg).doesNotContain("val");
@@ -281,7 +249,6 @@ class ActionLoggerTest {
 	@Test
 	void summarizeJson_truncatedJsonFallsBack() {
 		String result = ActionLogger.summarizeJson("{\"a\":1,\"b\":");
-		// either returns partial keys or falls back to truncate — both are valid
 		assertThat(result).isIn("{a, b}", "{\"a\":1,\"b\":");
 	}
 
@@ -305,7 +272,6 @@ class ActionLoggerTest {
 
 	@Test
 	void summarizeJson_deeplyNestedArrayNoDepth1Element() {
-		// outer array contains one nested array — the nested array's elements are at depth > 1
 		String result = ActionLogger.summarizeJson("[[[]]]");
 		assertThat(result).isEqualTo("List[1 items]");
 	}
@@ -313,7 +279,7 @@ class ActionLoggerTest {
 	@Test
 	void logRequest_masksCreatedKeyInQuery() {
 		ListAppender<ILoggingEvent> appender = captureLog();
-		ActionLogger.logRequest("GET", "/keys", "10.0.0.1", "createdKey=sk-secret123", null);
+		ActionLogger.logRequest("GET", "/keys", "10.0.0.1", "createdKey=sk-secret123", null, "DIRECT");
 		String msg = lastMessage(appender);
 		assertThat(msg).doesNotContain("sk-secret123");
 		assertThat(msg).contains("createdKey=***");
@@ -322,7 +288,7 @@ class ActionLoggerTest {
 	@Test
 	void logRequest_masksTokenInQuery() {
 		ListAppender<ILoggingEvent> appender = captureLog();
-		ActionLogger.logRequest("GET", "/api", "10.0.0.1", "token=abc&page=1", null);
+		ActionLogger.logRequest("GET", "/api", "10.0.0.1", "token=abc&page=1", null, "DIRECT");
 		String msg = lastMessage(appender);
 		assertThat(msg).doesNotContain("abc");
 		assertThat(msg).contains("token=***");
@@ -332,7 +298,7 @@ class ActionLoggerTest {
 	@Test
 	void logRequest_queryParamNoValue() {
 		ListAppender<ILoggingEvent> appender = captureLog();
-		ActionLogger.logRequest("GET", "/api", "10.0.0.1", "debug", null);
+		ActionLogger.logRequest("GET", "/api", "10.0.0.1", "debug", null, "DIRECT");
 		String msg = lastMessage(appender);
 		assertThat(msg).contains("?debug");
 	}

@@ -39,19 +39,24 @@ public final class ActionLogger {
 			String uri,
 			String ip,
 			String query,
-			String body
+			String body,
+			String proxyTag
 	) {
 		StringBuilder sb = new StringBuilder();
 		sb.append(CYAN)
-		  .append("→ ")
+		  .append("→ [")
 		  .append(method)
+		  .append("] [")
+		  .append(proxyTag)
+		  .append("] [FROM ")
+		  .append(ip)
+		  .append("]")
+		  .append(RESET)
 		  .append(" ")
-		  .append(uri)
-		  .append(RESET);
+		  .append(uri);
 		if (query != null && !query.isEmpty()) {
 			sb.append("?").append(maskQueryParams(query));
 		}
-		sb.append(" from ").append(MAGENTA).append(ip).append(RESET);
 		if (body != null && !body.isBlank()) {
 			sb.append("\n  body: ").append(maskSensitive(truncate(body)));
 		}
@@ -118,7 +123,6 @@ public final class ActionLogger {
 		return sb.toString();
 	}
 
-	@SuppressWarnings("try")
 	@lombok.Generated
 	static String summarizeJson(String json) {
 		if (json == null || json.isBlank()) {
@@ -137,7 +141,7 @@ public final class ActionLogger {
 		return truncate(json);
 	}
 
-	private static String summarizeObject(JsonParser parser) throws Exception {
+	private static String summarizeObject(JsonParser parser) {
 		List<String> keys = new ArrayList<>();
 		int depth = 1;
 		while (depth > 0) {
@@ -155,7 +159,7 @@ public final class ActionLogger {
 		return "{" + String.join(", ", keys) + "}";
 	}
 
-	private static String summarizeArray(JsonParser parser) throws Exception {
+	private static String summarizeArray(JsonParser parser) {
 		int count = 0;
 		int depth = 1;
 		while (depth > 0) {

@@ -1,10 +1,12 @@
 package dev.suprim.gateway.logging;
 
+import dev.suprim.gateway.proxy.ProxyChain;
 import dev.suprim.gateway.utils.RequestContext;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.MDC;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -18,7 +20,10 @@ import java.util.UUID;
 
 @Component
 @Order(1)
+@RequiredArgsConstructor
 public class ActionLogFilter extends OncePerRequestFilter {
+
+	private final ProxyChain proxyChain;
 
 	private static final Set<String> BLACKLIST_PREFIXES = Set.of(
 			"/actuator", "/health", "/swagger-ui", "/api-docs",
@@ -64,7 +69,7 @@ public class ActionLogFilter extends OncePerRequestFilter {
 
 		try {
 			if (isStreaming) {
-				ActionLogger.logRequest(method, uri, ip, query, null);
+				ActionLogger.logRequest(method, uri, ip, query, null, proxyChain.proxyTag());
 				chain.doFilter(request, response);
 				return;
 			}
@@ -78,7 +83,7 @@ public class ActionLogFilter extends OncePerRequestFilter {
 				effectiveRequest = cachedRequest;
 				body = cachedRequest.getBody();
 			}
-			ActionLogger.logRequest(method, uri, ip, query, body);
+			ActionLogger.logRequest(method, uri, ip, query, body, proxyChain.proxyTag());
 
 			ContentCachingResponseWrapper wrappedResponse = new ContentCachingResponseWrapper(
 					response
