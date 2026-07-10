@@ -38,6 +38,7 @@ class RequestLogListener {
 				event.streaming(),
 				event.clientIp(),
 				event.errorMessage(),
+				event.credits(),
 				System.currentTimeMillis()
 		);
 		try {

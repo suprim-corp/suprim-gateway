@@ -166,7 +166,8 @@ public class ProxyFacade {
 				result.outputTokens(),
 				true,
 				startTime,
-				result.firstTokenMs()
+				result.firstTokenMs(),
+				result.credits() > 0 ? result.credits() : null
 		);
 		if (req.virtualKeyId() != null && result.outputTokens() > 0)
 			keyService.incrementUsage(
@@ -181,7 +182,9 @@ public class ProxyFacade {
 			ProxyRequest req,
 			long startTime
 	) throws Exception {
-		String content = streamHandler.collectContent(response);
+		StreamHandler.CollectResult collected = streamHandler.collectContent(response);
+		String content = collected.content();
+		double credits = collected.credits();
 		int outputTokens = streamHandler.countTokens(content);
 		String id = generateId(req.format());
 
@@ -199,7 +202,7 @@ public class ProxyFacade {
 				)
 		);
 
-		publishLog(req, outputTokens, false, startTime, null);
+		publishLog(req, outputTokens, false, startTime, null, credits > 0 ? credits : null);
 		if (req.virtualKeyId() != null && outputTokens > 0)
 			keyService.incrementUsage(req.virtualKeyId(), outputTokens);
 	}
@@ -312,7 +315,8 @@ public class ProxyFacade {
 			int outputTokens,
 			boolean streaming,
 			long startTime,
-			Long firstTokenMs
+			Long firstTokenMs,
+			Double credits
 	) {
 		int latency = (int) (System.currentTimeMillis() - startTime);
 		logPublisher.publish(
@@ -329,6 +333,7 @@ public class ProxyFacade {
 				                             null ? firstTokenMs.intValue() : null)
 				               .streaming(streaming)
 				               .clientIp(req.clientIp())
+				               .credits(credits != null && credits > 0 ? credits : null)
 				               .build()
 		);
 	}

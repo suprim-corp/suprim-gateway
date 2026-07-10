@@ -29,6 +29,9 @@
                             Cost
                         </th>
                         <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                            Credits
+                        </th>
+                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
                             Time to First Token
                         </th>
                         <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
@@ -50,7 +53,7 @@
                     </thead>
                     <tbody class="divide-y divide-zinc-800/50">
                     <tr th:if="${logs.isEmpty()}">
-                        <td colspan="10" class="px-4 py-8 text-center text-xs text-zinc-500">No requests yet</td>
+                        <td colspan="11" class="px-4 py-8 text-center text-xs text-zinc-500">No requests yet</td>
                     </tr>
                     <tr th:each="log : ${logs}" class="hover:bg-zinc-800/20 transition-colors">
                         <td class="px-4 py-2.5">
@@ -70,6 +73,10 @@
                             th:text="${log.usage().cost() != null ? '$' + #numbers.formatDecimal(log.usage().cost(), 1, 6) : '—'}">
                             —
                         </td>
+                        <td class="px-4 py-2.5 text-[10px] text-neon-cyan"
+                            th:text="${log.credits() != null ? #numbers.formatDecimal(log.credits(), 1, 4) : '—'}">
+                            —
+                        </td>
                         <td class="px-4 py-2.5 text-[10px] text-zinc-500"
                             th:text="${log.firstTokenMs() != null ? #numbers.formatInteger(log.firstTokenMs(), 1, 'COMMA') + 'ms' : '—'}">—
                         </td>
@@ -82,7 +89,7 @@
                             <span th:if="${log.streaming() == null || !log.streaming()}"
                                   class="text-zinc-500">sync</span>
                         </td>
-                        <td class="px-4 py-2.5 text-[10px] text-zinc-500" th:text="${log.virtualKeyId() ?: '—'}">—</td>
+                        <td class="px-4 py-2.5 text-[10px] text-zinc-500" th:text="${log.keyName() ?: '—'}">—</td>
                         <td class="px-4 py-2.5 text-[10px] text-zinc-500" th:text="${log.clientIp() ?: '—'}">—</td>
                         <td class="px-4 py-2.5 text-[10px] text-zinc-500"
                             th:text="${#temporals.format(#temporals.createNow(), 'yyyy-MM-dd HH:mm')}">—

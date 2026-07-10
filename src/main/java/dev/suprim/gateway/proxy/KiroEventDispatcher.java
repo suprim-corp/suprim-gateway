@@ -27,6 +27,7 @@ public class KiroEventDispatcher {
 		handleToolUse(obj, events);
 		handleSupplementary(obj, events);
 		handleBareToolEvent(obj, events);
+		handleMetering(obj, events);
 
 		return events;
 	}
@@ -123,6 +124,29 @@ public class KiroEventDispatcher {
 			currentToolName = null;
 			currentToolId = null;
 			toolArgs.setLength(0);
+		}
+	}
+
+	private void handleMetering(JsonNode obj, List<KiroEvent> events) {
+		String eventType = obj.has("__eventType") ? obj.get("__eventType")
+		                                               .asString() : null;
+		if ("meteringEvent".equals(eventType)) {
+			if (obj.has("usage")) {
+				double usage = obj.get("usage").asDouble();
+				if (usage > 0) {
+					events.add(KiroEvent.metering(usage));
+				}
+			}
+			return;
+		}
+		if (obj.has("meteringEvent")) {
+			JsonNode metering = obj.get("meteringEvent");
+			if (metering.has("usage")) {
+				double usage = metering.get("usage").asDouble();
+				if (usage > 0) {
+					events.add(KiroEvent.metering(usage));
+				}
+			}
 		}
 	}
 

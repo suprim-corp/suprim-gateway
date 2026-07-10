@@ -15,5 +15,6 @@ public record RequestLog(
         Boolean streaming,
         String clientIp,
         String errorMessage,
+        Double credits,
         long createdAt
 ) {}

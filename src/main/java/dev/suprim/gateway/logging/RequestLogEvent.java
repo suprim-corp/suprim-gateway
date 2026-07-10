@@ -15,5 +15,6 @@ public record RequestLogEvent(
 		Integer firstTokenMs,
 		Boolean streaming,
 		String clientIp,
-		String errorMessage
+		String errorMessage,
+		Double credits
 ) {}

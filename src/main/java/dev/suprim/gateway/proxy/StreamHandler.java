@@ -2,6 +2,7 @@ package dev.suprim.gateway.proxy;
 
 import dev.suprim.gateway.proxy.KiroHttpClient.KiroResponse;
 import dev.suprim.gateway.utils.TokenEstimator;
+import lombok.Builder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -16,7 +17,7 @@ public class StreamHandler {
 	private final TokenEstimator tokenEstimator;
 
 	public record StreamResult(
-			String content, int outputTokens, long firstTokenMs
+			String content, int outputTokens, long firstTokenMs, double credits
 	) {}
 
 	public StreamResult streamToWriter(
@@ -30,6 +31,7 @@ public class StreamHandler {
 		StringBuilder fullText = new StringBuilder();
 		int[] outputTokens = {0};
 		long[] firstTokenMs = {-1};
+		double[] credits = {0};
 
 		byte[] buf = new byte[8192];
 		int read;
@@ -40,6 +42,10 @@ public class StreamHandler {
 				List<KiroEvent> events = parser.feed(chunk);
 				for (KiroEvent event : events) {
 					if ("reasoning".equals(event.type())) continue;
+					if ("metering".equals(event.type())) {
+						credits[0] += event.credits();
+						continue;
+					}
 					if ("content".equals(event.type()) &&
 					    event.content() != null) {
 						filter.accept(
@@ -91,20 +97,32 @@ public class StreamHandler {
 		return new StreamResult(
 				fullText.toString(),
 				outputTokens[0],
-				firstTokenMs[0] < 0 ? 0 : firstTokenMs[0]
+				firstTokenMs[0] < 0 ? 0 : firstTokenMs[0],
+				credits[0]
 		);
 	}
 
-	public String collectContent(KiroResponse response) throws Exception {
+	@Builder
+	public record CollectResult(String content, double credits) {}
+
+	public CollectResult collectContent(KiroResponse response) throws Exception {
 		List<KiroEvent> events = KiroEventParser.parseStream(response.body());
 		StringBuilder content = new StringBuilder();
+		double credits = 0;
 		for (KiroEvent event : events) {
 			if ("reasoning".equals(event.type())) continue;
+			if ("metering".equals(event.type())) {
+				credits += event.credits();
+				continue;
+			}
 			if ("content".equals(event.type()) && event.content() != null) {
 				content.append(event.content());
 			}
 		}
-		return ThinkingExtractor.strip(content.toString());
+		return CollectResult.builder()
+		                    .content(ThinkingExtractor.strip(content.toString()))
+		                    .credits(credits)
+		                    .build();
 	}
 
 	public int countTokens(String text) {

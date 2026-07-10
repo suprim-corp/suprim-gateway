@@ -60,6 +60,12 @@ public class KiroFrameDecoder {
 			int headersEnd = 12 + headersLength;
 			int payloadEnd = totalLength - 4;
 
+			String eventType = extractEventType(
+					binaryBuffer,
+					12,
+					headersLength
+			);
+
 			if (payloadEnd > headersEnd) {
 				String text = new String(
 						binaryBuffer,
@@ -69,7 +75,12 @@ public class KiroFrameDecoder {
 				).trim();
 				if (text.startsWith("{")) {
 					try {
-						nodes.add(mapper.readTree(text));
+						JsonNode node = mapper.readTree(text);
+						if (eventType != null && node.isObject()) {
+							((tools.jackson.databind.node.ObjectNode) node)
+									.put("__eventType", eventType);
+						}
+						nodes.add(node);
 					} catch (Exception e) {
 						textBuffer.append(text);
 						nodes.addAll(parseTextBuffer());
@@ -88,6 +99,60 @@ public class KiroFrameDecoder {
 			binaryBuffer = remaining;
 		}
 		return nodes;
+	}
+
+	private static String extractEventType(
+			byte[] buf,
+			int offset,
+			int headersLength
+	) {
+		int end = offset + headersLength;
+		while (offset < end) {
+			int nameLen = buf[offset] & 0xFF;
+			offset++;
+			if (offset + nameLen > end) break;
+			String name = new String(
+					buf,
+					offset,
+					nameLen,
+					StandardCharsets.UTF_8
+			);
+			offset += nameLen;
+			if (offset >= end) break;
+			int valueType = buf[offset] & 0xFF;
+			offset++;
+			if (valueType == 7) { // String
+				if (offset + 2 > end) break;
+				int valueLen =
+						((buf[offset] & 0xFF) << 8) | (buf[offset + 1] & 0xFF);
+				offset += 2;
+				if (offset + valueLen > end) break;
+				String value = new String(
+						buf,
+						offset,
+						valueLen,
+						StandardCharsets.UTF_8
+				);
+				offset += valueLen;
+				if (":event-type".equals(name)) return value;
+			} else {
+				int skip = switch (valueType) {
+					case 0, 1 -> 0;
+					case 2 -> 1;
+					case 3 -> 2;
+					case 4 -> 4;
+					case 5, 8 -> 8;
+					case 9 -> 16;
+					case 6 -> (offset + 2 <= end)
+							? 2 + (((buf[offset] & 0xFF) << 8) |
+							       (buf[offset + 1] & 0xFF))
+							: end - offset;
+					default -> end - offset;
+				};
+				offset += skip;
+			}
+		}
+		return null;
 	}
 
 	private List<JsonNode> parseTextBuffer() {
