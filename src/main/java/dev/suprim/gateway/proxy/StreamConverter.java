@@ -179,7 +179,12 @@ public class StreamConverter {
 								"model",
 								model,
 								"usage",
-								Map.of("input_tokens", inputTokens, "output_tokens", 0)
+								Map.of(
+										"input_tokens",
+										inputTokens,
+										"output_tokens",
+										0
+								)
 						)
 				)
 		)
@@ -200,6 +205,51 @@ public class StreamConverter {
 				"content_block_delta", Map.of(
 						"type", "content_block_delta", "index", 0,
 						"delta", Map.of("type", "text_delta", "text", text)
+				)
+		);
+	}
+
+	public String toAnthropicToolUse(
+			KiroEvent event,
+			int index
+	) throws Exception {
+		String toolId = event.toolUseId() != null ? event.toolUseId() :
+				"toolu_" + UUID.randomUUID()
+				               .toString()
+				               .replace("-", "")
+				               .substring(0, 20);
+		String input = event.toolInput() != null ? event.toolInput() : "{}";
+		return toAnthropicEvent(
+				"content_block_start", Map.of(
+						"type", "content_block_start",
+						"index", index,
+						"content_block", Map.of(
+								"type", "tool_use",
+								"id", toolId,
+								"name", event.toolName(),
+								"input", Map.of()
+						)
+				)
+		)
+		       + toAnthropicEvent(
+				"content_block_delta", Map.of(
+						"type",
+						"content_block_delta",
+						"index",
+						index,
+						"delta",
+						Map.of(
+								"type",
+								"input_json_delta",
+								"partial_json",
+								input
+						)
+				)
+		)
+		       + toAnthropicEvent(
+				"content_block_stop", Map.of(
+						"type", "content_block_stop",
+						"index", index
 				)
 		);
 	}

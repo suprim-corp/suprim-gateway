@@ -163,7 +163,14 @@ public class KiroFacade {
 		PrintWriter writer = httpRes.getWriter();
 		String id = generateId(req.format());
 
-		writer.write(preamble(req.format(), id, req.model(), req.inputTokens()));
+		writer.write(
+				preamble(
+						req.format(),
+						id,
+						req.model(),
+						req.inputTokens()
+				)
+		);
 		writer.flush();
 
 		StreamHandler.StreamResult result = streamHandler.streamToWriter(
@@ -173,7 +180,11 @@ public class KiroFacade {
 				startTime
 		);
 
-		log.debug("[KiroFacade] stream done, outputTokens={}, content length={}", result.outputTokens(), result.content().length());
+		log.debug(
+				"[KiroFacade] stream done, outputTokens={}, content length={}",
+				result.outputTokens(),
+				result.content().length()
+		);
 
 		writer.write(
 				finale(
@@ -248,7 +259,11 @@ public class KiroFacade {
 	) throws Exception {
 		return switch (format) {
 			case OPENAI -> "";
-			case ANTHROPIC -> streamConverter.toAnthropicPreamble(id, model, inputTokens);
+			case ANTHROPIC -> streamConverter.toAnthropicPreamble(
+					id,
+					model,
+					inputTokens
+			);
 			case RESPONSES -> streamConverter.toResponsesCreated(id, model)
 			                  + streamConverter.toResponsesOutputItemAdded(id)
 			                  + streamConverter.toResponsesContentPartAdded();
@@ -263,9 +278,13 @@ public class KiroFacade {
 	) throws Exception {
 		return switch (format) {
 			case OPENAI -> streamConverter.toOpenAiChunk(event, model, id);
-			case ANTHROPIC ->
-					("content".equals(event.type()) && event.content() != null)
-							? streamConverter.toAnthropicDelta(event.content()) : null;
+			case ANTHROPIC -> {
+				if ("content".equals(event.type()) && event.content() != null)
+					yield streamConverter.toAnthropicDelta(event.content());
+				if ("tool_use".equals(event.type()) && event.toolStop())
+					yield streamConverter.toAnthropicToolUse(event, 1);
+				yield null;
+			}
 			case RESPONSES -> {
 				if ("content".equals(event.type()) && event.content() != null)
 					yield streamConverter.toResponsesTextDelta(event.content());
