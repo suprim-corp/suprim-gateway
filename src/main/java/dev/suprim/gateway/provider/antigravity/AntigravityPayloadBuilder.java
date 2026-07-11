@@ -1,12 +1,11 @@
 package dev.suprim.gateway.provider.antigravity;
 
+import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.Message;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,17 +14,10 @@ class AntigravityPayloadBuilder {
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 	private static final int DEFAULT_MAX_OUTPUT_TOKENS = 65536;
 
-	static String build(Object openAiRequest, String projectId) {
-		JsonNode requestNode = MAPPER.valueToTree(openAiRequest);
-		JsonNode messagesNode = requestNode.get("messages");
-
-		List<Message> messages = new ArrayList<>();
-		if (messagesNode != null && messagesNode.isArray()) {
-			for (JsonNode node : messagesNode) {
-				Message msg = MAPPER.treeToValue(node, Message.class);
-				messages.add(msg);
-			}
-		}
+	static String build(InternalRequest request, String projectId) {
+		List<Message> messages = request.messages() != null
+				? request.messages()
+				: List.of();
 
 		ObjectNode root = MAPPER.createObjectNode();
 		ArrayNode contents = root.putArray("contents");
@@ -56,21 +48,14 @@ class AntigravityPayloadBuilder {
 		}
 
 		ObjectNode generationConfig = root.putObject("generationConfig");
-		JsonNode maxTokens = requestNode.get("max_tokens");
-		if (maxTokens != null && maxTokens.isNumber()) {
-			generationConfig.put("maxOutputTokens", maxTokens.asInt());
+		if (request.maxTokens() != null) {
+			generationConfig.put("maxOutputTokens", request.maxTokens());
 		} else {
 			generationConfig.put("maxOutputTokens", DEFAULT_MAX_OUTPUT_TOKENS);
 		}
 
-		JsonNode temperature = requestNode.get("temperature");
-		if (temperature != null && temperature.isNumber()) {
-			generationConfig.put("temperature", temperature.asDouble());
-		}
-
-		JsonNode topP = requestNode.get("top_p");
-		if (topP != null && topP.isNumber()) {
-			generationConfig.put("topP", topP.asDouble());
+		if (request.temperature() != null) {
+			generationConfig.put("temperature", request.temperature());
 		}
 
 		root.put("project", projectId);

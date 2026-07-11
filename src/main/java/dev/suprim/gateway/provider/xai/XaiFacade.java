@@ -2,6 +2,8 @@ package dev.suprim.gateway.provider.xai;
 
 import dev.suprim.gateway.logging.RequestLogEvent;
 import dev.suprim.gateway.logging.RequestLogPublisher;
+import dev.suprim.gateway.proxy.InternalRequest;
+import dev.suprim.gateway.proxy.ProxyFacade;
 import dev.suprim.gateway.utils.ErrorResponse;
 
 import jakarta.servlet.http.HttpServletResponse;
@@ -28,12 +30,13 @@ public class XaiFacade {
 	private final RequestLogPublisher logPublisher;
 
 	public void handle(
-			Object openAiRequest,
+			InternalRequest request,
 			String model,
 			boolean stream,
 			int inputTokens,
 			String keyId,
 			String clientIp,
+			ProxyFacade.Format format,
 			HttpServletResponse httpRes
 	) throws Exception {
 		if (!authManager.isConnected()) {
@@ -49,7 +52,7 @@ public class XaiFacade {
 		long startTime = System.currentTimeMillis();
 		String accessToken = authManager.getAccessToken();
 
-		ObjectNode payloadNode = MAPPER.valueToTree(openAiRequest);
+		ObjectNode payloadNode = MAPPER.valueToTree(request);
 		if (stream && !payloadNode.has("stream_options")) {
 			payloadNode.set("stream_options", MAPPER.valueToTree(Map.of("include_usage", true)));
 		}

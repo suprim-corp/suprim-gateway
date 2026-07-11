@@ -3,7 +3,11 @@ package dev.suprim.gateway.api;
 import dev.suprim.gateway.api.request.CompletionsRequest;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.model.ModelRouter;
+import dev.suprim.gateway.proxy.InternalRequest;
+import dev.suprim.gateway.proxy.Message;
 import dev.suprim.gateway.proxy.ProxyFacade;
+import dev.suprim.gateway.proxy.Tool;
+import dev.suprim.gateway.proxy.ToolMapper;
 import dev.suprim.gateway.utils.ErrorResponse;
 import dev.suprim.gateway.utils.RequestContext;
 import dev.suprim.gateway.utils.TokenEstimator;
@@ -16,6 +20,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RequiredArgsConstructor
 @RestController
@@ -42,28 +48,58 @@ class CompletionsController {
 			return;
 		}
 
-		String model = request.model();
 		boolean stream = Boolean.TRUE.equals(request.stream());
+		List<Tool> tools = ToolMapper.fromCompletions(request.tools());
 		int inputTokens = tokenEstimator.estimateCompletionMessages(
 				request.messages()
-		) + tokenEstimator.estimateTools(request.tools());
+		) + tokenEstimator.estimateTools(tools);
 
-		Provider provider = ModelRouter.resolveProvider(model);
+		Provider provider = ModelRouter.resolveProvider(request.model());
+		String actualModel = ModelRouter.stripPrefix(request.model());
+
+		List<Message> messages = request.messages().stream()
+				.map(m -> Message.builder()
+						.role(m.role())
+						.content(m.content())
+						.toolCalls(m.toolCalls() == null ? null : m.toolCalls().stream()
+								.map(tc -> Message.ToolCall.builder()
+										.id(tc.id())
+										.type(tc.type())
+										.function(tc.function() == null ? null :
+												Message.Function.builder()
+														.name(tc.function().name())
+														.arguments(tc.function().arguments())
+														.build())
+										.build())
+								.toList())
+						.toolCallId(m.toolCallId())
+						.build())
+				.toList();
+
+		InternalRequest internalReq = InternalRequest.builder()
+				.model(actualModel)
+				.messages(messages)
+				.stream(stream)
+				.tools(tools)
+				.temperature(request.temperature())
+				.maxTokens(request.maxTokens())
+				.build();
+
 		if (providerDispatcher.handles(provider)) {
-			String actualModel = ModelRouter.stripPrefix(model);
 			providerDispatcher.resolve(provider).handle(
-					request, actualModel, stream, inputTokens, keyId,
-					RequestContext.clientIp(httpReq), httpRes
+					internalReq, actualModel, stream, inputTokens, keyId,
+					RequestContext.clientIp(httpReq), ProxyFacade.Format.OPENAI,
+					httpRes
 			);
 			return;
 		}
 
 		proxyFacade.handle(
 				ProxyFacade.buildRequest(
-						request,
+						internalReq,
 						ProxyFacade.Format.OPENAI,
 						stream,
-						model,
+						actualModel,
 						inputTokens,
 						keyId,
 						keyId,

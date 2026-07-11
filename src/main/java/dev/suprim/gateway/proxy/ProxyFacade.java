@@ -17,7 +17,6 @@ import tools.jackson.databind.ObjectMapper;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @RequiredArgsConstructor
@@ -35,7 +34,7 @@ public class ProxyFacade {
 	public enum Format {OPENAI, ANTHROPIC, RESPONSES}
 
 	public record ProxyRequest(
-			Object openAiRequest, Format format, boolean stream,
+			InternalRequest request, Format format, boolean stream,
 			String model, int inputTokens, String keyId, String virtualKeyId,
 			String clientIp
 	) {}
@@ -47,7 +46,7 @@ public class ProxyFacade {
 		long startTime = System.currentTimeMillis();
 
 		KiroResponse response = upstreamCaller.call(
-				req.openAiRequest(),
+				req.request(),
 				req.stream() || req.format() == Format.RESPONSES
 		);
 
@@ -64,7 +63,7 @@ public class ProxyFacade {
 	}
 
 	public static ProxyRequest buildRequest(
-			Object openAiRequest, Format format, boolean stream,
+			InternalRequest openAiRequest, Format format, boolean stream,
 			String model, int inputTokens, String keyId, String virtualKeyId,
 			HttpServletRequest httpReq
 	) {

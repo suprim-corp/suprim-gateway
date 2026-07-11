@@ -6,6 +6,7 @@ import com.knuddels.jtokkit.api.EncodingRegistry;
 import com.knuddels.jtokkit.api.EncodingType;
 import dev.suprim.gateway.api.request.CompletionsRequest;
 import dev.suprim.gateway.proxy.Message;
+import dev.suprim.gateway.proxy.Tool;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -113,11 +114,11 @@ public class TokenEstimator {
         return (int) Math.round(total * CLAUDE_CORRECTION_FACTOR);
     }
 
-    public int estimateTools(List<?> tools) {
+    public int estimateTools(List<Tool> tools) {
         if (tools == null || tools.isEmpty()) return 0;
         int total = 0;
 
-        for (Object tool : tools) {
+        for (Tool tool : tools) {
             total += 4;
             String json = MAPPER.writeValueAsString(tool);
             total += encoding.countTokens(json);
@@ -126,7 +127,7 @@ public class TokenEstimator {
         return (int) Math.round(total * CLAUDE_CORRECTION_FACTOR);
     }
 
-    public int estimateRequest(List<Message> messages, List<?> tools) {
+    public int estimateRequest(List<Message> messages, List<Tool> tools) {
         return estimateMessages(messages) + estimateTools(tools);
     }
 }

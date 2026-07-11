@@ -2,6 +2,8 @@ package dev.suprim.gateway.provider.antigravity;
 
 import dev.suprim.gateway.logging.RequestLogEvent;
 import dev.suprim.gateway.logging.RequestLogPublisher;
+import dev.suprim.gateway.proxy.InternalRequest;
+import dev.suprim.gateway.proxy.ProxyFacade;
 import dev.suprim.gateway.utils.ErrorResponse;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -28,12 +30,13 @@ public class AntigravityFacade {
 	private final RequestLogPublisher logPublisher;
 
 	public void handle(
-			Object openAiRequest,
+			InternalRequest request,
 			String model,
 			boolean stream,
 			int inputTokens,
 			String keyId,
 			String clientIp,
+			ProxyFacade.Format format,
 			HttpServletResponse httpRes
 	) throws Exception {
 		if (!authManager.isConnected()) {
@@ -50,7 +53,7 @@ public class AntigravityFacade {
 		String accessToken = authManager.getAccessToken();
 		String projectId = authManager.getProjectId();
 		String payload = AntigravityPayloadBuilder.build(
-				openAiRequest,
+				request,
 				projectId
 		);
 

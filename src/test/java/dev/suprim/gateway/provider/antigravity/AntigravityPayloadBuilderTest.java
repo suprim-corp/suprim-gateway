@@ -1,9 +1,10 @@
 package dev.suprim.gateway.provider.antigravity;
 
+import dev.suprim.gateway.proxy.InternalRequest;
+import dev.suprim.gateway.proxy.Message;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -11,12 +12,10 @@ class AntigravityPayloadBuilderTest {
 
 	@Test
 	void build_simpleUserMessage() {
-		Map<String, Object> request = Map.of(
-				"model", "gemini-2.5-flash",
-				"messages", List.of(
-						Map.of("role", "user", "content", "Hello")
-				)
-		);
+		InternalRequest request = InternalRequest.builder()
+				.model("gemini-2.5-flash")
+				.messages(List.of(Message.of("user", "Hello")))
+				.build();
 
 		String json = AntigravityPayloadBuilder.build(request, "projects/test-123");
 
@@ -27,14 +26,14 @@ class AntigravityPayloadBuilderTest {
 	}
 
 	@Test
-	void build_systemMessage_becomesSytemInstruction() {
-		Map<String, Object> request = Map.of(
-				"model", "gemini-2.5-flash",
-				"messages", List.of(
-						Map.of("role", "system", "content", "You are helpful"),
-						Map.of("role", "user", "content", "Hi")
-				)
-		);
+	void build_systemMessage_becomesSystemInstruction() {
+		InternalRequest request = InternalRequest.builder()
+				.model("gemini-2.5-flash")
+				.messages(List.of(
+						Message.of("system", "You are helpful"),
+						Message.of("user", "Hi")
+				))
+				.build();
 
 		String json = AntigravityPayloadBuilder.build(request, "projects/p1");
 
@@ -45,14 +44,14 @@ class AntigravityPayloadBuilderTest {
 
 	@Test
 	void build_assistantRole_mappedToModel() {
-		Map<String, Object> request = Map.of(
-				"model", "gemini-2.5-flash",
-				"messages", List.of(
-						Map.of("role", "user", "content", "Hi"),
-						Map.of("role", "assistant", "content", "Hello!"),
-						Map.of("role", "user", "content", "How are you?")
-				)
-		);
+		InternalRequest request = InternalRequest.builder()
+				.model("gemini-2.5-flash")
+				.messages(List.of(
+						Message.of("user", "Hi"),
+						Message.of("assistant", "Hello!"),
+						Message.of("user", "How are you?")
+				))
+				.build();
 
 		String json = AntigravityPayloadBuilder.build(request, "projects/p1");
 
@@ -62,11 +61,11 @@ class AntigravityPayloadBuilderTest {
 
 	@Test
 	void build_passesMaxTokens() {
-		Map<String, Object> request = Map.of(
-				"model", "gemini-2.5-flash",
-				"messages", List.of(Map.of("role", "user", "content", "Hi")),
-				"max_tokens", 1024
-		);
+		InternalRequest request = InternalRequest.builder()
+				.model("gemini-2.5-flash")
+				.messages(List.of(Message.of("user", "Hi")))
+				.maxTokens(1024)
+				.build();
 
 		String json = AntigravityPayloadBuilder.build(request, "projects/p1");
 
@@ -75,10 +74,10 @@ class AntigravityPayloadBuilderTest {
 
 	@Test
 	void build_defaultMaxTokensWhenNotProvided() {
-		Map<String, Object> request = Map.of(
-				"model", "gemini-2.5-flash",
-				"messages", List.of(Map.of("role", "user", "content", "Hi"))
-		);
+		InternalRequest request = InternalRequest.builder()
+				.model("gemini-2.5-flash")
+				.messages(List.of(Message.of("user", "Hi")))
+				.build();
 
 		String json = AntigravityPayloadBuilder.build(request, "projects/p1");
 
@@ -86,17 +85,15 @@ class AntigravityPayloadBuilderTest {
 	}
 
 	@Test
-	void build_passesTemperatureAndTopP() {
-		Map<String, Object> request = Map.of(
-				"model", "gemini-2.5-flash",
-				"messages", List.of(Map.of("role", "user", "content", "Hi")),
-				"temperature", 0.7,
-				"top_p", 0.9
-		);
+	void build_passesTemperature() {
+		InternalRequest request = InternalRequest.builder()
+				.model("gemini-2.5-flash")
+				.messages(List.of(Message.of("user", "Hi")))
+				.temperature(0.7)
+				.build();
 
 		String json = AntigravityPayloadBuilder.build(request, "projects/p1");
 
 		assertTrue(json.contains("\"temperature\":0.7"));
-		assertTrue(json.contains("\"topP\":0.9"));
 	}
 }

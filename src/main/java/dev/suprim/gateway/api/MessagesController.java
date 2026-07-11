@@ -7,6 +7,8 @@ import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.Message;
 import dev.suprim.gateway.proxy.PayloadBuilder;
 import dev.suprim.gateway.proxy.ProxyFacade;
+import dev.suprim.gateway.proxy.Tool;
+import dev.suprim.gateway.proxy.ToolMapper;
 import dev.suprim.gateway.utils.ErrorResponse;
 import dev.suprim.gateway.utils.RequestContext;
 import dev.suprim.gateway.utils.TokenEstimator;
@@ -51,9 +53,10 @@ class MessagesController {
 		List<Message> openAiMessages = payloadBuilder.convertAnthropicMessages(
 				request
 		);
+		List<Tool> tools = ToolMapper.fromAnthropic(request.tools());
 		int inputTokens = tokenEstimator.estimateRequest(
 				openAiMessages,
-				request.tools()
+				tools
 		);
 
 		Provider provider = ModelRouter.resolveProvider(request.model());
@@ -64,7 +67,7 @@ class MessagesController {
 				               .model(actualModel)
 				               .messages(openAiMessages)
 				               .stream(request.stream())
-				               .tools(request.tools())
+				               .tools(tools)
 				               .build();
 
 		if (providerDispatcher.handles(provider)) {
@@ -76,6 +79,7 @@ class MessagesController {
 					                  inputTokens,
 					                  keyId,
 					                  RequestContext.clientIp(httpReq),
+					                  ProxyFacade.Format.ANTHROPIC,
 					                  httpRes
 			                  );
 			return;

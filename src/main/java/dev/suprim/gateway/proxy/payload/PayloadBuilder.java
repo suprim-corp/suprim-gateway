@@ -3,6 +3,7 @@ package dev.suprim.gateway.proxy;
 import dev.suprim.gateway.api.request.MessagesRequest;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.model.ModelResolver;
+import dev.suprim.gateway.provider.kiro.utils.ToolConverter;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,29 +30,22 @@ public class PayloadBuilder {
 	private final ModelResolver modelResolver;
 
 	public String buildOpenAiPayload(
-			Object request,
+			InternalRequest request,
 			KiroAuthManager auth
 	) throws Exception {
-		JsonNode requestNode = mapper.valueToTree(request);
-		JsonNode messagesNode = requestNode.get("messages");
-		String model = requestNode.get("model").stringValue();
-		JsonNode toolsNode = requestNode.get("tools");
+		List<Message> messages = request.messages() != null
+				? new ArrayList<>(request.messages())
+				: new ArrayList<>();
+		String model = request.model();
+		List<Tool> tools = request.tools();
 
-		List<Message> messages = new ArrayList<>();
-		if (messagesNode != null && messagesNode.isArray()) {
-			for (JsonNode node : messagesNode) {
-				Message msg = mapper.treeToValue(node, Message.class);
-				messages.add(msg);
-			}
-		}
-
-		return buildKiroPayload(messages, model, toolsNode, auth);
+		return buildKiroPayload(messages, model, tools, auth);
 	}
 
 	private String buildKiroPayload(
 			List<Message> messages,
 			String model,
-			JsonNode tools,
+			List<Tool> tools,
 			KiroAuthManager auth
 	) throws Exception {
 		String modelId = modelResolver.resolve(model);
@@ -229,21 +223,18 @@ public class PayloadBuilder {
 		appendImages(userInputMessage, currentImages);
 
 		// Attach tools and current tool results to currentMessage context
-		boolean hasTools = tools != null && tools.isArray() && !tools.isEmpty();
+		boolean hasTools = tools != null && !tools.isEmpty();
 		boolean hasCurrentToolResults =
 				currentToolResults != null && !currentToolResults.isEmpty();
 
 		if (hasTools || hasCurrentToolResults) {
 			ObjectNode ctx = userInputMessage.putObject(
-					"userInputMessageContext");
+					"userInputMessageContext"
+			);
 			if (hasTools) {
 				ArrayNode toolsArr = ctx.putArray("tools");
-				for (JsonNode tool : tools) {
-					ObjectNode converted = ToolConverter.toKiroTool(
-							tool,
-							mapper
-					);
-					if (converted != null) toolsArr.add(converted);
+				for (JsonNode kiroToolNode : mapper.valueToTree(ToolConverter.convert(tools))) {
+					toolsArr.add(kiroToolNode);
 				}
 			}
 			if (hasCurrentToolResults) {

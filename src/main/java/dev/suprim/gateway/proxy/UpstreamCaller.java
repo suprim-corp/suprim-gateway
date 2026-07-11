@@ -17,10 +17,10 @@ public class UpstreamCaller {
 	private final KiroAuthManager auth;
 
 	public KiroResponse call(
-			Object openAiRequest,
+			InternalRequest request,
 			boolean stream
 	) throws Exception {
-		String payload = payloadBuilder.buildOpenAiPayload(openAiRequest, auth);
+		String payload = payloadBuilder.buildOpenAiPayload(request, auth);
 		log.debug("[Upstream] payload: {}", payload.length() > 3000 ? payload.substring(0, 3000) : payload);
 		String url = kiroClient.getGenerateUrl();
 		return kiroClient.request("POST", url, payload, stream);

@@ -7,6 +7,8 @@ import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.Message;
 import dev.suprim.gateway.proxy.PayloadBuilder;
 import dev.suprim.gateway.proxy.ProxyFacade;
+import dev.suprim.gateway.proxy.Tool;
+import dev.suprim.gateway.proxy.ToolMapper;
 import dev.suprim.gateway.utils.ErrorResponse;
 import dev.suprim.gateway.utils.RequestContext;
 import dev.suprim.gateway.utils.TokenEstimator;
@@ -60,9 +62,10 @@ class ResponsesController {
 			messages.addFirst(Message.of("system", instructions));
 		}
 
+		List<Tool> tools = ToolMapper.fromResponses(request.tools());
 		int inputTokens = tokenEstimator.estimateRequest(
 				messages,
-				request.tools()
+				tools
 		);
 
 		Provider provider = ModelRouter.resolveProvider(request.model());
@@ -73,15 +76,21 @@ class ResponsesController {
 				               .model(actualModel)
 				               .messages(messages)
 				               .stream(stream)
-				               .tools(request.tools())
+				               .tools(tools)
 				               .temperature(request.temperature())
 				               .maxTokens(request.maxOutputTokens())
 				               .build();
 
 		if (providerDispatcher.handles(provider)) {
 			providerDispatcher.resolve(provider).handle(
-					openAiReq, actualModel, stream, inputTokens, keyId,
-					RequestContext.clientIp(httpReq), httpRes
+					openAiReq,
+					actualModel,
+					stream,
+					inputTokens,
+					keyId,
+					RequestContext.clientIp(httpReq),
+					ProxyFacade.Format.RESPONSES,
+					httpRes
 			);
 			return;
 		}

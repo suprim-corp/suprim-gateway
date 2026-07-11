@@ -12,7 +12,7 @@ public record InternalRequest(
 		String model,
 		List<Message> messages,
 		boolean stream,
-		List<?> tools,
+		List<Tool> tools,
 		Double temperature,
 		@JsonProperty("max_tokens") Integer maxTokens
 ) {}
