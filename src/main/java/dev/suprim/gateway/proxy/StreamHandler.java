@@ -19,7 +19,8 @@ public class StreamHandler {
 	private final TokenEstimator tokenEstimator;
 
 	public record StreamResult(
-			String content, int outputTokens, long firstTokenMs, double credits
+			String content, int outputTokens, long firstTokenMs, double credits,
+			boolean hasToolUse
 	) {}
 
 	public StreamResult streamToWriter(
@@ -37,6 +38,7 @@ public class StreamHandler {
 
 		byte[] buf = new byte[8192];
 		int read;
+		boolean[] hasToolUse = {false};
 		try (InputStream body = response.body()) {
 			while ((read = body.read(buf)) != -1) {
 				byte[] chunk = new byte[read];
@@ -48,6 +50,9 @@ public class StreamHandler {
 					if ("metering".equals(event.type())) {
 						credits[0] += event.credits();
 						continue;
+					}
+					if ("tool_use".equals(event.type())) {
+						hasToolUse[0] = true;
 					}
 					if ("content".equals(event.type()) &&
 					    event.content() != null) {
@@ -101,7 +106,8 @@ public class StreamHandler {
 				fullText.toString(),
 				outputTokens[0],
 				firstTokenMs[0] < 0 ? 0 : firstTokenMs[0],
-				credits[0]
+				credits[0],
+				hasToolUse[0]
 		);
 	}
 

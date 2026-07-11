@@ -306,7 +306,7 @@ public class KiroFacade {
 			case OPENAI -> streamConverter.toOpenAiStopChunk(model, id) +
 			               streamConverter.toOpenAiDone();
 			case ANTHROPIC ->
-					streamConverter.toAnthropicFinale(result.outputTokens());
+					streamConverter.toAnthropicFinale(result.outputTokens(), result.hasToolUse());
 			case RESPONSES ->
 					streamConverter.toResponsesTextDone(result.content(), id)
 					+ streamConverter.toResponsesCompleted(

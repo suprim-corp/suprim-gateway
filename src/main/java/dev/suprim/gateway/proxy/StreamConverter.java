@@ -254,7 +254,8 @@ public class StreamConverter {
 		);
 	}
 
-	public String toAnthropicFinale(int outputTokens) throws Exception {
+	public String toAnthropicFinale(int outputTokens, boolean hasToolUse) throws Exception {
+		String stopReason = hasToolUse ? "tool_use" : "end_turn";
 		return toAnthropicEvent(
 				"content_block_stop",
 				Map.of("type", "content_block_stop", "index", 0)
@@ -264,7 +265,7 @@ public class StreamConverter {
 						"type",
 						"message_delta",
 						"delta",
-						Map.of("stop_reason", "end_turn"),
+						Map.of("stop_reason", stopReason),
 						"usage",
 						Map.of("output_tokens", outputTokens)
 				)
