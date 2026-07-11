@@ -7,9 +7,12 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 public final class ToolMapper {
 
 	private static final JsonMapper MAPPER = new JsonMapper();
@@ -66,6 +69,10 @@ public final class ToolMapper {
 		if (tools == null || tools.isEmpty()) return List.of();
 		List<Tool> result = new ArrayList<>(tools.size());
 		for (ResponsesRequest.Tool tool : tools) {
+			if (!"function".equals(tool.type())) {
+				log.debug("Skipping non-function tool: {}", tool);
+				continue;
+			}
 			result.add(Tool.builder()
 					.type("function")
 					.function(Tool.Function.builder()
