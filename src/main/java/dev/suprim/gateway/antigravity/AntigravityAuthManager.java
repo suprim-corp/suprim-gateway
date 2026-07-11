@@ -29,6 +29,7 @@ public class AntigravityAuthManager {
 	private String refreshToken;
 	private Instant expiresAt;
 	private String projectId;
+	private String email;
 
 	@PostConstruct
 	public void init() {
@@ -70,12 +71,14 @@ public class AntigravityAuthManager {
 			String accessToken,
 			String refreshToken,
 			Instant expiresAt,
-			String projectId
+			String projectId,
+			String email
 	) {
 		this.accessToken = accessToken;
 		this.refreshToken = refreshToken;
 		this.expiresAt = expiresAt;
 		this.projectId = projectId;
+		this.email = email;
 		persistToStore();
 	}
 
@@ -126,11 +129,12 @@ public class AntigravityAuthManager {
 		this.refreshToken = account.refreshToken();
 		this.expiresAt = account.expiresAt();
 		this.projectId = account.projectId();
+		this.email = account.name();
 	}
 
 	private void persistToStore() {
 		StoredAccount account = StoredAccount.builder()
-		                                     .name("Antigravity")
+		                                     .name(email)
 		                                     .provider(Antigravity.PROVIDER)
 		                                     .clientId(Antigravity.CLIENT_ID)
 		                                     .clientSecret(Antigravity.CLIENT_SECRET)

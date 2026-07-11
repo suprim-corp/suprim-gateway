@@ -119,7 +119,7 @@ class AntigravityAuthManagerTest {
 	@Test
 	void saveCredentials_persistsToStore() {
 		Instant expiry = Instant.now().plusSeconds(3600);
-		authManager.saveCredentials("ya29.new", "1//new-refresh", expiry, "projects/new");
+		authManager.saveCredentials("ya29.new", "1//new-refresh", expiry, "projects/new", "test@gmail.com");
 
 		assertTrue(authManager.isConnected());
 		assertEquals("ya29.new", authManager.getAccessToken());

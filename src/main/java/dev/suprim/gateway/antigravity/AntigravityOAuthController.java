@@ -126,14 +126,16 @@ public class AntigravityOAuthController {
 			int expiresIn = json.get("expires_in").asInt();
 			Instant expiresAt = Instant.now().plusSeconds(expiresIn);
 
+			String email = fetchEmail(accessToken);
 			String projectId = ProjectIdFetcher.fetch(accessToken);
 			authManager.saveCredentials(
 					accessToken,
 					refreshToken,
 					expiresAt,
-					projectId
+					projectId,
+					email
 			);
-			log.info("[Antigravity] OAuth complete, projectId={}", projectId);
+			log.info("[Antigravity] OAuth complete, email={}, projectId={}", email, projectId);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			throw new IOException("Token exchange interrupted", e);
@@ -168,5 +170,24 @@ public class AntigravityOAuthController {
 
 	private static String encode(String value) {
 		return URLEncoder.encode(value, StandardCharsets.UTF_8);
+	}
+
+	private static String fetchEmail(String accessToken) {
+		try {
+			HttpRequest request = HttpRequest.newBuilder()
+			                                 .uri(URI.create(Antigravity.USERINFO_URL))
+			                                 .header("Authorization", "Bearer " + accessToken)
+			                                 .GET()
+			                                 .build();
+			HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+			if (response.statusCode() == 200) {
+				JsonNode json = MAPPER.readTree(response.body());
+				JsonNode email = json.get("email");
+				return email != null ? email.asString() : null;
+			}
+		} catch (Exception e) {
+			log.warn("[Antigravity] Failed to fetch email: {}", e.getMessage());
+		}
+		return null;
 	}
 }

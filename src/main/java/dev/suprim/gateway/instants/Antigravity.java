@@ -10,6 +10,7 @@ public class Antigravity {
 	public static final String OAUTH_SCOPE = "https://www.googleapis.com/auth/cloud-platform openid email profile";
 	public static final String USER_AGENT = "antigravity/ide/2.1.1 darwin/arm64";
 	public static final String CALLBACK_PATH = "/callback/antigravity";
+	public static final String USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 	public static final String CLIENT_ID = rot("1071006060591-gzuffva2u21yper235igbybwu4t403rc.nccf.tbbtyrhfrepbagrag.pbz");
 	public static final String CLIENT_SECRET = rot("TBPFCK-X58SJE486YqYW1zYO8fKP4m6dQNs");
 	public static final String PROVIDER = "ANTIGRAVITY";
