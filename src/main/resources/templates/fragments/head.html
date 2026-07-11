@@ -31,11 +31,12 @@
         body {
             font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
         }
+
         .toastify {
             font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
             font-size: 12px;
             border-radius: 6px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
             z-index: 99999;
         }
     </style>
@@ -46,13 +47,16 @@
                 error: 'linear-gradient(to right, #7f1d1d, #991b1b)',
                 info: 'linear-gradient(to right, #18181b, #27272a)'
             };
-            Toastify({
+            const opts = {
                 text: text,
                 duration: 2500,
                 gravity: 'bottom',
                 position: 'right',
-                style: { background: bg[type] || bg.info }
-            }).showToast();
+                style: {background: bg[type] || bg.info, position: 'fixed'}
+            };
+            const openDialog = document.querySelector('dialog[open]');
+            if (openDialog) opts.selector = openDialog;
+            Toastify(opts).showToast();
         }
     </script>
 </head>
