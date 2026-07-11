@@ -57,6 +57,7 @@ public class XaiFacade {
 		log.debug("[xAI] Calling {} with payload length {}", model, payload.length());
 
 		XaiHttpClient.XaiResponse response = XaiHttpClient.call(payload, accessToken);
+		log.info("[xAI] Upstream responded with status {}", response.status());
 
 		if (response.status() != 200) {
 			handleError(response, model, inputTokens, keyId, clientIp, startTime, httpRes);

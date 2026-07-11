@@ -61,6 +61,7 @@ class MessagesController {
 
 		HashMap<String, Object> openAiReq = new HashMap<>();
 		openAiReq.put("messages", openAiMessages);
+		openAiReq.put("stream", stream);
 		if (tools != null) openAiReq.put("tools", tools);
 
 		Provider provider = ModelRouter.resolveProvider(model);

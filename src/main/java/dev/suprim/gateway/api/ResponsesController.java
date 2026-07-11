@@ -75,6 +75,7 @@ class ResponsesController {
 
 		HashMap<String, Object> openAiReq = new HashMap<>();
 		openAiReq.put("messages", messages);
+		openAiReq.put("stream", stream);
 		if (tools != null) openAiReq.put("tools", tools);
 		if (request.containsKey("temperature")) openAiReq.put(
 				"temperature",
