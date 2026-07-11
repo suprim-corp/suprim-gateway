@@ -2,6 +2,8 @@ package dev.suprim.gateway.proxy;
 
 import dev.suprim.gateway.logging.RequestLogEvent;
 import dev.suprim.gateway.logging.RequestLogPublisher;
+import dev.suprim.gateway.provider.kiro.KiroAuthManager;
+import dev.suprim.gateway.provider.kiro.payload.PayloadBuilder;
 import dev.suprim.gateway.proxy.KiroHttpClient.KiroResponse;
 import dev.suprim.gateway.utils.ErrorResponse;
 import dev.suprim.gateway.utils.RequestContext;
@@ -9,10 +11,9 @@ import dev.suprim.gateway.virtualkey.VirtualKeyService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.InputStream;
 import java.io.PrintWriter;
@@ -21,17 +22,17 @@ import java.util.UUID;
 
 @RequiredArgsConstructor
 @Component
-public class ProxyFacade {
+@Slf4j
+public class KiroFacade {
 
-	private static final Logger log = LoggerFactory.getLogger(ProxyFacade.class);
-	private final ObjectMapper mapper = new ObjectMapper();
-	private final UpstreamCaller upstreamCaller;
+	private final JsonMapper mapper = new JsonMapper();
+	private final KiroHttpClient kiroClient;
+	private final PayloadBuilder payloadBuilder;
+	private final KiroAuthManager auth;
 	private final StreamHandler streamHandler;
 	private final StreamConverter streamConverter;
 	private final RequestLogPublisher logPublisher;
 	private final VirtualKeyService keyService;
-
-	public enum Format {OPENAI, ANTHROPIC, RESPONSES}
 
 	public record ProxyRequest(
 			InternalRequest request, Format format, boolean stream,
@@ -40,12 +41,35 @@ public class ProxyFacade {
 	) {}
 
 	public void handle(
+			InternalRequest request,
+			String model,
+			boolean stream,
+			int inputTokens,
+			String keyId,
+			String clientIp,
+			Format format,
+			HttpServletResponse httpRes
+	) throws Exception {
+		ProxyRequest req = new ProxyRequest(
+				request,
+				format,
+				stream,
+				model,
+				inputTokens,
+				keyId,
+				keyId,
+				clientIp
+		);
+		handle(req, httpRes);
+	}
+
+	public void handle(
 			ProxyRequest req,
 			HttpServletResponse httpRes
 	) throws Exception {
 		long startTime = System.currentTimeMillis();
 
-		KiroResponse response = upstreamCaller.call(
+		KiroResponse response = callUpstream(
 				req.request(),
 				req.stream() || req.format() == Format.RESPONSES
 		);
@@ -181,7 +205,8 @@ public class ProxyFacade {
 			ProxyRequest req,
 			long startTime
 	) throws Exception {
-		StreamHandler.CollectResult collected = streamHandler.collectContent(response);
+		StreamHandler.CollectResult collected = streamHandler.collectContent(
+				response);
 		String content = collected.content();
 		double credits = collected.credits();
 		int outputTokens = streamHandler.countTokens(content);
@@ -201,7 +226,14 @@ public class ProxyFacade {
 				)
 		);
 
-		publishLog(req, outputTokens, false, startTime, null, credits > 0 ? credits : null);
+		publishLog(
+				req,
+				outputTokens,
+				false,
+				startTime,
+				null,
+				credits > 0 ? credits : null
+		);
 		if (req.virtualKeyId() != null && outputTokens > 0)
 			keyService.incrementUsage(req.virtualKeyId(), outputTokens);
 	}
@@ -309,6 +341,19 @@ public class ProxyFacade {
 		};
 	}
 
+	private KiroResponse callUpstream(
+			InternalRequest request,
+			boolean stream
+	) throws Exception {
+		String payload = payloadBuilder.buildOpenAiPayload(request, auth);
+		log.debug(
+				"[Upstream] payload: {}",
+				payload.length() > 3000 ? payload.substring(0, 3000) : payload
+		);
+		String url = kiroClient.getGenerateUrl();
+		return kiroClient.request("POST", url, payload, stream);
+	}
+
 	private void publishLog(
 			ProxyRequest req,
 			int outputTokens,
@@ -332,7 +377,8 @@ public class ProxyFacade {
 				                             null ? firstTokenMs.intValue() : null)
 				               .streaming(streaming)
 				               .clientIp(req.clientIp())
-				               .credits(credits != null && credits > 0 ? credits : null)
+				               .credits(credits != null &&
+				                        credits > 0 ? credits : null)
 				               .build()
 		);
 	}

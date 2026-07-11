@@ -3,12 +3,7 @@ package dev.suprim.gateway.api;
 import dev.suprim.gateway.api.request.MessagesRequest;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.model.ModelRouter;
-import dev.suprim.gateway.proxy.InternalRequest;
-import dev.suprim.gateway.proxy.Message;
-import dev.suprim.gateway.proxy.PayloadBuilder;
-import dev.suprim.gateway.proxy.ProxyFacade;
-import dev.suprim.gateway.proxy.Tool;
-import dev.suprim.gateway.proxy.ToolMapper;
+import dev.suprim.gateway.proxy.*;
 import dev.suprim.gateway.utils.ErrorResponse;
 import dev.suprim.gateway.utils.RequestContext;
 import dev.suprim.gateway.utils.TokenEstimator;
@@ -28,8 +23,6 @@ import java.util.List;
 @RestController
 class MessagesController {
 
-	private final ProxyFacade proxyFacade;
-	private final PayloadBuilder payloadBuilder;
 	private final ProviderDispatcher providerDispatcher;
 	private final RateLimiter rateLimiter;
 	private final TokenEstimator tokenEstimator;
@@ -50,9 +43,7 @@ class MessagesController {
 			return;
 		}
 
-		List<Message> openAiMessages = payloadBuilder.convertAnthropicMessages(
-				request
-		);
+		List<Message> openAiMessages = MessageConverter.fromAnthropic(request);
 		List<Tool> tools = ToolMapper.fromAnthropic(request.tools());
 		int inputTokens = tokenEstimator.estimateRequest(
 				openAiMessages,
@@ -70,33 +61,16 @@ class MessagesController {
 				               .tools(tools)
 				               .build();
 
-		if (providerDispatcher.handles(provider)) {
-			providerDispatcher.resolve(provider)
-			                  .handle(
-					                  openAiReq,
-					                  actualModel,
-					                  request.stream(),
-					                  inputTokens,
-					                  keyId,
-					                  RequestContext.clientIp(httpReq),
-					                  ProxyFacade.Format.ANTHROPIC,
-					                  httpRes
-			                  );
-			return;
-		}
-
-		proxyFacade.handle(
-				ProxyFacade.buildRequest(
-						openAiReq,
-						ProxyFacade.Format.ANTHROPIC,
-						request.stream(),
-						actualModel,
-						inputTokens,
-						keyId,
-						keyId,
-						httpReq
-				),
-				httpRes
-		);
+		providerDispatcher.resolve(provider)
+		                  .handle(
+				                  openAiReq,
+				                  actualModel,
+				                  request.stream(),
+				                  inputTokens,
+				                  keyId,
+				                  RequestContext.clientIp(httpReq),
+				                  Format.ANTHROPIC,
+				                  httpRes
+		                  );
 	}
 }

@@ -9,9 +9,9 @@ public final class ContentExtractor {
 
 	private ContentExtractor() {}
 
-	record KiroImage(String format, String bytes) {}
+	public record KiroImage(String format, String bytes) {}
 
-	static String fromMessage(Message msg) {
+	public static String fromMessage(Message msg) {
 		Object content = msg.content();
 		if (content instanceof String s) return s;
 		if (content instanceof List<?> list) {
@@ -26,7 +26,7 @@ public final class ContentExtractor {
 		return "";
 	}
 
-	static List<KiroImage> extractImages(Message msg) {
+	public static List<KiroImage> extractImages(Message msg) {
 		Object content = msg.content();
 		if (!(content instanceof List<?> list)) return List.of();
 

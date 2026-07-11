@@ -1,7 +1,7 @@
 package dev.suprim.gateway.api;
 
+import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
-import dev.suprim.gateway.proxy.ProxyFacade;
 import jakarta.servlet.http.HttpServletResponse;
 
 @FunctionalInterface
@@ -13,7 +13,7 @@ interface ProviderHandler {
 			int inputTokens,
 			String keyId,
 			String clientIp,
-			ProxyFacade.Format format,
+			Format format,
 			HttpServletResponse httpRes
 	) throws Exception;
 }

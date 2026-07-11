@@ -3,12 +3,7 @@ package dev.suprim.gateway.api;
 import dev.suprim.gateway.api.request.ResponsesRequest;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.model.ModelRouter;
-import dev.suprim.gateway.proxy.InternalRequest;
-import dev.suprim.gateway.proxy.Message;
-import dev.suprim.gateway.proxy.PayloadBuilder;
-import dev.suprim.gateway.proxy.ProxyFacade;
-import dev.suprim.gateway.proxy.Tool;
-import dev.suprim.gateway.proxy.ToolMapper;
+import dev.suprim.gateway.proxy.*;
 import dev.suprim.gateway.utils.ErrorResponse;
 import dev.suprim.gateway.utils.RequestContext;
 import dev.suprim.gateway.utils.TokenEstimator;
@@ -29,9 +24,7 @@ import java.util.List;
 @RestController
 class ResponsesController {
 
-	private final ProxyFacade proxyFacade;
 	private final ProviderDispatcher providerDispatcher;
-	private final PayloadBuilder payloadBuilder;
 	private final RateLimiter rateLimiter;
 	private final TokenEstimator tokenEstimator;
 
@@ -54,7 +47,7 @@ class ResponsesController {
 		boolean stream = Boolean.TRUE.equals(request.stream());
 
 		List<Message> messages = new ArrayList<>(
-				payloadBuilder.convertResponsesInput(request.input())
+				MessageConverter.fromResponses(request.input())
 		);
 
 		String instructions = request.instructions();
@@ -81,31 +74,16 @@ class ResponsesController {
 				               .maxTokens(request.maxOutputTokens())
 				               .build();
 
-		if (providerDispatcher.handles(provider)) {
-			providerDispatcher.resolve(provider).handle(
-					openAiReq,
-					actualModel,
-					stream,
-					inputTokens,
-					keyId,
-					RequestContext.clientIp(httpReq),
-					ProxyFacade.Format.RESPONSES,
-					httpRes
-			);
-			return;
-		}
-
-		proxyFacade.handle(
-				ProxyFacade.buildRequest(
-						openAiReq,
-						ProxyFacade.Format.RESPONSES,
-						stream,
-						actualModel,
-						inputTokens,
-						keyId,
-						keyId,
-						httpReq
-				), httpRes
-		);
+		providerDispatcher.resolve(provider)
+		                  .handle(
+				                  openAiReq,
+				                  actualModel,
+				                  stream,
+				                  inputTokens,
+				                  keyId,
+				                  RequestContext.clientIp(httpReq),
+				                  Format.RESPONSES,
+				                  httpRes
+		                  );
 	}
 }

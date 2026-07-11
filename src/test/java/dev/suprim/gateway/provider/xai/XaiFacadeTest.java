@@ -2,9 +2,9 @@ package dev.suprim.gateway.provider.xai;
 
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.logging.RequestLogPublisher;
+import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.Message;
-import dev.suprim.gateway.proxy.ProxyFacade;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -47,7 +47,7 @@ class XaiFacadeTest {
 		MockHttpServletResponse response = new MockHttpServletResponse();
 		facade.handle(
 				request, "grok-4", true, 10, "key1", "127.0.0.1",
-				ProxyFacade.Format.OPENAI, response
+				Format.OPENAI, response
 		);
 		assertEquals(401, response.getStatus());
 		assertTrue(response.getContentAsString().contains("not connected"));
@@ -67,7 +67,7 @@ class XaiFacadeTest {
 		try {
 			facade.handle(
 					request, "grok-4", true, 10, "key1", "127.0.0.1",
-					ProxyFacade.Format.OPENAI, response
+					Format.OPENAI, response
 			);
 		} catch (Exception e) {
 			// Expected - can't reach real xAI server in tests

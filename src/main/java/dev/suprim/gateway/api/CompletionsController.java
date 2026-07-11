@@ -3,11 +3,7 @@ package dev.suprim.gateway.api;
 import dev.suprim.gateway.api.request.CompletionsRequest;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.model.ModelRouter;
-import dev.suprim.gateway.proxy.InternalRequest;
-import dev.suprim.gateway.proxy.Message;
-import dev.suprim.gateway.proxy.ProxyFacade;
-import dev.suprim.gateway.proxy.Tool;
-import dev.suprim.gateway.proxy.ToolMapper;
+import dev.suprim.gateway.proxy.*;
 import dev.suprim.gateway.utils.ErrorResponse;
 import dev.suprim.gateway.utils.RequestContext;
 import dev.suprim.gateway.utils.TokenEstimator;
@@ -27,7 +23,6 @@ import java.util.List;
 @RestController
 class CompletionsController {
 
-	private final ProxyFacade proxyFacade;
 	private final ProviderDispatcher providerDispatcher;
 	private final RateLimiter rateLimiter;
 	private final TokenEstimator tokenEstimator;
@@ -57,54 +52,53 @@ class CompletionsController {
 		Provider provider = ModelRouter.resolveProvider(request.model());
 		String actualModel = ModelRouter.stripPrefix(request.model());
 
-		List<Message> messages = request.messages().stream()
-				.map(m -> Message.builder()
-						.role(m.role())
-						.content(m.content())
-						.toolCalls(m.toolCalls() == null ? null : m.toolCalls().stream()
-								.map(tc -> Message.ToolCall.builder()
-										.id(tc.id())
-										.type(tc.type())
-										.function(tc.function() == null ? null :
-												Message.Function.builder()
-														.name(tc.function().name())
-														.arguments(tc.function().arguments())
-														.build())
-										.build())
-								.toList())
-						.toolCallId(m.toolCallId())
-						.build())
-				.toList();
+		List<Message> messages =
+				request.messages()
+				       .stream()
+				       .map(m -> Message.builder()
+				                        .role(m.role())
+				                        .content(m.content())
+				                        .toolCalls(
+						                        m.toolCalls() ==
+						                        null ? null : m.toolCalls()
+						                                       .stream()
+						                                       .map(tc -> Message.ToolCall.builder()
+						                                                                  .id(tc.id())
+						                                                                  .type(tc.type())
+						                                                                  .function(
+								                                                                  tc.function() ==
+								                                                                  null ? null :
+										                                                                  Message.Function.builder()
+										                                                                                  .name(
+												                                                                                  tc.function()
+												                                                                                    .name()
+										                                                                                  )
+										                                                                                  .arguments(
+												                                                                                  tc.function()
+												                                                                                    .arguments()
+										                                                                                  )
+										                                                                                  .build()
+						                                                                  )
+						                                                                  .build())
+						                                       .toList())
+				                        .toolCallId(m.toolCallId())
+				                        .build())
+				       .toList();
 
-		InternalRequest internalReq = InternalRequest.builder()
-				.model(actualModel)
-				.messages(messages)
-				.stream(stream)
-				.tools(tools)
-				.temperature(request.temperature())
-				.maxTokens(request.maxTokens())
-				.build();
+		InternalRequest internalReq =
+				InternalRequest.builder()
+				               .model(actualModel)
+				               .messages(messages)
+				               .stream(stream)
+				               .tools(tools)
+				               .temperature(request.temperature())
+				               .maxTokens(request.maxTokens())
+				               .build();
 
-		if (providerDispatcher.handles(provider)) {
-			providerDispatcher.resolve(provider).handle(
-					internalReq, actualModel, stream, inputTokens, keyId,
-					RequestContext.clientIp(httpReq), ProxyFacade.Format.OPENAI,
-					httpRes
-			);
-			return;
-		}
-
-		proxyFacade.handle(
-				ProxyFacade.buildRequest(
-						internalReq,
-						ProxyFacade.Format.OPENAI,
-						stream,
-						actualModel,
-						inputTokens,
-						keyId,
-						keyId,
-						httpReq
-				), httpRes
+		providerDispatcher.resolve(provider).handle(
+				internalReq, actualModel, stream, inputTokens, keyId,
+				RequestContext.clientIp(httpReq), Format.OPENAI,
+				httpRes
 		);
 	}
 }

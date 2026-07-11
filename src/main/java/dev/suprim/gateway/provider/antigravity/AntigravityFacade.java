@@ -2,8 +2,8 @@ package dev.suprim.gateway.provider.antigravity;
 
 import dev.suprim.gateway.logging.RequestLogEvent;
 import dev.suprim.gateway.logging.RequestLogPublisher;
+import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
-import dev.suprim.gateway.proxy.ProxyFacade;
 import dev.suprim.gateway.utils.ErrorResponse;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +36,7 @@ public class AntigravityFacade {
 			int inputTokens,
 			String keyId,
 			String clientIp,
-			ProxyFacade.Format format,
+			Format format,
 			HttpServletResponse httpRes
 	) throws Exception {
 		if (!authManager.isConnected()) {
