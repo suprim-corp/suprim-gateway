@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 @RequiredArgsConstructor
 @RestController
@@ -72,5 +73,13 @@ class MessagesController {
 				                  Format.ANTHROPIC,
 				                  httpRes
 		                  );
+	}
+
+	@PostMapping("/v1/messages/count_tokens")
+	Map<String, Object> countTokens(@RequestBody MessagesRequest request) {
+		List<Message> messages = MessageConverter.fromAnthropic(request);
+		List<Tool> tools = ToolMapper.fromAnthropic(request.tools());
+		int inputTokens = tokenEstimator.estimateRequest(messages, tools);
+		return Map.of("input_tokens", inputTokens);
 	}
 }
