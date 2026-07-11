@@ -11,21 +11,16 @@ class ContentExtractorTest {
 
 	@Test
 	void extractImages_claudeFormat() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of(
-						Map.of("type", "text", "text", "describe this"),
-						Map.of(
-								"type", "image", "source", Map.of(
-										"type", "base64",
-										"media_type", "image/png",
-										"data", "iVBORw0KGgo="
-								)
-						)
-				)
-		);
+		Message msg = Message.of("user", List.of(
+				Map.of("type", "text", "text", "describe this"),
+				Map.of("type", "image", "source", Map.of(
+						"type", "base64",
+						"media_type", "image/png",
+						"data", "iVBORw0KGgo="
+				))
+		));
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertEquals(1, images.size());
 		assertEquals("png", images.getFirst().format());
@@ -34,20 +29,15 @@ class ContentExtractorTest {
 
 	@Test
 	void extractImages_inputImageFormat() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of(
-						Map.of(
-								"type", "input_image", "source", Map.of(
-										"type", "base64",
-										"media_type", "image/jpeg",
-										"data", "AAAA"
-								)
-						)
-				)
-		);
+		Message msg = Message.of("user", List.of(
+				Map.of("type", "input_image", "source", Map.of(
+						"type", "base64",
+						"media_type", "image/jpeg",
+						"data", "AAAA"
+				))
+		));
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertEquals(1, images.size());
 		assertEquals("jpeg", images.getFirst().format());
@@ -56,18 +46,13 @@ class ContentExtractorTest {
 
 	@Test
 	void extractImages_imageUrlDataUrl() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of(
-						Map.of(
-								"type", "image_url", "image_url", Map.of(
-										"url", "data:image/webp;base64,UklGR="
-								)
-						)
-				)
-		);
+		Message msg = Message.of("user", List.of(
+				Map.of("type", "image_url", "image_url", Map.of(
+						"url", "data:image/webp;base64,UklGR="
+				))
+		));
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertEquals(1, images.size());
 		assertEquals("webp", images.getFirst().format());
@@ -76,42 +61,34 @@ class ContentExtractorTest {
 
 	@Test
 	void extractImages_noImages() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of(
-						Map.of("type", "text", "text", "hello")
-				)
-		);
+		Message msg = Message.of("user", List.of(
+				Map.of("type", "text", "text", "hello")
+		));
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertTrue(images.isEmpty());
 	}
 
 	@Test
 	void extractImages_stringContent() {
-		Map<String, Object> msg = Map.of("content", "plain text");
+		Message msg = Message.of("user", "plain text");
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertTrue(images.isEmpty());
 	}
 
 	@Test
 	void fromMessage_withImageBlocks_onlyExtractsText() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of(
-						Map.of("type", "text", "text", "describe this"),
-						Map.of(
-								"type", "image", "source", Map.of(
-										"type", "base64",
-										"media_type", "image/png",
-										"data", "iVBORw0KGgo="
-								)
-						)
-				)
-		);
+		Message msg = Message.of("user", List.of(
+				Map.of("type", "text", "text", "describe this"),
+				Map.of("type", "image", "source", Map.of(
+						"type", "base64",
+						"media_type", "image/png",
+						"data", "iVBORw0KGgo="
+				))
+		));
 
 		String text = ContentExtractor.fromMessage(msg);
 
@@ -139,19 +116,14 @@ class ContentExtractorTest {
 
 	@Test
 	void extractImages_defaultsToMediaTypePng() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of(
-						Map.of(
-								"type", "image", "source", Map.of(
-										"type", "base64",
-										"data", "ABCD"
-								)
-						)
-				)
-		);
+		Message msg = Message.of("user", List.of(
+				Map.of("type", "image", "source", Map.of(
+						"type", "base64",
+						"data", "ABCD"
+				))
+		));
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertEquals(1, images.size());
 		assertEquals("png", images.getFirst().format());
@@ -159,20 +131,15 @@ class ContentExtractorTest {
 
 	@Test
 	void extractImages_mediaTypeKey() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of(
-						Map.of(
-								"type", "image", "source", Map.of(
-										"type", "base64",
-										"mediaType", "image/gif",
-										"data", "R0lG"
-								)
-						)
-				)
-		);
+		Message msg = Message.of("user", List.of(
+				Map.of("type", "image", "source", Map.of(
+						"type", "base64",
+						"mediaType", "image/gif",
+						"data", "R0lG"
+				))
+		));
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertEquals(1, images.size());
 		assertEquals("gif", images.getFirst().format());
@@ -180,109 +147,91 @@ class ContentExtractorTest {
 
 	@Test
 	void extractImages_nullSource() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of(
-						Map.of("type", "image")
-				)
-		);
+		Message msg = Message.of("user", List.of(
+				Map.of("type", "image")
+		));
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertTrue(images.isEmpty());
 	}
 
 	@Test
 	void extractImages_nullData() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of(
-						Map.of("type", "image", "source", Map.of("type", "base64"))
-				)
-		);
+		Message msg = Message.of("user", List.of(
+				Map.of("type", "image", "source", Map.of("type", "base64"))
+		));
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertTrue(images.isEmpty());
 	}
 
 	@Test
 	void extractImages_imageUrlNullUrl() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of(
-						Map.of("type", "image_url", "image_url", Map.of("detail", "high"))
-				)
-		);
+		Message msg = Message.of("user", List.of(
+				Map.of("type", "image_url", "image_url", Map.of("detail", "high"))
+		));
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertTrue(images.isEmpty());
 	}
 
 	@Test
 	void extractImages_imageUrlNullImageUrl() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of(
-						Map.of("type", "image_url")
-				)
-		);
+		Message msg = Message.of("user", List.of(
+				Map.of("type", "image_url")
+		));
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertTrue(images.isEmpty());
 	}
 
 	@Test
 	void extractImages_imageUrlNotDataUrl() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of(
-						Map.of("type", "image_url", "image_url", Map.of(
-								"url", "https://example.com/img.png"
-						))
-				)
-		);
+		Message msg = Message.of("user", List.of(
+				Map.of("type", "image_url", "image_url", Map.of(
+						"url", "https://example.com/img.png"
+				))
+		));
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertTrue(images.isEmpty());
 	}
 
 	@Test
 	void extractImages_imageUrlMalformedDataUrl() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of(
-						Map.of("type", "image_url", "image_url", Map.of(
-								"url", "data:image/pngbase64ABC"
-						))
-				)
-		);
+		Message msg = Message.of("user", List.of(
+				Map.of("type", "image_url", "image_url", Map.of(
+						"url", "data:image/pngbase64ABC"
+				))
+		));
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertTrue(images.isEmpty());
 	}
 
 	@Test
 	void fromMessage_stringContent() {
-		Map<String, Object> msg = Map.of("content", "hello world");
+		Message msg = Message.of("user", "hello world");
 
 		assertEquals("hello world", ContentExtractor.fromMessage(msg));
 	}
 
 	@Test
 	void fromMessage_nullContent() {
-		Map<String, Object> msg = Map.of("role", "user");
+		Message msg = Message.builder().role("user").build();
 
 		assertEquals("", ContentExtractor.fromMessage(msg));
 	}
 
 	@Test
 	void fromMessage_nonStringNonList() {
-		Map<String, Object> msg = Map.of("content", 42);
+		Message msg = Message.of("user", 42);
 
 		assertEquals("", ContentExtractor.fromMessage(msg));
 	}
@@ -333,37 +282,29 @@ class ContentExtractorTest {
 
 	@Test
 	void extractImages_nonMapItemInList() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of("not a map", Map.of("type", "text", "text", "hi"))
-		);
+		Message msg = Message.of("user", List.of("not a map", Map.of("type", "text", "text", "hi")));
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertTrue(images.isEmpty());
 	}
 
 	@Test
 	void fromMessage_nonMapItemInList() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of("not a map", Map.of("type", "text", "text", "hi"))
-		);
+		Message msg = Message.of("user", List.of("not a map", Map.of("type", "text", "text", "hi")));
 
 		assertEquals("hi", ContentExtractor.fromMessage(msg));
 	}
 
 	@Test
 	void extractImages_imageUrlDataUrlCommaBeforeSemicolon() {
-		Map<String, Object> msg = Map.of(
-				"content", List.of(
-						Map.of("type", "image_url", "image_url", Map.of(
-								"url", "data:image/png,foo;bar"
-						))
-				)
-		);
+		Message msg = Message.of("user", List.of(
+				Map.of("type", "image_url", "image_url", Map.of(
+						"url", "data:image/png,foo;bar"
+				))
+		));
 
-		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(
-				msg);
+		List<ContentExtractor.KiroImage> images = ContentExtractor.extractImages(msg);
 
 		assertTrue(images.isEmpty());
 	}

@@ -35,7 +35,7 @@ public class ProxyFacade {
 	public enum Format {OPENAI, ANTHROPIC, RESPONSES}
 
 	public record ProxyRequest(
-			Map<String, Object> openAiRequest, Format format, boolean stream,
+			Object openAiRequest, Format format, boolean stream,
 			String model, int inputTokens, String keyId, String virtualKeyId,
 			String clientIp
 	) {}
@@ -64,7 +64,7 @@ public class ProxyFacade {
 	}
 
 	public static ProxyRequest buildRequest(
-			Map<String, Object> openAiRequest, Format format, boolean stream,
+			Object openAiRequest, Format format, boolean stream,
 			String model, int inputTokens, String keyId, String virtualKeyId,
 			HttpServletRequest httpReq
 	) {

@@ -8,21 +8,16 @@ public final class ResponsesInputConverter {
 
 	private ResponsesInputConverter() {}
 
-	public static List<Map<String, Object>> convert(Object input) {
+	public static List<Message> convert(Object input) {
 		if (input instanceof String s) {
-			return List.of(
-					MessageHandler.toMessage(
-							"user",
-							s
-					)
-			);
+			return List.of(MessageHandler.toMessage("user", s));
 		}
 		if (!(input instanceof List<?> items)) {
 			return List.of();
 		}
 
-		List<Map<String, Object>> messages = new ArrayList<>();
-		List<Map<String, Object>> pendingToolCalls = new ArrayList<>();
+		List<Message> messages = new ArrayList<>();
+		List<Message.ToolCall> pendingToolCalls = new ArrayList<>();
 		String pendingAssistant = "";
 
 		for (Object item : items) {
@@ -59,17 +54,12 @@ public final class ResponsesInputConverter {
 					String text = MessageHandler.resolveContent(m);
 					if ("assistant".equals(role)) {
 						if (!pendingAssistant.isEmpty()) messages.add(
-								MessageHandler.toMessage(
-										"assistant",
-										pendingAssistant
-								));
+								MessageHandler.toMessage("assistant", pendingAssistant));
 						pendingAssistant = text;
 					} else {
 						if (!pendingAssistant.isEmpty()) {
 							messages.add(MessageHandler.toMessage(
-									"assistant",
-									pendingAssistant
-							));
+									"assistant", pendingAssistant));
 							pendingAssistant = "";
 						}
 						messages.add(MessageHandler.toMessage(role, text));
@@ -84,10 +74,7 @@ public final class ResponsesInputConverter {
 					new ArrayList<>(pendingToolCalls)
 			));
 		} else if (!pendingAssistant.isEmpty()) {
-			messages.add(MessageHandler.toMessage(
-					"assistant",
-					pendingAssistant
-			));
+			messages.add(MessageHandler.toMessage("assistant", pendingAssistant));
 		}
 
 		return messages;

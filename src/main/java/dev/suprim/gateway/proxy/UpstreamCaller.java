@@ -7,8 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.util.Map;
-
 @RequiredArgsConstructor
 @Component
 public class UpstreamCaller {
@@ -19,7 +17,7 @@ public class UpstreamCaller {
 	private final KiroAuthManager auth;
 
 	public KiroResponse call(
-			Map<String, Object> openAiRequest,
+			Object openAiRequest,
 			boolean stream
 	) throws Exception {
 		String payload = payloadBuilder.buildOpenAiPayload(openAiRequest, auth);

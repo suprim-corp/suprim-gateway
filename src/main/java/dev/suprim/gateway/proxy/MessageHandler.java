@@ -17,7 +17,7 @@ final class MessageHandler {
 		return ContentExtractor.fromResponsesBlock(m.get("content"));
 	}
 
-	static Map<String, Object> toMessage(String role, String content) {
-		return Map.of("role", role, "content", content);
+	static Message toMessage(String role, String content) {
+		return Message.of(role, content);
 	}
 }

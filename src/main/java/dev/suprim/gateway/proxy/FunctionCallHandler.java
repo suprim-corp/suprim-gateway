@@ -1,51 +1,57 @@
 package dev.suprim.gateway.proxy;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 final class FunctionCallHandler {
 
 	private FunctionCallHandler() {}
 
-	static Map<String, Object> toToolCall(Map<?, ?> m) {
-		String callId = stringOrEmpty(m.get("call_id"));
-		String name = stringOrEmpty(m.get("name"));
-		String arguments = m.get("arguments") != null ? m.get("arguments")
-		                                                 .toString() : "{}";
-		HashMap<String, Object> tc = new HashMap<>();
-		tc.put("id", callId);
-		tc.put("type", "function");
-		tc.put("function", Map.of("name", name, "arguments", arguments));
-		return tc;
+	static Message.ToolCall toToolCall(Map<?, ?> m) {
+		String callId = Optional.ofNullable(m.get("call_id"))
+		                        .map(Object::toString)
+		                        .orElse("");
+		String name = Optional.ofNullable(m.get("name"))
+		                      .map(Object::toString)
+		                      .orElse("");
+		String arguments = Optional.ofNullable(m.get("arguments"))
+		                           .map(Object::toString)
+		                           .orElse("{}");
+		return Message.ToolCall.builder()
+		                       .id(callId)
+		                       .type("function")
+		                       .function(
+				                       Message.Function.builder()
+				                                       .name(name)
+				                                       .arguments(arguments)
+				                                       .build()
+		                       )
+		                       .build();
 	}
 
-	static Map<String, Object> toToolResult(Map<?, ?> m) {
-		HashMap<String, Object> toolMsg = new HashMap<>();
-		toolMsg.put("role", "tool");
-		toolMsg.put(
-				"content",
-				m.get("output") != null ? m.get("output").toString() : ""
-		);
-		toolMsg.put(
-				"tool_call_id",
-				m.get("call_id") != null ? m.get("call_id").toString() : ""
-		);
-		return toolMsg;
+	static Message toToolResult(Map<?, ?> m) {
+		String content = Optional.ofNullable(m.get("output"))
+		                         .map(Object::toString)
+		                         .orElse("");
+		String callId = Optional.ofNullable(m.get("call_id"))
+		                        .map(Object::toString)
+		                        .orElse("");
+		return Message.builder()
+		              .role("tool")
+		              .content(content)
+		              .toolCallId(callId)
+		              .build();
 	}
 
-	static Map<String, Object> toAssistantWithTools(
+	static Message toAssistantWithTools(
 			String content,
-			List<Map<String, Object>> toolCalls
+			List<Message.ToolCall> toolCalls
 	) {
-		HashMap<String, Object> msg = new HashMap<>();
-		msg.put("role", "assistant");
-		msg.put("content", content);
-		msg.put("tool_calls", toolCalls);
-		return msg;
-	}
-
-	private static String stringOrEmpty(Object obj) {
-		return obj != null ? obj.toString() : "";
+		return Message.builder()
+		              .role("assistant")
+		              .content(content)
+		              .toolCalls(toolCalls)
+		              .build();
 	}
 }

@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -27,7 +28,7 @@ public class XaiFacade {
 	private final RequestLogPublisher logPublisher;
 
 	public void handle(
-			Map<String, Object> openAiRequest,
+			Object openAiRequest,
 			String model,
 			boolean stream,
 			int inputTokens,
@@ -48,11 +49,12 @@ public class XaiFacade {
 		long startTime = System.currentTimeMillis();
 		String accessToken = authManager.getAccessToken();
 
-		if (stream) {
-			openAiRequest.putIfAbsent("stream_options", Map.of("include_usage", true));
+		ObjectNode payloadNode = MAPPER.valueToTree(openAiRequest);
+		if (stream && !payloadNode.has("stream_options")) {
+			payloadNode.set("stream_options", MAPPER.valueToTree(Map.of("include_usage", true)));
 		}
 
-		String payload = MAPPER.writeValueAsString(openAiRequest);
+		String payload = MAPPER.writeValueAsString(payloadNode);
 
 		log.debug("[xAI] Calling {} with payload length {}", model, payload.length());
 

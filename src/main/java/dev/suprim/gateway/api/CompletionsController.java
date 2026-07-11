@@ -1,7 +1,6 @@
 package dev.suprim.gateway.api;
 
 import dev.suprim.gateway.api.request.CompletionsRequest;
-import dev.suprim.gateway.api.request.RequestMapper;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.model.ModelRouter;
 import dev.suprim.gateway.proxy.ProxyFacade;
@@ -17,9 +16,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
-import java.util.Map;
 
 @RequiredArgsConstructor
 @RestController
@@ -48,22 +44,15 @@ class CompletionsController {
 
 		String model = request.model();
 		boolean stream = Boolean.TRUE.equals(request.stream());
-		List<Map<String, Object>> messages = RequestMapper.messagesToList(
+		int inputTokens = tokenEstimator.estimateCompletionMessages(
 				request.messages()
-		);
-		List<Map<String, Object>> tools = RequestMapper.toolsToList(
-				request.tools()
-		);
-		int inputTokens = tokenEstimator.estimateRequest(messages, tools);
-
-		Map<String, Object> rawRequest = RequestMapper.toMap(request);
+		) + tokenEstimator.estimateTools(request.tools());
 
 		Provider provider = ModelRouter.resolveProvider(model);
 		if (providerDispatcher.handles(provider)) {
 			String actualModel = ModelRouter.stripPrefix(model);
-			rawRequest.put("model", actualModel);
 			providerDispatcher.resolve(provider).handle(
-					rawRequest, actualModel, stream, inputTokens, keyId,
+					request, actualModel, stream, inputTokens, keyId,
 					RequestContext.clientIp(httpReq), httpRes
 			);
 			return;
@@ -71,7 +60,7 @@ class CompletionsController {
 
 		proxyFacade.handle(
 				ProxyFacade.buildRequest(
-						rawRequest,
+						request,
 						ProxyFacade.Format.OPENAI,
 						stream,
 						model,

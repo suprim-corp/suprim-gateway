@@ -28,7 +28,7 @@ public class AntigravityFacade {
 	private final RequestLogPublisher logPublisher;
 
 	public void handle(
-			Map<String, Object> openAiRequest,
+			Object openAiRequest,
 			String model,
 			boolean stream,
 			int inputTokens,

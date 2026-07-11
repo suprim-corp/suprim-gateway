@@ -3,6 +3,7 @@ package dev.suprim.gateway.proxy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public final class ContentExtractor {
 
@@ -10,8 +11,8 @@ public final class ContentExtractor {
 
 	record KiroImage(String format, String bytes) {}
 
-	static String fromMessage(Map<String, Object> msg) {
-		Object content = msg.get("content");
+	static String fromMessage(Message msg) {
+		Object content = msg.content();
 		if (content instanceof String s) return s;
 		if (content instanceof List<?> list) {
 			StringBuilder sb = new StringBuilder();
@@ -25,35 +26,39 @@ public final class ContentExtractor {
 		return "";
 	}
 
-	@SuppressWarnings("unchecked")
-	static List<KiroImage> extractImages(Map<String, Object> msg) {
-		Object content = msg.get("content");
+	static List<KiroImage> extractImages(Message msg) {
+		Object content = msg.content();
 		if (!(content instanceof List<?> list)) return List.of();
 
 		List<KiroImage> images = new ArrayList<>();
 		for (Object item : list) {
 			if (!(item instanceof Map<?, ?> m)) continue;
-			String type = (String) m.get("type");
+			String type = Optional.ofNullable(m.get("type"))
+			                      .map(Object::toString)
+			                      .orElse("");
 
 			if ("image".equals(type) || "input_image".equals(type)) {
-				Map<String, Object> source = (Map<String, Object>) m.get(
-						"source");
-				if (source == null) continue;
-				String data = (String) source.get("data");
+				if (!(m.get("source") instanceof Map<?, ?> source)) continue;
+				String data = Optional.ofNullable(source.get("data"))
+				                      .map(Object::toString)
+				                      .orElse(null);
 				if (data == null) continue;
-				String mediaType = (String) source.get("media_type");
-				if (mediaType == null) mediaType = (String) source.get(
-						"mediaType");
-				if (mediaType == null) mediaType = "image/png";
+				String mediaType = Optional.ofNullable(source.get("media_type"))
+				                           .or(() -> Optional.ofNullable(
+								                           source.get("mediaType")
+						                           )
+				                           )
+				                           .map(Object::toString)
+				                           .orElse("image/png");
 				String format = mediaType.replaceFirst("^image/", "");
 				images.add(new KiroImage(format, data));
 			} else if ("image_url".equals(type)) {
-				Map<String, Object> imageUrl = (Map<String, Object>) m.get(
-						"image_url");
-				if (imageUrl == null) continue;
-				String url = (String) imageUrl.get("url");
+				if (!(m.get("image_url") instanceof Map<?, ?> imageUrl))
+					continue;
+				String url = Optional.ofNullable(imageUrl.get("url"))
+				                     .map(Object::toString)
+				                     .orElse(null);
 				if (url == null) continue;
-				// data:image/png;base64,<data>
 				if (url.startsWith("data:image/")) {
 					int semicolon = url.indexOf(';');
 					int comma = url.indexOf(',');
@@ -71,8 +76,11 @@ public final class ContentExtractor {
 	public static boolean hasImageBlock(List<?> list) {
 		for (Object item : list) {
 			if (item instanceof Map<?, ?> m) {
-				String type = (String) m.get("type");
-				if ("image".equals(type) || "image_url".equals(type) || "input_image".equals(type)) {
+				String type = Optional.ofNullable(m.get("type"))
+				                      .map(Object::toString)
+				                      .orElse("");
+				if ("image".equals(type) || "image_url".equals(type) ||
+				    "input_image".equals(type)) {
 					return true;
 				}
 			}
@@ -86,8 +94,9 @@ public final class ContentExtractor {
 			StringBuilder sb = new StringBuilder();
 			for (Object block : list) {
 				if (block instanceof Map<?, ?> m) {
-					Object typeObj = m.get("type");
-					String bType = typeObj != null ? typeObj.toString() : "";
+					String bType = Optional.ofNullable(m.get("type"))
+					                       .map(Object::toString)
+					                       .orElse("");
 					if ("input_text".equals(bType) || "text".equals(bType)) {
 						Object text = m.get("text");
 						if (text != null) sb.append(text);

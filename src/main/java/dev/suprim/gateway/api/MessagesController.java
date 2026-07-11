@@ -1,9 +1,11 @@
 package dev.suprim.gateway.api;
 
 import dev.suprim.gateway.api.request.MessagesRequest;
-import dev.suprim.gateway.api.request.RequestMapper;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.model.ModelRouter;
+import dev.suprim.gateway.proxy.InternalRequest;
+import dev.suprim.gateway.proxy.Message;
+import dev.suprim.gateway.proxy.PayloadBuilder;
 import dev.suprim.gateway.proxy.ProxyFacade;
 import dev.suprim.gateway.utils.ErrorResponse;
 import dev.suprim.gateway.utils.RequestContext;
@@ -17,18 +19,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
-import tools.jackson.databind.JsonNode;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @RequiredArgsConstructor
 @RestController
 class MessagesController {
 
 	private final ProxyFacade proxyFacade;
+	private final PayloadBuilder payloadBuilder;
 	private final ProviderDispatcher providerDispatcher;
 	private final RateLimiter rateLimiter;
 	private final TokenEstimator tokenEstimator;
@@ -49,30 +48,36 @@ class MessagesController {
 			return;
 		}
 
-		String model = request.model();
-		boolean stream = Boolean.TRUE.equals(request.stream());
-
-		List<Map<String, Object>> openAiMessages = convertAnthropicToOpenAi(
-				request);
-		List<Map<String, Object>> tools = RequestMapper.toolsToList(
+		List<Message> openAiMessages = payloadBuilder.convertAnthropicMessages(
+				request
+		);
+		int inputTokens = tokenEstimator.estimateRequest(
+				openAiMessages,
 				request.tools()
 		);
-		int inputTokens = tokenEstimator.estimateRequest(openAiMessages, tools);
 
-		HashMap<String, Object> openAiReq = new HashMap<>();
-		openAiReq.put("messages", openAiMessages);
-		openAiReq.put("stream", stream);
-		if (tools != null) openAiReq.put("tools", tools);
+		Provider provider = ModelRouter.resolveProvider(request.model());
+		String actualModel = ModelRouter.stripPrefix(request.model());
 
-		Provider provider = ModelRouter.resolveProvider(model);
-		String actualModel = ModelRouter.stripPrefix(model);
-		openAiReq.put("model", actualModel);
+		InternalRequest openAiReq =
+				InternalRequest.builder()
+				               .model(actualModel)
+				               .messages(openAiMessages)
+				               .stream(request.stream())
+				               .tools(request.tools())
+				               .build();
 
 		if (providerDispatcher.handles(provider)) {
-			providerDispatcher.resolve(provider).handle(
-					openAiReq, actualModel, stream, inputTokens, keyId,
-					RequestContext.clientIp(httpReq), httpRes
-			);
+			providerDispatcher.resolve(provider)
+			                  .handle(
+					                  openAiReq,
+					                  actualModel,
+					                  request.stream(),
+					                  inputTokens,
+					                  keyId,
+					                  RequestContext.clientIp(httpReq),
+					                  httpRes
+			                  );
 			return;
 		}
 
@@ -80,7 +85,7 @@ class MessagesController {
 				ProxyFacade.buildRequest(
 						openAiReq,
 						ProxyFacade.Format.ANTHROPIC,
-						stream,
+						request.stream(),
 						actualModel,
 						inputTokens,
 						keyId,
@@ -89,73 +94,5 @@ class MessagesController {
 				),
 				httpRes
 		);
-	}
-
-	private List<Map<String, Object>> convertAnthropicToOpenAi(MessagesRequest request) {
-		List<Map<String, Object>> result = new ArrayList<>();
-
-		JsonNode sys = request.system();
-		if (sys != null) {
-			String systemText;
-			if (sys.isString()) {
-				systemText = sys.stringValue();
-			} else if (sys.isArray()) {
-				StringBuilder sb = new StringBuilder();
-				for (JsonNode item : sys) {
-					if (item.has("text")) sb.append(item.get("text")
-					                                    .stringValue());
-				}
-				systemText = sb.toString();
-			} else {
-				systemText = sys.toString();
-			}
-			result.add(Map.of("role", "system", "content", systemText));
-		}
-
-		if (request.messages() != null) {
-			for (MessagesRequest.Message msg : request.messages()) {
-				String role = msg.role();
-				JsonNode content = msg.content();
-				if (content == null) {
-					result.add(Map.of("role", role, "content", ""));
-				} else if (content.isString()) {
-					result.add(Map.of(
-							"role",
-							role,
-							"content",
-							content.stringValue()
-					));
-				} else if (content.isArray() && hasImageBlock(content)) {
-					List<Object> parts = RequestMapper.toList(content);
-					result.add(Map.of("role", role, "content", parts));
-				} else if (content.isArray()) {
-					StringBuilder sb = new StringBuilder();
-					for (JsonNode item : content) {
-						if (item.has("type") && "text".equals(item.get("type")
-						                                          .stringValue()))
-							sb.append(item.get("text").stringValue());
-					}
-					result.add(Map.of("role", role, "content", sb.toString()));
-				} else {
-					result.add(Map.of(
-							"role",
-							role,
-							"content",
-							content.toString()
-					));
-				}
-			}
-		}
-
-		return result;
-	}
-
-	private boolean hasImageBlock(JsonNode contentArray) {
-		for (JsonNode item : contentArray) {
-			if (item.has("type") && "image".equals(item.get("type")
-			                                           .stringValue()))
-				return true;
-		}
-		return false;
 	}
 }

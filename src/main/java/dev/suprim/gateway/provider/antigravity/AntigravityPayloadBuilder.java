@@ -1,28 +1,41 @@
 package dev.suprim.gateway.provider.antigravity;
 
+import dev.suprim.gateway.proxy.Message;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 
 class AntigravityPayloadBuilder {
 
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 	private static final int DEFAULT_MAX_OUTPUT_TOKENS = 65536;
 
-	@SuppressWarnings("unchecked")
-	static String build(Map<String, Object> openAiRequest, String projectId) {
-		List<Map<String, Object>> messages = (List<Map<String, Object>>) openAiRequest.get("messages");
+	static String build(Object openAiRequest, String projectId) {
+		JsonNode requestNode = MAPPER.valueToTree(openAiRequest);
+		JsonNode messagesNode = requestNode.get("messages");
+
+		List<Message> messages = new ArrayList<>();
+		if (messagesNode != null && messagesNode.isArray()) {
+			for (JsonNode node : messagesNode) {
+				Message msg = MAPPER.treeToValue(node, Message.class);
+				messages.add(msg);
+			}
+		}
 
 		ObjectNode root = MAPPER.createObjectNode();
 		ArrayNode contents = root.putArray("contents");
 		ObjectNode systemInstruction = null;
 
-		for (Map<String, Object> msg : messages) {
-			String role = (String) msg.get("role");
-			String content = (String) msg.get("content");
+		for (Message msg : messages) {
+			String role = msg.role();
+			String content = Optional.ofNullable(msg.content())
+			                         .map(Object::toString)
+			                         .orElse("");
 
 			if ("system".equals(role)) {
 				systemInstruction = MAPPER.createObjectNode();
@@ -43,21 +56,21 @@ class AntigravityPayloadBuilder {
 		}
 
 		ObjectNode generationConfig = root.putObject("generationConfig");
-		Object maxTokens = openAiRequest.get("max_tokens");
-		if (maxTokens instanceof Number n) {
-			generationConfig.put("maxOutputTokens", n.intValue());
+		JsonNode maxTokens = requestNode.get("max_tokens");
+		if (maxTokens != null && maxTokens.isNumber()) {
+			generationConfig.put("maxOutputTokens", maxTokens.asInt());
 		} else {
 			generationConfig.put("maxOutputTokens", DEFAULT_MAX_OUTPUT_TOKENS);
 		}
 
-		Object temperature = openAiRequest.get("temperature");
-		if (temperature instanceof Number n) {
-			generationConfig.put("temperature", n.doubleValue());
+		JsonNode temperature = requestNode.get("temperature");
+		if (temperature != null && temperature.isNumber()) {
+			generationConfig.put("temperature", temperature.asDouble());
 		}
 
-		Object topP = openAiRequest.get("top_p");
-		if (topP instanceof Number n) {
-			generationConfig.put("topP", n.doubleValue());
+		JsonNode topP = requestNode.get("top_p");
+		if (topP != null && topP.isNumber()) {
+			generationConfig.put("topP", topP.asDouble());
 		}
 
 		root.put("project", projectId);

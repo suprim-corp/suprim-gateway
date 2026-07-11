@@ -1,18 +1,21 @@
 package dev.suprim.gateway.proxy;
 
+import dev.suprim.gateway.api.request.MessagesRequest;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.model.ModelResolver;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @RequiredArgsConstructor
@@ -25,25 +28,40 @@ public class PayloadBuilder {
 	private final ObjectMapper mapper = new ObjectMapper();
 	private final ModelResolver modelResolver;
 
-	@SuppressWarnings("unchecked")
 	public String buildOpenAiPayload(
-			Map<String, Object> request,
+			Object request,
 			KiroAuthManager auth
 	) throws Exception {
-		List<Map<String, Object>> messages = (List<Map<String, Object>>) request.get(
-				"messages");
-		String model = (String) request.get("model");
-		List<Map<String, Object>> tools = (List<Map<String, Object>>) request.get(
-				"tools");
+		JsonNode requestNode = mapper.valueToTree(request);
+		JsonNode messagesNode = requestNode.get("messages");
+		String model = requestNode.get("model").stringValue();
+		JsonNode toolsNode = requestNode.get("tools");
+
+		List<Message> messages = new ArrayList<>();
+		if (messagesNode != null && messagesNode.isArray()) {
+			for (JsonNode node : messagesNode) {
+				Message msg = mapper.treeToValue(node, Message.class);
+				messages.add(msg);
+			}
+		}
+
+		return buildKiroPayload(messages, model, toolsNode, auth);
+	}
+
+	private String buildKiroPayload(
+			List<Message> messages,
+			String model,
+			JsonNode tools,
+			KiroAuthManager auth
+	) throws Exception {
 		String modelId = modelResolver.resolve(model);
 
 		// Separate system messages from conversation
 		StringBuilder systemPrompt = new StringBuilder();
-		List<Map<String, Object>> nonSystemMessages = new ArrayList<>();
+		List<Message> nonSystemMessages = new ArrayList<>();
 
-		for (Map<String, Object> msg : messages) {
-			String role = (String) msg.get("role");
-			if ("system".equals(role)) {
+		for (Message msg : messages) {
+			if ("system".equals(msg.role())) {
 				String text = ContentExtractor.fromMessage(msg);
 				if (text != null && !text.isEmpty()) {
 					if (!systemPrompt.isEmpty()) systemPrompt.append("\n");
@@ -57,7 +75,7 @@ public class PayloadBuilder {
 		// Build history
 		ArrayNode history = mapper.createArrayNode();
 		String currentContent = "";
-		List<Map<String, Object>> currentToolResults = null;
+		List<Message> currentToolResults = null;
 
 		// System prompt → priming pair at history start
 		if (!systemPrompt.isEmpty()) {
@@ -81,8 +99,8 @@ public class PayloadBuilder {
 		List<ContentExtractor.KiroImage> currentImages = List.of();
 
 		for (int i = 0; i < nonSystemMessages.size(); i++) {
-			Map<String, Object> msg = nonSystemMessages.get(i);
-			String role = (String) msg.get("role");
+			Message msg = nonSystemMessages.get(i);
+			String role = msg.role();
 			boolean isLast = (i == nonSystemMessages.size() - 1);
 
 			if ("user".equals(role)) {
@@ -112,17 +130,35 @@ public class PayloadBuilder {
 						"assistantResponseMessage");
 				assistantMsg.put("content", content != null ? content : "");
 
-				// Preserve tool_calls as toolUses
-				Object toolCallsObj = msg.get("tool_calls");
-				if (toolCallsObj instanceof List<?> toolCalls &&
-				    !toolCalls.isEmpty()) {
+				List<Message.ToolCall> toolCalls = msg.toolCalls();
+				if (toolCalls != null && !toolCalls.isEmpty()) {
 					ArrayNode toolUsesNode = assistantMsg.putArray("toolUses");
-					for (Object tc : toolCalls) {
-						if (!(tc instanceof Map<?, ?> tcMap)) continue;
+					for (Message.ToolCall tc : toolCalls) {
 						ObjectNode tuNode = toolUsesNode.addObject();
-						tuNode.put("toolUseId", str(tcMap.get("id")));
-						tuNode.put("name", extractToolName(tcMap));
-						tuNode.set("input", parseToolInput(tcMap));
+						tuNode.put(
+								"toolUseId",
+								Optional.ofNullable(tc.id()).orElse("")
+						);
+						Message.Function fn = tc.function();
+						tuNode.put(
+								"name",
+								fn != null ? Optional.ofNullable(fn.name())
+								                     .orElse("") : ""
+						);
+						if (fn != null && fn.arguments() != null) {
+							try {
+								tuNode.set(
+										"input",
+										mapper.readTree(fn.arguments())
+								);
+							} catch (Exception e) {
+								ObjectNode fallback = mapper.createObjectNode();
+								fallback.put("input", fn.arguments());
+								tuNode.set("input", fallback);
+							}
+						} else {
+							tuNode.set("input", mapper.createObjectNode());
+						}
 					}
 				}
 				history.add(entry);
@@ -131,11 +167,11 @@ public class PayloadBuilder {
 					currentToolResults = new ArrayList<>();
 				currentToolResults.add(msg);
 
-				// Check if next message is also tool — if not, flush tool results
 				int nextIdx = i + 1;
 				boolean nextIsTool = nextIdx < nonSystemMessages.size()
-				                     && "tool".equals(nonSystemMessages.get(
-						nextIdx).get("role"));
+				                     && "tool".equals(
+						nonSystemMessages.get(nextIdx).role()
+				);
 
 				if (!nextIsTool && !isLast) {
 					ObjectNode entry = mapper.createObjectNode();
@@ -145,16 +181,18 @@ public class PayloadBuilder {
 					userMsg.put("origin", "AI_EDITOR");
 					ObjectNode ctx = userMsg.putObject("userInputMessageContext");
 					ArrayNode resultsNode = ctx.putArray("toolResults");
-					for (Map<String, Object> tr : currentToolResults) {
+					for (Message tr : currentToolResults) {
 						ObjectNode resultObj = resultsNode.addObject();
-						resultObj.put("toolUseId", str(tr.get("tool_call_id")));
+						resultObj.put(
+								"toolUseId",
+								Optional.ofNullable(tr.toolCallId()).orElse("")
+						);
 						ArrayNode contentArr = resultObj.putArray("content");
 						ObjectNode textObj = contentArr.addObject();
 						textObj.put(
 								"text",
 								truncate(
-										ContentExtractor.fromMessage(tr),
-										MAX_TOOL_RESULT_CONTENT_LEN
+										ContentExtractor.fromMessage(tr)
 								)
 						);
 						resultObj.put("status", "success");
@@ -191,7 +229,7 @@ public class PayloadBuilder {
 		appendImages(userInputMessage, currentImages);
 
 		// Attach tools and current tool results to currentMessage context
-		boolean hasTools = tools != null && !tools.isEmpty();
+		boolean hasTools = tools != null && tools.isArray() && !tools.isEmpty();
 		boolean hasCurrentToolResults =
 				currentToolResults != null && !currentToolResults.isEmpty();
 
@@ -199,27 +237,29 @@ public class PayloadBuilder {
 			ObjectNode ctx = userInputMessage.putObject(
 					"userInputMessageContext");
 			if (hasTools) {
-				ArrayNode toolsNode = ctx.putArray("tools");
-				for (Map<String, Object> tool : tools) {
+				ArrayNode toolsArr = ctx.putArray("tools");
+				for (JsonNode tool : tools) {
 					ObjectNode converted = ToolConverter.toKiroTool(
 							tool,
 							mapper
 					);
-					if (converted != null) toolsNode.add(converted);
+					if (converted != null) toolsArr.add(converted);
 				}
 			}
 			if (hasCurrentToolResults) {
 				ArrayNode resultsNode = ctx.putArray("toolResults");
-				for (Map<String, Object> tr : currentToolResults) {
+				for (Message tr : currentToolResults) {
 					ObjectNode resultObj = resultsNode.addObject();
-					resultObj.put("toolUseId", str(tr.get("tool_call_id")));
+					resultObj.put(
+							"toolUseId",
+							Optional.ofNullable(tr.toolCallId()).orElse("")
+					);
 					ArrayNode contentArr = resultObj.putArray("content");
 					ObjectNode textObj = contentArr.addObject();
 					textObj.put(
 							"text",
 							truncate(
-									ContentExtractor.fromMessage(tr),
-									MAX_TOOL_RESULT_CONTENT_LEN
+									ContentExtractor.fromMessage(tr)
 							)
 					);
 					resultObj.put("status", "success");
@@ -227,7 +267,7 @@ public class PayloadBuilder {
 			}
 		}
 
-		if (history.size() > 0) {
+		if (!history.isEmpty()) {
 			conversationState.set("history", history);
 		}
 
@@ -245,7 +285,6 @@ public class PayloadBuilder {
 				hasCurrentToolResults
 		);
 		while (json.length() > MAX_PAYLOAD_BYTES && history.size() > 2) {
-			// Keep priming pair (first 2 if system prompt exists), drop oldest after that
 			int removeIdx =
 					!systemPrompt.isEmpty() && history.size() > 2 ? 2 : 0;
 			history.remove(removeIdx);
@@ -256,45 +295,80 @@ public class PayloadBuilder {
 		return json;
 	}
 
-	public List<Map<String, Object>> convertResponsesInput(Object input) {
+	public List<Message> convertResponsesInput(Object input) {
 		return ResponsesInputConverter.convert(input);
 	}
 
-	private String buildToolResultsContinuation(List<Map<String, Object>> toolResults) {
+	public List<Message> convertAnthropicMessages(MessagesRequest request) {
+		List<Message> result = new ArrayList<>();
+
+		JsonNode sys = request.system();
+		if (sys != null) {
+			String systemText;
+			if (sys.isString()) {
+				systemText = sys.stringValue();
+			} else if (sys.isArray()) {
+				StringBuilder sb = new StringBuilder();
+				for (JsonNode item : sys) {
+					if (item.has("text")) sb.append(item.get("text")
+					                                    .stringValue());
+				}
+				systemText = sb.toString();
+			} else {
+				systemText = sys.toString();
+			}
+			result.add(Message.of("system", systemText));
+		}
+
+		if (request.messages() != null) {
+			for (MessagesRequest.Message msg : request.messages()) {
+				String role = msg.role();
+				JsonNode content = msg.content();
+				if (content == null) {
+					result.add(Message.of(role, ""));
+				} else if (content.isString()) {
+					result.add(Message.of(role, content.stringValue()));
+				} else if (content.isArray() && hasImageBlock(content)) {
+					List<Object> parts = mapper.convertValue(
+							content,
+							new TypeReference<>() {}
+					);
+					result.add(Message.of(role, parts));
+				} else if (content.isArray()) {
+					StringBuilder sb = new StringBuilder();
+					for (JsonNode item : content) {
+						if (item.has("type") && "text".equals(item.get("type")
+						                                          .stringValue()))
+							sb.append(item.get("text").stringValue());
+					}
+					result.add(Message.of(role, sb.toString()));
+				} else {
+					result.add(Message.of(role, content.toString()));
+				}
+			}
+		}
+
+		return result;
+	}
+
+	private boolean hasImageBlock(JsonNode contentArray) {
+		for (JsonNode item : contentArray) {
+			if (item.has("type") && "image".equals(item.get("type")
+			                                           .stringValue()))
+				return true;
+		}
+		return false;
+	}
+
+	private String buildToolResultsContinuation(List<Message> toolResults) {
 		StringBuilder sb = new StringBuilder("Tool results:\n\n");
-		for (Map<String, Object> tr : toolResults) {
+		for (Message tr : toolResults) {
 			String content = ContentExtractor.fromMessage(tr);
 			if (content != null && !content.isEmpty()) {
 				sb.append(content).append("\n\n");
 			}
 		}
-		return truncate(sb.toString().trim(), MAX_TOOL_RESULT_CONTENT_LEN);
-	}
-
-	private String extractToolName(Map<?, ?> tcMap) {
-		Object fn = tcMap.get("function");
-		if (fn instanceof Map<?, ?> fnMap) {
-			Object name = fnMap.get("name");
-			return name != null ? name.toString() : "";
-		}
-		return "";
-	}
-
-	private ObjectNode parseToolInput(Map<?, ?> tcMap) {
-		Object fn = tcMap.get("function");
-		if (fn instanceof Map<?, ?> fnMap) {
-			Object args = fnMap.get("arguments");
-			if (args instanceof String argsStr) {
-				try {
-					return (ObjectNode) mapper.readTree(argsStr);
-				} catch (Exception e) {
-					ObjectNode fallback = mapper.createObjectNode();
-					fallback.put("input", argsStr);
-					return fallback;
-				}
-			}
-		}
-		return mapper.createObjectNode();
+		return truncate(sb.toString().trim());
 	}
 
 	private void appendImages(
@@ -315,8 +389,12 @@ public class PayloadBuilder {
 		return obj != null ? obj.toString() : "";
 	}
 
-	private static String truncate(String s, int max) {
+	private static String truncate(String s) {
 		if (s == null) return "";
-		return s.length() <= max ? s : s.substring(0, max);
+		return s.length() <=
+		       PayloadBuilder.MAX_TOOL_RESULT_CONTENT_LEN ? s : s.substring(
+				0,
+				PayloadBuilder.MAX_TOOL_RESULT_CONTENT_LEN
+		);
 	}
 }

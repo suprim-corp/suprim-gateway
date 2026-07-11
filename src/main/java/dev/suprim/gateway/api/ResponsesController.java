@@ -1,9 +1,10 @@
 package dev.suprim.gateway.api;
 
-import dev.suprim.gateway.api.request.RequestMapper;
 import dev.suprim.gateway.api.request.ResponsesRequest;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.model.ModelRouter;
+import dev.suprim.gateway.proxy.InternalRequest;
+import dev.suprim.gateway.proxy.Message;
 import dev.suprim.gateway.proxy.PayloadBuilder;
 import dev.suprim.gateway.proxy.ProxyFacade;
 import dev.suprim.gateway.utils.ErrorResponse;
@@ -20,9 +21,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @RequiredArgsConstructor
 @RestController
@@ -50,44 +49,34 @@ class ResponsesController {
 			return;
 		}
 
-		String model = request.model();
 		boolean stream = Boolean.TRUE.equals(request.stream());
 
-		List<Map<String, Object>> messages = new ArrayList<>(
+		List<Message> messages = new ArrayList<>(
 				payloadBuilder.convertResponsesInput(request.input())
 		);
 
 		String instructions = request.instructions();
 		if (instructions != null && !instructions.isBlank()) {
-			messages.addFirst(
-					Map.of(
-							"role",
-							"system",
-							"content",
-							instructions
-					)
-			);
+			messages.addFirst(Message.of("system", instructions));
 		}
 
-		List<Map<String, Object>> tools = RequestMapper.toolsToList(
+		int inputTokens = tokenEstimator.estimateRequest(
+				messages,
 				request.tools()
 		);
-		int inputTokens = tokenEstimator.estimateRequest(messages, tools);
 
-		HashMap<String, Object> openAiReq = new HashMap<>();
-		openAiReq.put("messages", messages);
-		openAiReq.put("stream", stream);
-		if (tools != null) openAiReq.put("tools", tools);
-		if (request.temperature() != null) openAiReq.put(
-				"temperature",
-				request.temperature()
-		);
-		if (request.maxOutputTokens() != null)
-			openAiReq.put("max_tokens", request.maxOutputTokens());
+		Provider provider = ModelRouter.resolveProvider(request.model());
+		String actualModel = ModelRouter.stripPrefix(request.model());
 
-		Provider provider = ModelRouter.resolveProvider(model);
-		String actualModel = ModelRouter.stripPrefix(model);
-		openAiReq.put("model", actualModel);
+		InternalRequest openAiReq =
+				InternalRequest.builder()
+				               .model(actualModel)
+				               .messages(messages)
+				               .stream(stream)
+				               .tools(request.tools())
+				               .temperature(request.temperature())
+				               .maxTokens(request.maxOutputTokens())
+				               .build();
 
 		if (providerDispatcher.handles(provider)) {
 			providerDispatcher.resolve(provider).handle(
