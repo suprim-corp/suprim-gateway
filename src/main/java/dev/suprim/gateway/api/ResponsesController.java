@@ -48,6 +48,10 @@ class ResponsesController {
 
 		boolean stream = Boolean.TRUE.equals(request.stream());
 
+		log.debug("[Responses] raw input type={}, input={}",
+				request.input() != null ? request.input().getClass().getSimpleName() : "null",
+				request.input() != null ? request.input().toString().substring(0, Math.min(200, request.input().toString().length())) : "null");
+
 		List<Message> messages = new ArrayList<>(
 				MessageConverter.fromResponses(request.input())
 		);

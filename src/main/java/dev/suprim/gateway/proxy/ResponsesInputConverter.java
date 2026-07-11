@@ -1,10 +1,16 @@
 package dev.suprim.gateway.proxy;
 
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 public final class ResponsesInputConverter {
+
+	private static final JsonMapper MAPPER = new JsonMapper();
 
 	private ResponsesInputConverter() {}
 
@@ -12,9 +18,23 @@ public final class ResponsesInputConverter {
 		if (input instanceof String s) {
 			return List.of(MessageHandler.toMessage("user", s));
 		}
-		if (!(input instanceof List<?> items)) {
+		if (input instanceof JsonNode node) {
+			if (node.isString()) {
+				return List.of(MessageHandler.toMessage("user", node.asString()));
+			}
+			if (node.isArray()) {
+				List<Map<String, Object>> items = MAPPER.convertValue(node, new TypeReference<>() {});
+				return convertItems(items);
+			}
 			return List.of();
 		}
+		if (input instanceof List<?> items) {
+			return convertItems(items);
+		}
+		return List.of();
+	}
+
+	private static List<Message> convertItems(List<?> items) {
 
 		List<Message> messages = new ArrayList<>();
 		List<Message.ToolCall> pendingToolCalls = new ArrayList<>();
