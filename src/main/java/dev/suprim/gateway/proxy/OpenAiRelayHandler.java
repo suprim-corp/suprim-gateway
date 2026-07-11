@@ -135,12 +135,12 @@ public class OpenAiRelayHandler {
 						tc.name(),
 						tc.arguments()
 				);
-				writer.write(
-						streamConverter.toResponsesToolCall(
-								toolEvent,
-								outputIndex
-						)
+				String toolCallSse = streamConverter.toResponsesToolCall(
+						toolEvent,
+						outputIndex
 				);
+				log.debug("[Relay] toolCall SSE output: {}", toolCallSse.substring(0, Math.min(500, toolCallSse.length())));
+				writer.write(toolCallSse);
 				toolCallMaps.add(tc.toResponsesOutput());
 				outputIndex++;
 			}
