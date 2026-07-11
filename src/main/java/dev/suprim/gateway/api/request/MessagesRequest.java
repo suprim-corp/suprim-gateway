@@ -28,6 +28,15 @@ public record MessagesRequest(
 		JsonNode metadata,
 		@JsonAnySetter @JsonAnyGetter Map<String, Object> additionalProperties
 ) {
+	public MessagesRequest {
+		if (stream == null) {
+			stream = false;
+		}
+
+		if (temperature == null) {
+			temperature = 0.7;
+		}
+	}
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record Message(
