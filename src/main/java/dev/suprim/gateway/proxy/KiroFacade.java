@@ -163,7 +163,7 @@ public class KiroFacade {
 		PrintWriter writer = httpRes.getWriter();
 		String id = generateId(req.format());
 
-		writer.write(preamble(req.format(), id, req.model()));
+		writer.write(preamble(req.format(), id, req.model(), req.inputTokens()));
 		writer.flush();
 
 		StreamHandler.StreamResult result = streamHandler.streamToWriter(
@@ -241,11 +241,12 @@ public class KiroFacade {
 	private String preamble(
 			Format format,
 			String id,
-			String model
+			String model,
+			int inputTokens
 	) throws Exception {
 		return switch (format) {
 			case OPENAI -> "";
-			case ANTHROPIC -> streamConverter.toAnthropicPreamble(id, model);
+			case ANTHROPIC -> streamConverter.toAnthropicPreamble(id, model, inputTokens);
 			case RESPONSES -> streamConverter.toResponsesCreated(id, model)
 			                  + streamConverter.toResponsesOutputItemAdded(id)
 			                  + streamConverter.toResponsesContentPartAdded();

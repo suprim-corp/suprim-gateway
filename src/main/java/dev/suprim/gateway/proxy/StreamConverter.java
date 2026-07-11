@@ -159,7 +159,8 @@ public class StreamConverter {
 
 	public String toAnthropicPreamble(
 			String id,
-			String model
+			String model,
+			int inputTokens
 	) throws Exception {
 		return toAnthropicEvent(
 				"message_start", Map.of(
@@ -176,7 +177,9 @@ public class StreamConverter {
 								"content",
 								List.of(),
 								"model",
-								model
+								model,
+								"usage",
+								Map.of("input_tokens", inputTokens, "output_tokens", 0)
 						)
 				)
 		)
