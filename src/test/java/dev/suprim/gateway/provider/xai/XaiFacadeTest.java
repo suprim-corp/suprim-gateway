@@ -3,6 +3,8 @@ package dev.suprim.gateway.provider.xai;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.logging.RequestLogPublisher;
 import dev.suprim.gateway.proxy.Format;
+import dev.suprim.gateway.proxy.OpenAiRelayHandler;
+import dev.suprim.gateway.proxy.StreamConverter;
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.Message;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,7 +35,7 @@ class XaiFacadeTest {
 		authManager = new XaiAuthManager(store);
 		ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
 		RequestLogPublisher logPublisher = new RequestLogPublisher(eventPublisher);
-		facade = new XaiFacade(authManager, logPublisher);
+		facade = new XaiFacade(authManager, logPublisher, new OpenAiRelayHandler(new StreamConverter()));
 	}
 
 	@Test
