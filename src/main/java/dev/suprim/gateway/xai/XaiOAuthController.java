@@ -125,8 +125,7 @@ public class XaiOAuthController {
 	@ResponseBody
 	String agentScript(String state, HttpServletRequest httpReq) {
 		String codeVerifier = pendingVerifiers.get(state);
-		String authUrl = pendingAuthUrls.get(state);
-		if (codeVerifier == null || authUrl == null) {
+		if (codeVerifier == null) {
 			return "echo 'Error: invalid or expired state'";
 		}
 		String gatewayBase = buildGatewayBase(httpReq);
@@ -134,22 +133,86 @@ public class XaiOAuthController {
 		return "#!/bin/bash\n"
 		       + "GATEWAY='" + gatewayBase + "'\n"
 		       + "STATE='" + state + "'\n"
-		       + "echo 'Starting xAI OAuth agent...'\n"
-		       + "echo 'Opening browser for authentication...'\n"
-		       + "open '" + authUrl + "' 2>/dev/null || xdg-open '" + authUrl
-		       + "' 2>/dev/null || echo 'Open this URL manually:'\n"
-		       + "echo 'Waiting for callback on port 56121...'\n"
-		       + "TMPFILE=$(mktemp)\n"
-		       + "{ echo -ne 'HTTP/1.1 302 Found\\r\\nLocation: '$GATEWAY'/providers?xai=connected\\r\\nContent-Length: 0\\r\\n\\r\\n'; cat; } | nc -l 56121 > \"$TMPFILE\"\n"
-		       + "CODE=$(grep -o 'code=[^& ]*' \"$TMPFILE\" | head -1 | cut -d= -f2)\n"
-		       + "rm -f \"$TMPFILE\"\n"
-		       + "if [ -z \"$CODE\" ]; then echo 'Error: no code received'; exit 1; fi\n"
-		       + "echo \"Got code: ${CODE:0:10}...\"\n"
-		       + "echo 'Sending to gateway...'\n"
-		       + "curl -sL -X POST \"$GATEWAY/auth/xai/exchange\" \\\n"
-		       + "  -H 'Content-Type: application/json' \\\n"
-		       + "  -d '{\"code\":\"'\"$CODE\"'\",\"state\":\"'\"$STATE\"'\"}'\n"
-		       + "echo ''\necho 'Done!'\n";
+		       + "CLIENT_ID='" + Xai.CLIENT_ID + "'\n"
+		       + "SCOPE='" + Xai.SCOPE + "'\n"
+		       + "echo 'Starting xAI device code flow...'\n"
+		       +
+		       "DEVICE_RESP=$(curl -s -X POST 'https://auth.x.ai/oauth2/device/code' \\\n"
+		       + "  -H 'Content-Type: application/x-www-form-urlencoded' \\\n"
+		       + "  -d \"client_id=$CLIENT_ID&scope=$SCOPE\")\n"
+		       +
+		       "DEVICE_CODE=$(echo \"$DEVICE_RESP\" | grep -o '\"device_code\":\"[^\"]*\"' | cut -d'\"' -f4)\n"
+		       +
+		       "USER_CODE=$(echo \"$DEVICE_RESP\" | grep -o '\"user_code\":\"[^\"]*\"' | cut -d'\"' -f4)\n"
+		       +
+		       "VERIFY_URI=$(echo \"$DEVICE_RESP\" | grep -o '\"verification_uri\":\"[^\"]*\"' | cut -d'\"' -f4)\n"
+		       +
+		       "INTERVAL=$(echo \"$DEVICE_RESP\" | grep -o '\"interval\":[0-9]*' | cut -d: -f2)\n"
+		       + "[ -z \"$INTERVAL\" ] && INTERVAL=5\n"
+		       +
+		       "if [ -z \"$DEVICE_CODE\" ]; then echo \"Error: $DEVICE_RESP\"; exit 1; fi\n"
+		       + "echo ''\n"
+		       + "echo \"Open: $VERIFY_URI\"\n"
+		       + "echo \"Code: $USER_CODE\"\n"
+		       + "echo ''\n"
+		       +
+		       "open \"$VERIFY_URI\" 2>/dev/null || xdg-open \"$VERIFY_URI\" 2>/dev/null\n"
+		       + "echo 'Waiting for authorization...'\n"
+		       + "while true; do\n"
+		       + "  sleep $INTERVAL\n"
+		       +
+		       "  TOKEN_RESP=$(curl -s -X POST 'https://auth.x.ai/oauth2/token' \\\n"
+		       + "    -H 'Content-Type: application/x-www-form-urlencoded' \\\n"
+		       +
+		       "    -d \"grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code=$DEVICE_CODE&client_id=$CLIENT_ID\")\n"
+		       +
+		       "  if echo \"$TOKEN_RESP\" | grep -q '\"access_token\"'; then\n"
+		       + "    echo 'Authorized! Sending tokens to gateway...'\n"
+		       +
+		       "    curl -sL -X POST \"$GATEWAY/auth/xai/device-exchange\" \\\n"
+		       + "      -H 'Content-Type: application/json' \\\n"
+		       + "      -d \"$TOKEN_RESP\"\n"
+		       + "    echo ''\n"
+		       + "    echo 'Done! xAI account connected.'\n"
+		       + "    exit 0\n"
+		       + "  fi\n"
+		       + "  if echo \"$TOKEN_RESP\" | grep -q '\"error\"'; then\n"
+		       +
+		       "    ERR=$(echo \"$TOKEN_RESP\" | grep -o '\"error\":\"[^\"]*\"' | cut -d'\"' -f4)\n"
+		       +
+		       "    if [ \"$ERR\" != \"authorization_pending\" ] && [ \"$ERR\" != \"slow_down\" ]; then\n"
+		       + "      echo \"Error: $ERR\"; exit 1\n"
+		       + "    fi\n"
+		       +
+		       "    [ \"$ERR\" = \"slow_down\" ] && INTERVAL=$((INTERVAL+5))\n"
+		       + "  fi\n"
+		       + "  printf '.'\n"
+		       + "done\n";
+	}
+
+	@PostMapping("/auth/xai/device-exchange")
+	@ResponseBody
+	Map<String, String> deviceExchange(@RequestBody Map<String, Object> body) {
+		String accessToken = (String) body.get("access_token");
+		String refreshToken = (String) body.get("refresh_token");
+		String idToken = (String) body.get("id_token");
+		Object expiresInObj = body.get("expires_in");
+
+		if (accessToken == null) {
+			return Map.of("error", "missing access_token");
+		}
+
+		int expiresIn = expiresInObj instanceof Number n ? n.intValue() : 604800;
+		String email = XaiTokenRefresher.decodeIdTokenEmail(idToken);
+		Instant expiresAt = Instant.now().plusSeconds(expiresIn);
+		authManager.saveCredentials(
+				accessToken,
+				refreshToken,
+				expiresAt,
+				email
+		);
+		log.info("[xAI] OAuth complete (device flow), email={}", email);
+		return Map.of("status", "ok", "email", email != null ? email : "");
 	}
 
 	@PostMapping("/auth/xai/exchange")

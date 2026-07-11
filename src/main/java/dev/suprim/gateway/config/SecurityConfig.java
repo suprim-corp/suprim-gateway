@@ -49,7 +49,7 @@ class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/login", "/css/**", "/js/**", "/error").permitAll()
-                        .requestMatchers("/auth/xai/agent", "/auth/xai/exchange").permitAll()
+                        .requestMatchers("/auth/xai/agent", "/auth/xai/exchange", "/auth/xai/device-exchange").permitAll()
                         .anyRequest().authenticated()
                 )
                 .formLogin(form -> form
