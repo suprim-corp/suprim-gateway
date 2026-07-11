@@ -108,7 +108,8 @@
     </div>
 
     <!-- Models Dialog -->
-    <dialog id="modelsDialog" class="bg-zinc-900 border border-zinc-800 rounded-lg p-0 w-[480px] max-h-[70vh] backdrop:bg-black/50">
+    <dialog id="modelsDialog"
+            class="bg-zinc-900 border border-zinc-800 rounded-lg p-0 w-[480px] max-h-[70vh] backdrop:bg-black/50">
         <div class="p-5 space-y-4">
             <div class="flex items-center justify-between">
                 <h2 class="text-sm font-semibold text-zinc-100">Available Models</h2>
@@ -129,7 +130,8 @@
     </dialog>
 
     <!-- Add Account Dialog -->
-    <dialog id="addAccountDialog" class="bg-zinc-900 border border-zinc-800 rounded-lg p-0 w-[480px] backdrop:bg-black/50">
+    <dialog id="addAccountDialog"
+            class="bg-zinc-900 border border-zinc-800 rounded-lg p-0 w-[480px] backdrop:bg-black/50">
         <div class="p-5 space-y-4">
             <div class="flex items-center justify-between">
                 <h2 class="text-sm font-semibold text-zinc-100" id="dialogTitle">Add Account</h2>
@@ -182,7 +184,8 @@
             </div>
 
             <!-- Kiro import form -->
-            <form id="kiroForm" action="/auth/import" method="post" enctype="multipart/form-data" class="hidden space-y-3">
+            <form id="kiroForm" action="/auth/import" method="post" enctype="multipart/form-data"
+                  class="hidden space-y-3">
                 <div>
                     <label class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">Account Name</label>
                     <input type="text" name="name" placeholder="My Kiro Account"
@@ -190,7 +193,8 @@
                 </div>
                 <div>
                     <label class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">JSON Files</label>
-                    <p class="text-[10px] text-zinc-500 mb-2">Select 1-2 JSON files (token file with refreshToken, client file with clientId)</p>
+                    <p class="text-[10px] text-zinc-500 mb-2">Select 1-2 JSON files (token file with refreshToken,
+                        client file with clientId)</p>
                     <input type="file" name="files" accept=".json" multiple id="kiroFileInput"
                            class="block w-full text-xs text-zinc-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border file:border-zinc-700 file:text-xs file:font-medium file:bg-zinc-800 file:text-zinc-300 file:cursor-pointer hover:file:bg-zinc-700 transition-colors">
                     <div id="kiroFileList" class="mt-2 space-y-1 hidden"></div>
@@ -244,16 +248,41 @@
 
             <!-- xAI OAuth form -->
             <div id="xaiForm" class="hidden space-y-3">
-                <p class="text-xs text-zinc-400">Connect your xAI account via OAuth to use Grok models.</p>
-                <div class="flex gap-2 justify-end">
-                    <button type="button" onclick="showChoices()"
-                            class="h-8 px-3 text-xs text-zinc-400 hover:text-zinc-100 cursor-pointer transition-colors">
-                        Back
-                    </button>
-                    <a href="/auth/xai"
-                       class="inline-flex items-center h-8 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
-                        Connect with xAI
-                    </a>
+                <div id="xaiLocal">
+                    <p class="text-xs text-zinc-400">Connect your xAI account via OAuth to use Grok models.</p>
+                    <div class="flex gap-2 justify-end mt-3">
+                        <button type="button" onclick="showChoices()"
+                                class="h-8 px-3 text-xs text-zinc-400 hover:text-zinc-100 cursor-pointer transition-colors">
+                            Back
+                        </button>
+                        <a href="/auth/xai"
+                           class="inline-flex items-center h-8 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
+                            Connect with xAI
+                        </a>
+                    </div>
+                </div>
+                <div id="xaiRemote" class="hidden">
+                    <p class="text-xs text-zinc-400 mb-2">xAI requires localhost callback. Run this on your local
+                        machine:</p>
+                    <div class="relative">
+                        <pre class="bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-[11px] text-zinc-300 overflow-x-auto"><code
+                                id="xaiCommand"></code></pre>
+                        <button onclick="navigator.clipboard.writeText(document.getElementById('xaiCommand').textContent)"
+                                class="absolute top-2 right-2 text-zinc-500 hover:text-neon-purple cursor-pointer transition-colors">
+                            <svg class="size-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="text-[10px] text-zinc-500 mt-2">After login, token will be sent back to this gateway
+                        automatically.</p>
+                    <div class="flex gap-2 justify-end mt-3">
+                        <button type="button" onclick="showChoices()"
+                                class="h-8 px-3 text-xs text-zinc-400 hover:text-zinc-100 cursor-pointer transition-colors">
+                            Back
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -262,11 +291,11 @@
     <!-- Inline edit + dialog script -->
     <script>
         function showModels(index) {
-            var dialog = document.getElementById('modelsDialog');
-            var loading = document.getElementById('modelsLoading');
-            var list = document.getElementById('modelsList');
-            var error = document.getElementById('modelsError');
-            var empty = document.getElementById('modelsEmpty');
+            const dialog = document.getElementById('modelsDialog');
+            const loading = document.getElementById('modelsLoading');
+            const list = document.getElementById('modelsList');
+            const error = document.getElementById('modelsError');
+            const empty = document.getElementById('modelsEmpty');
 
             loading.classList.remove('hidden');
             list.classList.add('hidden');
@@ -287,15 +316,15 @@
                         return;
                     }
                     models.forEach(function (m) {
-                        var li = document.createElement('li');
+                        const li = document.createElement('li');
                         li.className = 'flex items-center justify-between px-3 py-1.5 text-xs bg-zinc-950 border border-zinc-800 rounded';
-                        var name = document.createElement('span');
+                        const name = document.createElement('span');
                         name.className = 'text-zinc-300';
                         name.textContent = m.id || m;
                         li.appendChild(name);
                         if (m.quota !== undefined && m.quota !== null) {
-                            var badge = document.createElement('span');
-                            var pct = m.quota;
+                            const badge = document.createElement('span');
+                            const pct = m.quota;
                             badge.textContent = pct + '%';
                             badge.className = 'text-[10px] font-medium px-1.5 py-0.5 rounded ' +
                                 (pct > 50 ? 'text-green-400 bg-green-400/10' : pct > 20 ? 'text-yellow-400 bg-yellow-400/10' : 'text-red-400 bg-red-400/10');
@@ -348,17 +377,25 @@
             });
         });
 
-        const titles = {kiro: 'Add Kiro Account', antigravity: 'Add Antigravity Account', codex: 'Add Codex Account', xai: 'Add xAI Account'};
+        const titles = {
+            kiro: 'Add Kiro Account',
+            antigravity: 'Add Antigravity Account',
+            codex: 'Add Codex Account',
+            xai: 'Add xAI Account'
+        };
         const forms = ['kiroForm', 'antigravityForm', 'codexForm', 'xaiForm'];
 
         function showProviderForm(provider) {
             document.getElementById('providerChoices').classList.add('hidden');
             document.getElementById('dialogTitle').textContent = titles[provider];
             document.getElementById(provider + 'Form').classList.remove('hidden');
+            if (provider === 'xai') initXaiForm();
         }
 
         function showChoices() {
-            forms.forEach(function (id) { document.getElementById(id).classList.add('hidden'); });
+            forms.forEach(function (id) {
+                document.getElementById(id).classList.add('hidden');
+            });
             document.getElementById('providerChoices').classList.remove('hidden');
             document.getElementById('dialogTitle').textContent = 'Add Account';
         }
@@ -372,7 +409,10 @@
         document.getElementById('kiroFileInput').addEventListener('change', function () {
             const list = document.getElementById('kiroFileList');
             list.innerHTML = '';
-            if (this.files.length === 0) { list.classList.add('hidden'); return; }
+            if (this.files.length === 0) {
+                list.classList.add('hidden');
+                return;
+            }
             list.classList.remove('hidden');
             for (let i = 0; i < this.files.length; i++) {
                 const f = this.files[i];
@@ -387,6 +427,25 @@
                 list.appendChild(row);
             }
         });
+
+        function initXaiForm() {
+            const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+            if (isLocal) {
+                document.getElementById('xaiLocal').classList.remove('hidden');
+                document.getElementById('xaiRemote').classList.add('hidden');
+            } else {
+                document.getElementById('xaiLocal').classList.add('hidden');
+                document.getElementById('xaiRemote').classList.remove('hidden');
+                fetch('/auth/xai/state', {method: 'POST'})
+                    .then(function (r) {
+                        return r.json();
+                    })
+                    .then(function (data) {
+                        const base = location.origin;
+                        document.getElementById('xaiCommand').textContent = 'curl -sL "' + base + '/auth/xai/agent?state=' + data.state + '" | bash';
+                    });
+            }
+        }
     </script>
 </th:block>
 </html>

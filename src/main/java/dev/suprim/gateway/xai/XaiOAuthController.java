@@ -36,49 +36,52 @@ public class XaiOAuthController {
 		String host = httpReq.getServerName();
 		boolean isLocal = "localhost".equals(host) || "127.0.0.1".equals(host);
 
+		if (!isLocal) {
+			String state = generateRandom();
+			String codeVerifier = generateCodeVerifier();
+			pendingVerifiers.put(state, codeVerifier);
+			return "redirect:/auth/xai/remote?state=" + encode(state);
+		}
+
 		String codeVerifier = generateCodeVerifier();
 		String codeChallenge = generateCodeChallenge(codeVerifier);
 		String state = generateRandom();
 		String nonce = generateRandom();
 
-		if (isLocal) {
-			String gatewayBase = buildGatewayBase(httpReq);
-			loopbackServer.start(
-					codeVerifier, state, gatewayBase, (code) -> {
-						try {
-							XaiTokenResponse tokenResponse = XaiTokenRefresher.exchangeCode(
-									code,
-									codeVerifier,
-									Xai.REDIRECT_URI
-							);
-							String email = XaiTokenRefresher.decodeIdTokenEmail(
-									tokenResponse.idToken()
-							);
-							Instant expiresAt = Instant.now().plusSeconds(
-									tokenResponse.expiresIn()
-							);
-							authManager.saveCredentials(
-									tokenResponse.accessToken(),
-									tokenResponse.refreshToken(),
-									expiresAt,
-									email
-							);
-							log.info(
-									"[xAI] OAuth complete (local), email={}",
-									email
-							);
-						} catch (Exception e) {
-							log.error(
-									"[xAI] Token exchange failed: {}",
-									e.getMessage()
-							);
-							throw new RuntimeException(e);
-						}
+		String gatewayBase = buildGatewayBase(httpReq);
+		loopbackServer.start(
+				codeVerifier, state, gatewayBase, (code) -> {
+					try {
+						XaiTokenResponse tokenResponse = XaiTokenRefresher.exchangeCode(
+								code,
+								codeVerifier,
+								Xai.REDIRECT_URI
+						);
+						String email = XaiTokenRefresher.decodeIdTokenEmail(
+								tokenResponse.idToken()
+						);
+						Instant expiresAt = Instant.now().plusSeconds(
+								tokenResponse.expiresIn()
+						);
+						authManager.saveCredentials(
+								tokenResponse.accessToken(),
+								tokenResponse.refreshToken(),
+								expiresAt,
+								email
+						);
+						log.info(
+								"[xAI] OAuth complete (local), email={}",
+								email
+						);
+					} catch (Exception e) {
+						log.error(
+								"[xAI] Token exchange failed: {}",
+								e.getMessage()
+						);
+						throw new RuntimeException(e);
 					}
-			);
-		} else {
-			pendingVerifiers.put(state, codeVerifier);
-		}
+				}
+		);
 
 		String url = Xai.AUTH_URL
 		             + "?response_type=code"
@@ -92,12 +95,7 @@ public class XaiOAuthController {
 		             + "&plan=generic"
 		             + "&referrer=cli-proxy-api";
 
-		if (isLocal) {
-			return "redirect:" + url;
-		}
-
-		pendingAuthUrls.put(state, url);
-		return "redirect:/auth/xai/remote?state=" + encode(state);
+		return "redirect:" + url;
 	}
 
 	@GetMapping("/auth/xai/remote")
@@ -188,6 +186,15 @@ public class XaiOAuthController {
 		       + "  fi\n"
 		       + "  printf '.'\n"
 		       + "done\n";
+	}
+
+	@PostMapping("/auth/xai/state")
+	@ResponseBody
+	Map<String, String> generateState() {
+		String codeVerifier = generateCodeVerifier();
+		String state = generateRandom();
+		pendingVerifiers.put(state, codeVerifier);
+		return Map.of("state", state);
 	}
 
 	@PostMapping("/auth/xai/device-exchange")
