@@ -1,6 +1,7 @@
 package dev.suprim.gateway.proxy;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -13,6 +14,7 @@ import java.io.PrintWriter;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @RequiredArgsConstructor
 @Component
 public class OpenAiRelayHandler {
@@ -72,6 +74,8 @@ public class OpenAiRelayHandler {
 					break;
 				}
 
+				log.debug("[Relay] chunk: {}", data.length() > 300 ? data.substring(0, 300) : data);
+
 				Integer[] usage = extractUsage(data);
 				if (usage != null) {
 					promptTokens = usage[0];
@@ -95,6 +99,7 @@ public class OpenAiRelayHandler {
 		if (responsesFormat) {
 			int outTokens = completionTokens != null ? completionTokens : 0;
 			int inTokens = promptTokens != null ? promptTokens : inputTokens;
+			log.debug("[Relay] stream done, content length={}, outTokens={}", contentBuilder.length(), outTokens);
 			writer.write(streamConverter.toResponsesTextDone(contentBuilder.toString(), responseId));
 			writer.write(streamConverter.toResponsesCompleted(
 					responseId, model, contentBuilder.toString(),
