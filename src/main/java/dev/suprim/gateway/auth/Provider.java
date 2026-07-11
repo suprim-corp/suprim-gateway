@@ -6,7 +6,7 @@ import lombok.Getter;
 public enum Provider {
 
 	KIRO(null),
-	ANTIGRAVITY("gemini-"),
+	ANTIGRAVITY("ag/"),
 	GROK("grok/"),
 	XAI("grok/"),
 	CODEX(null);

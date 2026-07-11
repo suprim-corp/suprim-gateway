@@ -9,17 +9,17 @@ class ModelRouterTest {
 
 	@Test
 	void resolveProvider_geminiFlash_antigravity() {
-		assertEquals(Provider.ANTIGRAVITY, ModelRouter.resolveProvider("gemini-2.5-flash"));
+		assertEquals(Provider.ANTIGRAVITY, ModelRouter.resolveProvider("ag/gemini-2.5-flash"));
 	}
 
 	@Test
 	void resolveProvider_geminiPro_antigravity() {
-		assertEquals(Provider.ANTIGRAVITY, ModelRouter.resolveProvider("gemini-2.5-pro"));
+		assertEquals(Provider.ANTIGRAVITY, ModelRouter.resolveProvider("ag/gemini-2.5-pro"));
 	}
 
 	@Test
 	void resolveProvider_gemini20Flash_antigravity() {
-		assertEquals(Provider.ANTIGRAVITY, ModelRouter.resolveProvider("gemini-2.0-flash"));
+		assertEquals(Provider.ANTIGRAVITY, ModelRouter.resolveProvider("ag/gemini-2.0-flash"));
 	}
 
 	@Test

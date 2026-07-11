@@ -116,7 +116,7 @@ public class ModelRegistry {
 		if (!antigravityAuthManager.isConnected()) return List.of();
 		try {
 			return antigravityAuthManager.listModels().stream()
-			                             .map(m -> (String) m.get("id"))
+			                             .map(m -> "ag/" + m.get("id"))
 			                             .toList();
 		} catch (Exception e) {
 			return List.of();
@@ -190,7 +190,16 @@ public class ModelRegistry {
 			                                   )
 			                                   .toList();
 			case "ANTIGRAVITY" ->
-					safeListModels(antigravityAuthManager::listModels);
+					safeListModels(() -> antigravityAuthManager.listModels()
+					                                           .stream()
+					                                           .map(m -> Map.<String, Object>of(
+									                                           "id",
+									                                           "ag/" +
+									                                           m.get("id")
+							                                           )
+					                                           )
+					                                           .toList()
+					);
 			case "XAI" -> safeListModels(xaiAuthManager::listModels);
 			default -> List.of();
 		};

@@ -1,6 +1,5 @@
 package dev.suprim.gateway.api;
 
-import dev.suprim.gateway.antigravity.AntigravityFacade;
 import dev.suprim.gateway.auth.Provider;
 import dev.suprim.gateway.model.ModelRouter;
 import dev.suprim.gateway.proxy.ProxyFacade;
@@ -9,7 +8,6 @@ import dev.suprim.gateway.utils.RequestContext;
 import dev.suprim.gateway.utils.TokenEstimator;
 import dev.suprim.gateway.virtualkey.RateLimiter;
 import dev.suprim.gateway.virtualkey.VirtualKey;
-import dev.suprim.gateway.xai.XaiFacade;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -25,8 +23,7 @@ import java.util.Map;
 class CompletionsController {
 
 	private final ProxyFacade proxyFacade;
-	private final AntigravityFacade antigravityFacade;
-	private final XaiFacade xaiFacade;
+	private final ProviderDispatcher providerDispatcher;
 	private final RateLimiter rateLimiter;
 	private final TokenEstimator tokenEstimator;
 
@@ -59,17 +56,10 @@ class CompletionsController {
 		int inputTokens = tokenEstimator.estimateRequest(messages, tools);
 
 		Provider provider = ModelRouter.resolveProvider(model);
-		if (provider == Provider.ANTIGRAVITY) {
-			antigravityFacade.handle(
-					request, model, stream, inputTokens, keyId,
-					RequestContext.clientIp(httpReq), httpRes
-			);
-			return;
-		}
-		if (provider == Provider.GROK || provider == Provider.XAI) {
+		if (providerDispatcher.handles(provider)) {
 			String actualModel = ModelRouter.stripPrefix(model);
 			request.put("model", actualModel);
-			xaiFacade.handle(
+			providerDispatcher.resolve(provider).handle(
 					request, actualModel, stream, inputTokens, keyId,
 					RequestContext.clientIp(httpReq), httpRes
 			);

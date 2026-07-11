@@ -9,7 +9,6 @@ import dev.suprim.gateway.utils.RequestContext;
 import dev.suprim.gateway.utils.TokenEstimator;
 import dev.suprim.gateway.virtualkey.RateLimiter;
 import dev.suprim.gateway.virtualkey.VirtualKey;
-import dev.suprim.gateway.xai.XaiFacade;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +26,7 @@ import java.util.Map;
 class ResponsesController {
 
 	private final ProxyFacade proxyFacade;
-	private final XaiFacade xaiFacade;
+	private final ProviderDispatcher providerDispatcher;
 	private final PayloadBuilder payloadBuilder;
 	private final RateLimiter rateLimiter;
 	private final TokenEstimator tokenEstimator;
@@ -65,7 +64,6 @@ class ResponsesController {
 				payloadBuilder.convertResponsesInput(input)
 		);
 
-		// instructions → system message
 		Object instructions = request.get("instructions");
 		if (instructions instanceof String instr && !instr.isBlank()) {
 			messages.addFirst(Map.of("role", "system", "content", instr));
@@ -77,7 +75,6 @@ class ResponsesController {
 
 		HashMap<String, Object> openAiReq = new HashMap<>();
 		openAiReq.put("messages", messages);
-		openAiReq.put("model", model);
 		if (tools != null) openAiReq.put("tools", tools);
 		if (request.containsKey("temperature")) openAiReq.put(
 				"temperature",
@@ -87,10 +84,11 @@ class ResponsesController {
 			openAiReq.put("max_tokens", request.get("max_output_tokens"));
 
 		Provider provider = ModelRouter.resolveProvider(model);
-		if (provider == Provider.GROK || provider == Provider.XAI) {
-			String actualModel = ModelRouter.stripPrefix(model);
-			openAiReq.put("model", actualModel);
-			xaiFacade.handle(
+		String actualModel = ModelRouter.stripPrefix(model);
+		openAiReq.put("model", actualModel);
+
+		if (providerDispatcher.handles(provider)) {
+			providerDispatcher.resolve(provider).handle(
 					openAiReq, actualModel, stream, inputTokens, keyId,
 					RequestContext.clientIp(httpReq), httpRes
 			);
@@ -102,7 +100,7 @@ class ResponsesController {
 						openAiReq,
 						ProxyFacade.Format.RESPONSES,
 						stream,
-						model,
+						actualModel,
 						inputTokens,
 						keyId,
 						keyId,

@@ -9,7 +9,6 @@ import dev.suprim.gateway.utils.RequestContext;
 import dev.suprim.gateway.utils.TokenEstimator;
 import dev.suprim.gateway.virtualkey.RateLimiter;
 import dev.suprim.gateway.virtualkey.VirtualKey;
-import dev.suprim.gateway.xai.XaiFacade;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +26,7 @@ import java.util.Map;
 class MessagesController {
 
 	private final ProxyFacade proxyFacade;
-	private final XaiFacade xaiFacade;
+	private final ProviderDispatcher providerDispatcher;
 	private final RateLimiter rateLimiter;
 	private final TokenEstimator tokenEstimator;
 
@@ -62,14 +61,14 @@ class MessagesController {
 
 		HashMap<String, Object> openAiReq = new HashMap<>();
 		openAiReq.put("messages", openAiMessages);
-		openAiReq.put("model", model);
 		if (tools != null) openAiReq.put("tools", tools);
 
 		Provider provider = ModelRouter.resolveProvider(model);
-		if (provider == Provider.GROK || provider == Provider.XAI) {
-			String actualModel = ModelRouter.stripPrefix(model);
-			openAiReq.put("model", actualModel);
-			xaiFacade.handle(
+		String actualModel = ModelRouter.stripPrefix(model);
+		openAiReq.put("model", actualModel);
+
+		if (providerDispatcher.handles(provider)) {
+			providerDispatcher.resolve(provider).handle(
 					openAiReq, actualModel, stream, inputTokens, keyId,
 					RequestContext.clientIp(httpReq), httpRes
 			);
@@ -81,7 +80,7 @@ class MessagesController {
 						openAiReq,
 						ProxyFacade.Format.ANTHROPIC,
 						stream,
-						model,
+						actualModel,
 						inputTokens,
 						keyId,
 						keyId,

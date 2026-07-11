@@ -34,6 +34,6 @@ class ModelRouterGrokTest {
 
 	@Test
 	void stripPrefix_nonGrok_stripsItsOwnPrefix() {
-		assertEquals("2.5-flash", ModelRouter.stripPrefix("gemini-2.5-flash"));
+		assertEquals("gemini-2.5-flash", ModelRouter.stripPrefix("ag/gemini-2.5-flash"));
 	}
 }
