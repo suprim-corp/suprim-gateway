@@ -13,7 +13,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,7 +20,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.ArrayList;
 import java.util.List;
 
-@Slf4j
 @RequiredArgsConstructor
 @RestController
 class ResponsesController {
@@ -48,10 +46,6 @@ class ResponsesController {
 
 		boolean stream = Boolean.TRUE.equals(request.stream());
 
-		log.debug("[Responses] raw input type={}, input={}",
-				request.input() != null ? request.input().getClass().getSimpleName() : "null",
-				request.input() != null ? request.input().toString().substring(0, Math.min(200, request.input().toString().length())) : "null");
-
 		List<Message> messages = new ArrayList<>(
 				MessageConverter.fromResponses(request.input())
 		);
@@ -59,17 +53,6 @@ class ResponsesController {
 		String instructions = request.instructions();
 		if (instructions != null && !instructions.isBlank()) {
 			messages.addFirst(Message.of("system", instructions));
-		}
-
-		log.debug("[Responses] messages count={}, roles={}", messages.size(),
-				messages.stream().map(Message::role).toList());
-		for (int i = 0; i < messages.size(); i++) {
-			Message msg = messages.get(i);
-			String content = msg.content() != null ? msg.content().toString() : "null";
-			log.debug("[Responses] msg[{}] role={} toolCalls={} content={}",
-					i, msg.role(),
-					msg.toolCalls() != null ? msg.toolCalls().size() : 0,
-					content.length() > 100 ? content.substring(0, 100) + "..." : content);
 		}
 
 		List<Tool> tools = ToolMapper.fromResponses(request.tools());

@@ -1,13 +1,11 @@
 package dev.suprim.gateway.proxy;
 
-import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-@Slf4j
 final class FunctionCallHandler {
 
 	private static final JsonMapper MAPPER = new JsonMapper();
@@ -22,10 +20,6 @@ final class FunctionCallHandler {
 		                      .map(Object::toString)
 		                      .orElse("");
 		Object argsObj = m.get("arguments");
-		log.debug("[FunctionCall] raw map keys={}, name={}, call_id={}, arguments type={}, value={}",
-				m.keySet(), name, callId,
-				argsObj != null ? argsObj.getClass().getSimpleName() : "null",
-				argsObj != null ? argsObj.toString().substring(0, Math.min(200, argsObj.toString().length())) : "null");
 		String arguments = resolveArguments(argsObj);
 		return Message.ToolCall.builder()
 		                       .id(callId)
