@@ -1,5 +1,6 @@
 package dev.suprim.gateway.model;
 
+import dev.suprim.gateway.antigravity.AntigravityAuthManager;
 import dev.suprim.gateway.config.AppConfig;
 import dev.suprim.gateway.proxy.KiroHttpClient;
 import jakarta.annotation.PostConstruct;
@@ -40,10 +41,14 @@ public class ModelRegistry {
 			"qwen3-coder-next"
 	);
 
-	private static final Set<String> HIDDEN_MODELS = Set.of("auto", "claude-3.7-sonnet");
+	private static final Set<String> HIDDEN_MODELS = Set.of(
+			"auto",
+			"claude-3.7-sonnet"
+	);
 
 	private final KiroHttpClient client;
 	private final AppConfig config;
+	private final AntigravityAuthManager antigravityAuthManager;
 	private final List<String> cachedModels = new CopyOnWriteArrayList<>(
 			FALLBACK_MODELS);
 
@@ -103,6 +108,32 @@ public class ModelRegistry {
 			}
 		}
 		return new ArrayList<>(result);
+	}
+
+	public List<String> getAntigravityModels() {
+		if (!antigravityAuthManager.isConnected()) return List.of();
+		try {
+			return antigravityAuthManager.listModels().stream()
+			                             .map(m -> (String) m.get("id"))
+			                             .toList();
+		} catch (Exception e) {
+			return List.of();
+		}
+	}
+
+	public List<Map<String, Object>> getAllModelsForApi() {
+		List<Map<String, Object>> result = new ArrayList<>();
+		long now = System.currentTimeMillis() / 1000;
+
+		getAvailableModels().forEach(id ->
+				result.add(Map.of("id", id, "object", "model", "created", now, "owned_by", "kiro"))
+		);
+
+		getAntigravityModels().forEach(id ->
+				result.add(Map.of("id", id, "object", "model", "created", now, "owned_by", "antigravity"))
+		);
+
+		return result;
 	}
 
 	private List<String> parseModelIds(String json) {

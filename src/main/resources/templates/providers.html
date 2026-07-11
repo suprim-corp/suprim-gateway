@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<th:block th:fragment="content">
+    <div class="space-y-6">
+        <div class="flex items-center justify-between">
+            <h1 class="text-lg font-semibold tracking-tight">Providers</h1>
+            <button onclick="document.getElementById('addAccountDialog').showModal()"
+                    class="h-9 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
+                Add Account
+            </button>
+        </div>
+
+        <!-- Accounts Table -->
+        <div class="border border-zinc-800 bg-zinc-900/50 rounded-lg overflow-hidden">
+            <table class="w-full text-xs" th:if="${!accounts.isEmpty()}">
+                <thead>
+                <tr class="border-b border-zinc-800">
+                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                        Name
+                    </th>
+                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                        Provider
+                    </th>
+                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                        Status
+                    </th>
+                    <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                        Models
+                    </th>
+                    <th class="px-4 py-3 text-right text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                        Actions
+                    </th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="account, iter : ${accounts}" class="border-b border-zinc-800 last:border-0">
+                    <!-- Name (inline editable) -->
+                    <td class="px-4 py-3">
+                        <span class="inline-edit-name cursor-pointer hover:text-neon-purple transition-colors"
+                              th:data-index="${iter.index}"
+                              th:text="${account.name() != null ? account.name() : (account.provider() != null ? account.provider() : 'Unnamed')}"></span>
+                        <form th:action="@{/providers/{idx}/rename(idx=${iter.index})}" method="post"
+                              class="hidden inline-edit-form">
+                            <input type="text" name="name"
+                                   th:value="${account.name() != null ? account.name() : ''}"
+                                   class="h-7 px-2 bg-zinc-950 border border-neon-purple rounded text-xs text-zinc-100 focus:outline-none w-48">
+                        </form>
+                    </td>
+                    <!-- Provider badge -->
+                    <td class="px-4 py-3">
+                        <div class="flex items-center gap-2">
+                            <img th:if="${account.provider() == 'KIRO'}"
+                                 src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png"
+                                 class="size-4" alt="Kiro">
+                            <img th:if="${account.provider() == 'ANTIGRAVITY'}"
+                                 src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/antigravity-color.png"
+                                 class="size-4" alt="Antigravity">
+                            <img th:if="${account.provider() == 'CODEX'}"
+                                 src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/openai.png"
+                                 class="size-4" alt="Codex">
+                            <span class="text-zinc-400"
+                                  th:text="${account.provider() != null ? account.provider() : 'UNKNOWN'}"></span>
+                        </div>
+                    </td>
+                    <!-- Status -->
+                    <td class="px-4 py-3">
+                        <span th:if="${account.expiresAt() == null || account.expiresAt().isAfter(T(java.time.Instant).now())}"
+                              class="inline-flex items-center gap-1.5 text-neon-green">
+                            <span class="size-1.5 rounded-full bg-green-400"></span>
+                            Connected
+                        </span>
+                        <span th:if="${account.expiresAt() != null && !account.expiresAt().isAfter(T(java.time.Instant).now())}"
+                              class="inline-flex items-center gap-1.5 text-red-400">
+                            <span class="size-1.5 rounded-full bg-red-400"></span>
+                            Expired
+                        </span>
+                    </td>
+                    <!-- Models -->
+                    <td class="px-4 py-3">
+                        <button th:data-index="${iter.index}" onclick="showModels(this.dataset.index)"
+                                class="text-zinc-400 hover:text-neon-purple transition-colors cursor-pointer text-xs underline underline-offset-2">
+                            View Models
+                        </button>
+                    </td>
+                    <!-- Actions -->
+                    <td class="px-4 py-3 text-right">
+                        <form th:action="@{/providers/{idx}/delete(idx=${iter.index})}" method="post" class="inline"
+                              onsubmit="return confirm('Delete this account?')">
+                            <button type="submit"
+                                    class="text-zinc-500 hover:text-red-400 transition-colors cursor-pointer">
+                                <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+            <div th:if="${accounts.isEmpty()}" class="px-4 py-8 text-center text-zinc-500 text-xs">
+                No accounts configured. Click "Add Account" to get started.
+            </div>
+        </div>
+    </div>
+
+    <!-- Models Dialog -->
+    <dialog id="modelsDialog" class="bg-zinc-900 border border-zinc-800 rounded-lg p-0 w-[480px] max-h-[70vh] backdrop:bg-black/50">
+        <div class="p-5 space-y-4">
+            <div class="flex items-center justify-between">
+                <h2 class="text-sm font-semibold text-zinc-100">Available Models</h2>
+                <button onclick="document.getElementById('modelsDialog').close()"
+                        class="text-zinc-500 hover:text-zinc-100 cursor-pointer">
+                    <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div id="modelsContent" class="overflow-y-auto max-h-[50vh]">
+                <div id="modelsLoading" class="text-center text-zinc-500 text-xs py-4">Loading...</div>
+                <ul id="modelsList" class="hidden space-y-1"></ul>
+                <div id="modelsError" class="hidden text-center text-red-400 text-xs py-4"></div>
+                <div id="modelsEmpty" class="hidden text-center text-zinc-500 text-xs py-4">No models available.</div>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Add Account Dialog -->
+    <dialog id="addAccountDialog" class="bg-zinc-900 border border-zinc-800 rounded-lg p-0 w-[480px] backdrop:bg-black/50">
+        <div class="p-5 space-y-4">
+            <div class="flex items-center justify-between">
+                <h2 class="text-sm font-semibold text-zinc-100" id="dialogTitle">Add Account</h2>
+                <button onclick="document.getElementById('addAccountDialog').close()"
+                        class="text-zinc-500 hover:text-zinc-100 cursor-pointer">
+                    <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Provider choices -->
+            <div class="space-y-2" id="providerChoices">
+                <button onclick="showProviderForm('kiro')"
+                        class="flex items-center gap-3 p-3 border border-zinc-800 rounded-lg hover:border-neon-purple hover:bg-purple-500/5 transition-colors cursor-pointer w-full text-left">
+                    <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png"
+                         class="size-8" alt="Kiro">
+                    <div>
+                        <div class="text-xs font-medium text-zinc-100">Kiro</div>
+                        <div class="text-[10px] text-zinc-500">Import credentials from Kiro</div>
+                    </div>
+                </button>
+                <button onclick="showProviderForm('antigravity')"
+                        class="flex items-center gap-3 p-3 border border-zinc-800 rounded-lg hover:border-neon-purple hover:bg-purple-500/5 transition-colors cursor-pointer w-full text-left">
+                    <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/antigravity-color.png"
+                         class="size-8" alt="Antigravity">
+                    <div>
+                        <div class="text-xs font-medium text-zinc-100">Antigravity</div>
+                        <div class="text-[10px] text-zinc-500">Connect via Google OAuth</div>
+                    </div>
+                </button>
+                <button onclick="showProviderForm('codex')"
+                        class="flex items-center gap-3 p-3 border border-zinc-800 rounded-lg hover:border-neon-purple hover:bg-purple-500/5 transition-colors cursor-pointer w-full text-left">
+                    <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/openai.png"
+                         class="size-8" alt="Codex">
+                    <div>
+                        <div class="text-xs font-medium text-zinc-100">Codex</div>
+                        <div class="text-[10px] text-zinc-500">Add API key</div>
+                    </div>
+                </button>
+            </div>
+
+            <!-- Kiro import form -->
+            <form id="kiroForm" action="/auth/import" method="post" enctype="multipart/form-data" class="hidden space-y-3">
+                <div>
+                    <label class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">Account Name</label>
+                    <input type="text" name="name" placeholder="My Kiro Account"
+                           class="w-full h-9 px-3 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-neon-purple">
+                </div>
+                <div>
+                    <label class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">JSON Files</label>
+                    <p class="text-[10px] text-zinc-500 mb-2">Select 1-2 JSON files (token file with refreshToken, client file with clientId)</p>
+                    <input type="file" name="files" accept=".json" multiple id="kiroFileInput"
+                           class="block w-full text-xs text-zinc-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border file:border-zinc-700 file:text-xs file:font-medium file:bg-zinc-800 file:text-zinc-300 file:cursor-pointer hover:file:bg-zinc-700 transition-colors">
+                    <div id="kiroFileList" class="mt-2 space-y-1 hidden"></div>
+                </div>
+                <div class="flex gap-2 justify-end">
+                    <button type="button" onclick="showChoices()"
+                            class="h-8 px-3 text-xs text-zinc-400 hover:text-zinc-100 cursor-pointer transition-colors">
+                        Back
+                    </button>
+                    <button type="submit"
+                            class="h-8 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
+                        Import
+                    </button>
+                </div>
+            </form>
+
+            <!-- Antigravity OAuth form -->
+            <div id="antigravityForm" class="hidden space-y-3">
+                <p class="text-xs text-zinc-400">Connect your Google account via OAuth to use Antigravity models.</p>
+                <div class="flex gap-2 justify-end">
+                    <button type="button" onclick="showChoices()"
+                            class="h-8 px-3 text-xs text-zinc-400 hover:text-zinc-100 cursor-pointer transition-colors">
+                        Back
+                    </button>
+                    <a href="/auth/antigravity"
+                       class="inline-flex items-center h-8 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
+                        Connect with Google
+                    </a>
+                </div>
+            </div>
+
+            <!-- Codex API key form -->
+            <form id="codexForm" action="/providers/add-key" method="post" class="hidden space-y-3">
+                <input type="hidden" name="provider" value="CODEX">
+                <div>
+                    <label class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">API Key</label>
+                    <input type="password" name="apiKey" required placeholder="sk-..."
+                           class="w-full h-9 px-3 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-neon-purple">
+                </div>
+                <div class="flex gap-2 justify-end">
+                    <button type="button" onclick="showChoices()"
+                            class="h-8 px-3 text-xs text-zinc-400 hover:text-zinc-100 cursor-pointer transition-colors">
+                        Back
+                    </button>
+                    <button type="submit"
+                            class="h-8 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
+                        Add
+                    </button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
+    <!-- Inline edit + dialog script -->
+    <script>
+        function showModels(index) {
+            var dialog = document.getElementById('modelsDialog');
+            var loading = document.getElementById('modelsLoading');
+            var list = document.getElementById('modelsList');
+            var error = document.getElementById('modelsError');
+            var empty = document.getElementById('modelsEmpty');
+
+            loading.classList.remove('hidden');
+            list.classList.add('hidden');
+            error.classList.add('hidden');
+            empty.classList.add('hidden');
+            list.innerHTML = '';
+            dialog.showModal();
+
+            fetch('/providers/' + index + '/models')
+                .then(function (res) {
+                    if (!res.ok) throw new Error('Failed to fetch models');
+                    return res.json();
+                })
+                .then(function (models) {
+                    loading.classList.add('hidden');
+                    if (models.length === 0) {
+                        empty.classList.remove('hidden');
+                        return;
+                    }
+                    models.forEach(function (m) {
+                        var li = document.createElement('li');
+                        li.className = 'flex items-center justify-between px-3 py-1.5 text-xs bg-zinc-950 border border-zinc-800 rounded';
+                        var name = document.createElement('span');
+                        name.className = 'text-zinc-300';
+                        name.textContent = m.id || m;
+                        li.appendChild(name);
+                        if (m.quota !== undefined && m.quota !== null) {
+                            var badge = document.createElement('span');
+                            var pct = m.quota;
+                            badge.textContent = pct + '%';
+                            badge.className = 'text-[10px] font-medium px-1.5 py-0.5 rounded ' +
+                                (pct > 50 ? 'text-green-400 bg-green-400/10' : pct > 20 ? 'text-yellow-400 bg-yellow-400/10' : 'text-red-400 bg-red-400/10');
+                            li.appendChild(badge);
+                        }
+                        list.appendChild(li);
+                    });
+                    list.classList.remove('hidden');
+                })
+                .catch(function (err) {
+                    loading.classList.add('hidden');
+                    error.textContent = err.message;
+                    error.classList.remove('hidden');
+                });
+        }
+
+        document.querySelectorAll('.inline-edit-name').forEach(function (span) {
+            span.addEventListener('click', function () {
+                const form = this.nextElementSibling;
+                const input = form.querySelector('input');
+                this.classList.add('hidden');
+                form.classList.remove('hidden');
+                input.focus();
+                input.select();
+
+                function submit() {
+                    if (input.value.trim()) {
+                        form.submit();
+                    } else {
+                        cancel();
+                    }
+                }
+
+                function cancel() {
+                    form.classList.add('hidden');
+                    span.classList.remove('hidden');
+                }
+
+                input.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        submit();
+                    }
+                    if (e.key === 'Escape') {
+                        cancel();
+                    }
+                });
+
+                input.addEventListener('blur', submit);
+            });
+        });
+
+        const titles = {kiro: 'Add Kiro Account', antigravity: 'Add Antigravity Account', codex: 'Add Codex Account'};
+        const forms = ['kiroForm', 'antigravityForm', 'codexForm'];
+
+        function showProviderForm(provider) {
+            document.getElementById('providerChoices').classList.add('hidden');
+            document.getElementById('dialogTitle').textContent = titles[provider];
+            document.getElementById(provider + 'Form').classList.remove('hidden');
+        }
+
+        function showChoices() {
+            forms.forEach(function (id) { document.getElementById(id).classList.add('hidden'); });
+            document.getElementById('providerChoices').classList.remove('hidden');
+            document.getElementById('dialogTitle').textContent = 'Add Account';
+        }
+
+        document.getElementById('addAccountDialog').addEventListener('close', function () {
+            showChoices();
+            document.getElementById('kiroFileList').innerHTML = '';
+            document.getElementById('kiroFileList').classList.add('hidden');
+        });
+
+        document.getElementById('kiroFileInput').addEventListener('change', function () {
+            const list = document.getElementById('kiroFileList');
+            list.innerHTML = '';
+            if (this.files.length === 0) { list.classList.add('hidden'); return; }
+            list.classList.remove('hidden');
+            for (let i = 0; i < this.files.length; i++) {
+                const f = this.files[i];
+                const ext = f.name.split('.').pop().toUpperCase();
+                const size = f.size < 1024 ? f.size + ' B' : (f.size / 1024).toFixed(1) + ' KB';
+                const row = document.createElement('div');
+                row.className = 'flex items-center gap-3 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs';
+                row.innerHTML = '<svg class="size-4 shrink-0 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>' +
+                    '<span class="text-zinc-100 truncate flex-1">' + f.name + '</span>' +
+                    '<span class="text-[10px] text-zinc-500 shrink-0 uppercase">' + ext + '</span>' +
+                    '<span class="text-[10px] text-zinc-500 shrink-0">' + size + '</span>';
+                list.appendChild(row);
+            }
+        });
+    </script>
+</th:block>
+</html>

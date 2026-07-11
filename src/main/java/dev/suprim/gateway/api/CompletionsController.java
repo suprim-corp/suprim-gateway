@@ -1,5 +1,8 @@
 package dev.suprim.gateway.api;
 
+import dev.suprim.gateway.antigravity.AntigravityFacade;
+import dev.suprim.gateway.auth.Provider;
+import dev.suprim.gateway.model.ModelRouter;
 import dev.suprim.gateway.proxy.ProxyFacade;
 import dev.suprim.gateway.utils.ErrorResponse;
 import dev.suprim.gateway.utils.RequestContext;
@@ -21,6 +24,7 @@ import java.util.Map;
 class CompletionsController {
 
 	private final ProxyFacade proxyFacade;
+	private final AntigravityFacade antigravityFacade;
 	private final RateLimiter rateLimiter;
 	private final TokenEstimator tokenEstimator;
 
@@ -51,6 +55,15 @@ class CompletionsController {
 		List<Map<String, Object>> tools = (List<Map<String, Object>>) request.get(
 				"tools");
 		int inputTokens = tokenEstimator.estimateRequest(messages, tools);
+
+		Provider provider = ModelRouter.resolveProvider(model);
+		if (provider == Provider.ANTIGRAVITY) {
+			antigravityFacade.handle(
+					request, model, stream, inputTokens, keyId,
+					RequestContext.clientIp(httpReq), httpRes
+			);
+			return;
+		}
 
 		proxyFacade.handle(
 				ProxyFacade.buildRequest(

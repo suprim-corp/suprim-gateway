@@ -6,6 +6,7 @@ import java.time.Instant;
 
 @Builder
 public record StoredAccount(
+		String name,
 		String profileArn,
 		String authType,
 		String clientId,
@@ -15,7 +16,9 @@ public record StoredAccount(
 		Instant expiresAt,
 		String[] scopes,
 		String region,
-		String apiRegion
+		String apiRegion,
+		String provider,
+		String projectId
 ) {
 	public StoredAccount withTokens(
 			String accessToken,
@@ -23,6 +26,7 @@ public record StoredAccount(
 			Instant expiresAt
 	) {
 		return StoredAccount.builder()
+		                    .name(name)
 		                    .profileArn(profileArn)
 		                    .authType(authType)
 		                    .clientId(clientId)
@@ -33,6 +37,26 @@ public record StoredAccount(
 		                    .scopes(scopes)
 		                    .region(region)
 		                    .apiRegion(apiRegion)
+		                    .provider(provider)
+		                    .projectId(projectId)
+		                    .build();
+	}
+
+	public StoredAccount withName(String name) {
+		return StoredAccount.builder()
+		                    .name(name)
+		                    .profileArn(profileArn)
+		                    .authType(authType)
+		                    .clientId(clientId)
+		                    .clientSecret(clientSecret)
+		                    .accessToken(accessToken)
+		                    .refreshToken(refreshToken)
+		                    .expiresAt(expiresAt)
+		                    .scopes(scopes)
+		                    .region(region)
+		                    .apiRegion(apiRegion)
+		                    .provider(provider)
+		                    .projectId(projectId)
 		                    .build();
 	}
 }

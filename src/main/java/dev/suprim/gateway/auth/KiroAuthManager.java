@@ -264,6 +264,6 @@ public class KiroAuthManager {
 				             .region(config.region())
 				             .apiRegion(config.apiRegion())
 				             .build();
-		credentialStore.save(List.of(account));
+		credentialStore.upsert(account);
 	}
 }

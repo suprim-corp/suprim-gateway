@@ -13,24 +13,35 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.Optional;
 
 @Component
 public class KiroCredentialStore {
 
 	private static final Logger log = LoggerFactory.getLogger(
 			KiroCredentialStore.class);
-	private static final Path STORE_PATH = Path.of(
+	private static final Path DEFAULT_STORE_PATH = Path.of(
 			System.getenv("DATABASE_PATH") != null
 					? Path.of(System.getenv("DATABASE_PATH")).getParent().resolve("credentials.json").toString()
 					: "./data/credentials.json"
 	);
+	private final Path storePath;
 	private final ObjectMapper mapper = new ObjectMapper();
+
+	public KiroCredentialStore() {
+		this(DEFAULT_STORE_PATH);
+	}
+
+	public KiroCredentialStore(Path storePath) {
+		this.storePath = storePath;
+	}
 
 	public List<StoredAccount> load() {
 		List<StoredAccount> accounts = new ArrayList<>();
-		if (!Files.exists(STORE_PATH)) return accounts;
+		if (!Files.exists(storePath)) return accounts;
 		try {
-			JsonNode root = mapper.readTree(Files.readString(STORE_PATH));
+			JsonNode root = mapper.readTree(Files.readString(storePath));
 			JsonNode arr = root.get("accounts");
 			if (arr == null || !arr.isArray()) return accounts;
 
@@ -39,12 +50,13 @@ public class KiroCredentialStore {
 						"authType")) {
 					log.warn(
 							"[CredStore] Legacy camelCase format detected, deleting file");
-					Files.delete(STORE_PATH);
+					Files.delete(storePath);
 					return List.of();
 				}
 
 				accounts.add(
 						StoredAccount.builder()
+						             .name(textOrNull(node, "name"))
 						             .profileArn(
 								             textOrNull(
 										             node,
@@ -75,6 +87,8 @@ public class KiroCredentialStore {
 						             .scopes(parseScopes(node.get("scopes")))
 						             .region(textOrNull(node, "region"))
 						             .apiRegion(textOrNull(node, "api_region"))
+						             .provider(textOrNull(node, "provider"))
+						             .projectId(textOrNull(node, "project_id"))
 						             .build()
 				);
 			}
@@ -86,11 +100,12 @@ public class KiroCredentialStore {
 
 	public void save(List<StoredAccount> accounts) {
 		try {
-			Files.createDirectories(STORE_PATH.getParent());
+			Files.createDirectories(storePath.getParent());
 			ObjectNode root = mapper.createObjectNode();
 			ArrayNode arr = root.putArray("accounts");
 			for (StoredAccount acc : accounts) {
 				ObjectNode node = arr.addObject();
+				if (acc.name() != null) node.put("name", acc.name());
 				node.put("profile_arn", acc.profileArn());
 				node.put("auth_type", acc.authType());
 				node.put("client_id", acc.clientId());
@@ -107,9 +122,11 @@ public class KiroCredentialStore {
 				}
 				node.put("region", acc.region());
 				node.put("api_region", acc.apiRegion());
+				if (acc.provider() != null) node.put("provider", acc.provider());
+				if (acc.projectId() != null) node.put("project_id", acc.projectId());
 			}
 			Files.writeString(
-					STORE_PATH,
+					storePath,
 					mapper.writerWithDefaultPrettyPrinter()
 					      .writeValueAsString(root)
 			);
@@ -138,6 +155,11 @@ public class KiroCredentialStore {
 			StoredAccount existing,
 			StoredAccount incoming
 	) {
+		if (incoming.provider() != null && existing.provider() != null) {
+			return existing.provider().equals(incoming.provider())
+			       && existing.clientId() != null
+			       && existing.clientId().equals(incoming.clientId());
+		}
 		if (incoming.profileArn() != null && existing.profileArn() != null) {
 			return existing.profileArn().equals(incoming.profileArn());
 		}
@@ -148,7 +170,13 @@ public class KiroCredentialStore {
 	}
 
 	public boolean exists() {
-		return Files.exists(STORE_PATH);
+		return Files.exists(storePath);
+	}
+
+	public Optional<StoredAccount> findByProvider(String provider) {
+		return load().stream()
+		             .filter(acc -> provider.equals(acc.provider()))
+		             .findFirst();
 	}
 
 	private static Instant parseExpires(JsonNode node) {
