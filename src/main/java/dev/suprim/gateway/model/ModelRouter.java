@@ -1,6 +1,6 @@
 package dev.suprim.gateway.model;
 
-import dev.suprim.gateway.auth.Provider;
+import dev.suprim.gateway.provider.Provider;
 
 public class ModelRouter {
 

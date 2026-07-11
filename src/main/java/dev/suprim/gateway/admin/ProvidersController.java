@@ -1,7 +1,7 @@
 package dev.suprim.gateway.admin;
 
-import dev.suprim.gateway.auth.KiroCredentialStore;
-import dev.suprim.gateway.auth.StoredAccount;
+import dev.suprim.gateway.provider.CredentialStore;
+import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.model.ModelRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
@@ -20,7 +20,7 @@ import java.util.Map;
 @Controller
 class ProvidersController {
 
-	private final KiroCredentialStore credentialStore;
+	private final CredentialStore credentialStore;
 	private final ModelRegistry modelRegistry;
 
 	@GetMapping("/providers")

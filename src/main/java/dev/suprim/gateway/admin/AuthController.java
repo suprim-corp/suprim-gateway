@@ -1,10 +1,10 @@
 package dev.suprim.gateway.admin;
 
-import dev.suprim.gateway.auth.ImportRequest;
-import dev.suprim.gateway.auth.ImportResult;
-import dev.suprim.gateway.auth.KiroAuthManager;
-import dev.suprim.gateway.auth.KiroCredentialStore;
-import dev.suprim.gateway.auth.StoredAccount;
+import dev.suprim.gateway.provider.kiro.ImportRequest;
+import dev.suprim.gateway.provider.kiro.ImportResult;
+import dev.suprim.gateway.provider.kiro.KiroAuthManager;
+import dev.suprim.gateway.provider.CredentialStore;
+import dev.suprim.gateway.provider.StoredAccount;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,7 +25,7 @@ public class AuthController {
 	private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 	private final ObjectMapper mapper = new ObjectMapper();
 	private final KiroAuthManager authManager;
-	private final KiroCredentialStore credentialStore;
+	private final CredentialStore credentialStore;
 
 	@PostMapping("/auth/import")
 	String importCredentials(

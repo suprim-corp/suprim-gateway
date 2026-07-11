@@ -1,6 +1,6 @@
 package dev.suprim.gateway.model;
 
-import dev.suprim.gateway.auth.Provider;
+import dev.suprim.gateway.provider.Provider;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

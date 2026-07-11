@@ -1,9 +1,9 @@
 package dev.suprim.gateway.model;
 
-import dev.suprim.gateway.antigravity.AntigravityAuthManager;
+import dev.suprim.gateway.provider.antigravity.AntigravityAuthManager;
 import dev.suprim.gateway.config.AppConfig;
 import dev.suprim.gateway.proxy.KiroHttpClient;
-import dev.suprim.gateway.xai.XaiAuthManager;
+import dev.suprim.gateway.provider.xai.XaiAuthManager;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;

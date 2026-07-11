@@ -1,6 +1,6 @@
 package dev.suprim.gateway.proxy;
 
-import dev.suprim.gateway.auth.KiroAuthManager;
+import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.model.ModelResolver;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;

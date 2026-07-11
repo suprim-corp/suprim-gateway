@@ -1,6 +1,6 @@
 package dev.suprim.gateway.api;
 
-import dev.suprim.gateway.auth.Provider;
+import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.model.ModelRouter;
 import dev.suprim.gateway.proxy.PayloadBuilder;
 import dev.suprim.gateway.proxy.ProxyFacade;

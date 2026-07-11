@@ -1,8 +1,8 @@
 package dev.suprim.gateway.api;
 
-import dev.suprim.gateway.antigravity.AntigravityFacade;
-import dev.suprim.gateway.auth.Provider;
-import dev.suprim.gateway.xai.XaiFacade;
+import dev.suprim.gateway.provider.antigravity.AntigravityFacade;
+import dev.suprim.gateway.provider.Provider;
+import dev.suprim.gateway.provider.xai.XaiFacade;
 
 import org.springframework.stereotype.Component;
 

@@ -1,6 +1,6 @@
 package dev.suprim.gateway.api;
 
-import dev.suprim.gateway.auth.Provider;
+import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.model.ModelRouter;
 import dev.suprim.gateway.proxy.ProxyFacade;
 import dev.suprim.gateway.utils.ErrorResponse;
@@ -44,15 +44,14 @@ class CompletionsController {
 			return;
 		}
 
-		String model = (String) request.getOrDefault(
-				"model",
-				"claude-sonnet-4-5"
-		);
+		String model = (String) request.getOrDefault("model", null);
 		boolean stream = Boolean.TRUE.equals(request.get("stream"));
 		List<Map<String, Object>> messages = (List<Map<String, Object>>) request.get(
-				"messages");
+				"messages"
+		);
 		List<Map<String, Object>> tools = (List<Map<String, Object>>) request.get(
-				"tools");
+				"tools"
+		);
 		int inputTokens = tokenEstimator.estimateRequest(messages, tools);
 
 		Provider provider = ModelRouter.resolveProvider(model);
