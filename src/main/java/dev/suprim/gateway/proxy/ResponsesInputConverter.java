@@ -1,5 +1,6 @@
 package dev.suprim.gateway.proxy;
 
+import lombok.extern.slf4j.Slf4j;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -8,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 public final class ResponsesInputConverter {
 
 	private static final JsonMapper MAPPER = new JsonMapper();
@@ -44,6 +46,15 @@ public final class ResponsesInputConverter {
 			if (!(item instanceof Map<?, ?> m)) continue;
 			Object typeObj = m.get("type");
 			String type = typeObj != null ? typeObj.toString() : "message";
+
+			if ("function_call".equals(type) || "function_call_output".equals(type)) {
+				log.debug("[ResponsesInput] item type={}, keys={}, values={}",
+						type, m.keySet(),
+						m.entrySet().stream()
+								.filter(e -> !"content".equals(e.getKey()))
+								.map(e -> e.getKey() + "=" + (e.getValue() != null ? e.getValue().toString().substring(0, Math.min(80, e.getValue().toString().length())) : "null"))
+								.toList());
+			}
 
 			switch (type) {
 				case "function_call" ->

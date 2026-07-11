@@ -22,8 +22,8 @@ final class FunctionCallHandler {
 		                      .map(Object::toString)
 		                      .orElse("");
 		Object argsObj = m.get("arguments");
-		log.debug("[FunctionCall] name={}, call_id={}, arguments type={}, value={}",
-				name, callId,
+		log.debug("[FunctionCall] raw map keys={}, name={}, call_id={}, arguments type={}, value={}",
+				m.keySet(), name, callId,
 				argsObj != null ? argsObj.getClass().getSimpleName() : "null",
 				argsObj != null ? argsObj.toString().substring(0, Math.min(200, argsObj.toString().length())) : "null");
 		String arguments = resolveArguments(argsObj);
