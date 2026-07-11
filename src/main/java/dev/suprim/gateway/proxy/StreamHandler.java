@@ -4,14 +4,12 @@ import dev.suprim.gateway.proxy.KiroHttpClient.KiroResponse;
 import dev.suprim.gateway.utils.TokenEstimator;
 import lombok.Builder;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.util.List;
 
-@Slf4j
 @RequiredArgsConstructor
 @Component
 public class StreamHandler {
@@ -45,7 +43,6 @@ public class StreamHandler {
 				System.arraycopy(buf, 0, chunk, 0, read);
 				List<KiroEvent> events = parser.feed(chunk);
 				for (KiroEvent event : events) {
-					log.debug("[Stream] event type={}, hasContent={}", event.type(), event.content() != null);
 					if ("reasoning".equals(event.type())) continue;
 					if ("metering".equals(event.type())) {
 						credits[0] += event.credits();
