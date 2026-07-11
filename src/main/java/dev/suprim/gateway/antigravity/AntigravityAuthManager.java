@@ -6,6 +6,7 @@ import dev.suprim.gateway.auth.KiroCredentialStore;
 import dev.suprim.gateway.auth.StoredAccount;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
@@ -94,6 +95,18 @@ public class AntigravityAuthManager {
 			return List.of();
 		}
 		return AntigravityHttpClient.listModels(getAccessToken(), projectId);
+	}
+
+	@Scheduled(fixedDelay = 3_000_000)
+	void scheduledRefresh() {
+		if (!isConnected()) return;
+		try {
+			log.info("[Antigravity] Scheduled token refresh");
+			refresh();
+			log.info("[Antigravity] Scheduled refresh OK, expires at {}", expiresAt);
+		} catch (Exception e) {
+			log.warn("[Antigravity] Scheduled refresh failed: {}", e.getMessage());
+		}
 	}
 
 	void refresh() {
