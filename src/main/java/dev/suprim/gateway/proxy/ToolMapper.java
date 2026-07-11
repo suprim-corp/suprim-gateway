@@ -3,13 +3,30 @@ package dev.suprim.gateway.proxy;
 import dev.suprim.gateway.api.request.CompletionsRequest;
 import dev.suprim.gateway.api.request.MessagesRequest;
 import dev.suprim.gateway.api.request.ResponsesRequest;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public final class ToolMapper {
 
+	private static final JsonMapper MAPPER = new JsonMapper();
+	private static final JsonNode EMPTY_PARAMS = emptyObjectSchema();
+
 	private ToolMapper() {}
+
+	private static ObjectNode emptyObjectSchema() {
+		ObjectNode node = MAPPER.createObjectNode();
+		node.put("type", "object");
+		node.putObject("properties");
+		return node;
+	}
+
+	private static JsonNode ensureParams(JsonNode parameters) {
+		return parameters != null ? parameters : EMPTY_PARAMS;
+	}
 
 	public static List<Tool> fromCompletions(List<CompletionsRequest.Tool> tools) {
 		if (tools == null || tools.isEmpty()) return List.of();
@@ -21,7 +38,7 @@ public final class ToolMapper {
 					.function(fn == null ? null : Tool.Function.builder()
 							.name(fn.name())
 							.description(fn.description())
-							.parameters(fn.parameters())
+							.parameters(ensureParams(fn.parameters()))
 							.strict(fn.strict())
 							.build())
 					.build());
@@ -38,7 +55,7 @@ public final class ToolMapper {
 					.function(Tool.Function.builder()
 							.name(tool.name())
 							.description(tool.description())
-							.parameters(tool.inputSchema())
+							.parameters(ensureParams(tool.inputSchema()))
 							.build())
 					.build());
 		}
@@ -54,7 +71,7 @@ public final class ToolMapper {
 					.function(Tool.Function.builder()
 							.name(tool.name())
 							.description(tool.description())
-							.parameters(tool.parameters())
+							.parameters(ensureParams(tool.parameters()))
 							.strict(tool.strict())
 							.build())
 					.build());
