@@ -1,5 +1,7 @@
 package dev.suprim.gateway.proxy;
 
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import lombok.Builder;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -13,6 +15,31 @@ import java.util.UUID;
 public class StreamConverter {
 
 	private final ObjectMapper mapper = new ObjectMapper();
+
+	@Builder
+	@JsonPropertyOrder({"type", "id", "call_id", "name", "arguments"})
+	public record FunctionCallItem(
+			String type,
+			String id,
+			String call_id,
+			String name,
+			String arguments
+	) {
+		static FunctionCallItem of(
+				String id,
+				String callId,
+				String name,
+				String arguments
+		) {
+			return FunctionCallItem.builder()
+			                       .type("function_call")
+			                       .id(id)
+			                       .call_id(callId)
+			                       .name(name)
+			                       .arguments(arguments)
+			                       .build();
+		}
+	}
 
 	public String toOpenAiChunk(
 			KiroEvent event,
@@ -254,7 +281,10 @@ public class StreamConverter {
 		);
 	}
 
-	public String toAnthropicFinale(int outputTokens, boolean hasToolUse) throws Exception {
+	public String toAnthropicFinale(
+			int outputTokens,
+			boolean hasToolUse
+	) throws Exception {
 		String stopReason = hasToolUse ? "tool_use" : "end_turn";
 		return toAnthropicEvent(
 				"content_block_stop",
@@ -491,83 +521,67 @@ public class StreamConverter {
 		String fcId = "fc_" + callId;
 		String name = event.toolName() != null ? event.toolName() : "unknown";
 		String args = event.toolInput() != null ? event.toolInput() : "{}";
-		return toResponsesSse(
-				Map.of(
-						"type",
-						"response.output_item.added",
-						"output_index",
-						outputIndex,
-						"item",
-						Map.of(
-								"type",
-								"function_call",
-								"id",
-								fcId,
-								"name",
-								name,
-								"arguments",
-								"",
-								"call_id",
-								callId
-						)
-				)
-		)
-		       + toResponsesSse(
-				Map.of(
-						"type",
-						"response.function_call_arguments.delta",
-						"item_id",
-						fcId,
-						"call_id",
-						callId,
-						"output_index",
-						outputIndex,
-						"delta",
-						args
-				)
-		)
-		       + toResponsesSse(
-				Map.of(
-						"type",
-						"response.function_call_arguments.done",
-						"item_id",
-						fcId,
-						"call_id",
-						callId,
-						"output_index",
-						outputIndex,
-						"arguments",
-						args
-				)
-		)
-		       + toResponsesSse(
-				Map.of(
-						"type",
-						"response.output_item.done",
-						"output_index",
-						outputIndex,
-						"item",
-						Map.of(
-								"type",
-								"function_call",
-								"id",
-								fcId,
-								"name",
-								name,
-								"arguments",
-								args,
-								"call_id",
-								callId
-						)
-				)
+
+		FunctionCallItem emptyItem = FunctionCallItem.of(
+				fcId,
+				callId,
+				name,
+				""
 		);
+		FunctionCallItem doneItem = FunctionCallItem.of(
+				fcId,
+				callId,
+				name,
+				args
+		);
+
+		return toResponsesSse(Map.of(
+				"type",
+				"response.output_item.added",
+				"output_index",
+				outputIndex,
+				"item",
+				emptyItem
+		))
+		       + toResponsesSse(Map.of(
+				"type",
+				"response.function_call_arguments.delta",
+				"item_id",
+				fcId,
+				"call_id",
+				callId,
+				"output_index",
+				outputIndex,
+				"delta",
+				args
+		))
+		       + toResponsesSse(Map.of(
+				"type",
+				"response.function_call_arguments.done",
+				"item_id",
+				fcId,
+				"call_id",
+				callId,
+				"output_index",
+				outputIndex,
+				"arguments",
+				args
+		))
+		       + toResponsesSse(Map.of(
+				"type",
+				"response.output_item.done",
+				"output_index",
+				outputIndex,
+				"item",
+				doneItem
+		));
 	}
 
 	public String toResponsesCompleted(
 			String responseId,
 			String model,
 			String fullText,
-			List<Map<String, Object>> toolCalls,
+			List<?> toolCalls,
 			int inputTokens,
 			int outputTokens
 	) throws Exception {

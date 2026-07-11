@@ -128,7 +128,7 @@ public class OpenAiRelayHandler {
 			);
 
 			int outputIndex = 1;
-			List<Map<String, Object>> toolCallMaps = new ArrayList<>();
+			List<Object> toolCallMaps = new ArrayList<>();
 			for (ToolCallChunk tc : toolCalls) {
 				KiroEvent toolEvent = KiroEvent.toolUse(
 						tc.id(),
@@ -233,14 +233,8 @@ public class OpenAiRelayHandler {
 	}
 
 	record ToolCallChunk(String id, String name, String arguments) {
-		Map<String, Object> toResponsesOutput() {
-			return Map.of(
-					"type", "function_call",
-					"id", "fc_" + id,
-					"name", name,
-					"arguments", arguments,
-					"call_id", id
-			);
+		StreamConverter.FunctionCallItem toResponsesOutput() {
+			return StreamConverter.FunctionCallItem.of("fc_" + id, id, name, arguments);
 		}
 	}
 
