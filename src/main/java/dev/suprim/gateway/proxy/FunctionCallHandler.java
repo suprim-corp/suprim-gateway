@@ -1,10 +1,16 @@
 package dev.suprim.gateway.proxy;
 
+import lombok.extern.slf4j.Slf4j;
+import tools.jackson.databind.json.JsonMapper;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+@Slf4j
 final class FunctionCallHandler {
+
+	private static final JsonMapper MAPPER = new JsonMapper();
 
 	private FunctionCallHandler() {}
 
@@ -15,9 +21,12 @@ final class FunctionCallHandler {
 		String name = Optional.ofNullable(m.get("name"))
 		                      .map(Object::toString)
 		                      .orElse("");
-		String arguments = Optional.ofNullable(m.get("arguments"))
-		                           .map(Object::toString)
-		                           .orElse("{}");
+		Object argsObj = m.get("arguments");
+		log.debug("[FunctionCall] name={}, call_id={}, arguments type={}, value={}",
+				name, callId,
+				argsObj != null ? argsObj.getClass().getSimpleName() : "null",
+				argsObj != null ? argsObj.toString().substring(0, Math.min(200, argsObj.toString().length())) : "null");
+		String arguments = resolveArguments(argsObj);
 		return Message.ToolCall.builder()
 		                       .id(callId)
 		                       .type("function")
@@ -28,6 +37,16 @@ final class FunctionCallHandler {
 				                                       .build()
 		                       )
 		                       .build();
+	}
+
+	private static String resolveArguments(Object argsObj) {
+		if (argsObj == null) return "{}";
+		if (argsObj instanceof String s) return s.isEmpty() ? "{}" : s;
+		try {
+			return MAPPER.writeValueAsString(argsObj);
+		} catch (Exception e) {
+			return "{}";
+		}
 	}
 
 	static Message toToolResult(Map<?, ?> m) {
