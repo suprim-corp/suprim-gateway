@@ -17,9 +17,11 @@ class KiroCredentialStoreProviderTest {
 
 	@Test
 	void providerEnum_hasExpectedValues() {
-		assertEquals(3, Provider.values().length);
+		assertEquals(5, Provider.values().length);
 		assertNotNull(Provider.valueOf("KIRO"));
 		assertNotNull(Provider.valueOf("ANTIGRAVITY"));
+		assertNotNull(Provider.valueOf("GROK"));
+		assertNotNull(Provider.valueOf("XAI"));
 		assertNotNull(Provider.valueOf("CODEX"));
 	}
 
