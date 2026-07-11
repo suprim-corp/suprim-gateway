@@ -31,7 +31,7 @@ public class ActionLogFilter extends OncePerRequestFilter {
 	);
 
 	private static final Set<String> STREAMING_PATHS = Set.of(
-			"/v1/chat/completions", "/v1/responses"
+			"/v1/chat/completions", "/v1/responses", "/v1/messages"
 	);
 
 	@Override
