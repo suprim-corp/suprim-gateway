@@ -14,7 +14,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Optional;
 
 @Component
 public class KiroCredentialStore {
@@ -23,7 +22,10 @@ public class KiroCredentialStore {
 			KiroCredentialStore.class);
 	private static final Path DEFAULT_STORE_PATH = Path.of(
 			System.getenv("DATABASE_PATH") != null
-					? Path.of(System.getenv("DATABASE_PATH")).getParent().resolve("credentials.json").toString()
+					? Path.of(System.getenv("DATABASE_PATH"))
+					      .getParent()
+					      .resolve("credentials.json")
+					      .toString()
 					: "./data/credentials.json"
 	);
 	private final Path storePath;
@@ -122,8 +124,14 @@ public class KiroCredentialStore {
 				}
 				node.put("region", acc.region());
 				node.put("api_region", acc.apiRegion());
-				if (acc.provider() != null) node.put("provider", acc.provider());
-				if (acc.projectId() != null) node.put("project_id", acc.projectId());
+				if (acc.provider() != null) node.put(
+						"provider",
+						acc.provider()
+				);
+				if (acc.projectId() != null) node.put(
+						"project_id",
+						acc.projectId()
+				);
 			}
 			Files.writeString(
 					storePath,
@@ -141,7 +149,7 @@ public class KiroCredentialStore {
 		boolean replaced = false;
 		for (StoredAccount existing : accounts) {
 			if (matches(existing, account)) {
-				updated.add(account);
+				updated.add(merge(existing, account));
 				replaced = true;
 			} else {
 				updated.add(existing);
@@ -149,6 +157,66 @@ public class KiroCredentialStore {
 		}
 		if (!replaced) updated.add(account);
 		save(updated);
+	}
+
+	private static StoredAccount merge(
+			StoredAccount existing,
+			StoredAccount incoming
+	) {
+		return StoredAccount.builder()
+		                    .name(
+				                    Optional.ofNullable(incoming.name())
+				                            .orElse(existing.name())
+		                    )
+		                    .profileArn(
+				                    Optional.ofNullable(incoming.profileArn())
+				                            .orElse(existing.profileArn())
+		                    )
+		                    .authType(
+				                    Optional.ofNullable(incoming.authType())
+				                            .orElse(existing.authType())
+		                    )
+		                    .clientId(
+				                    Optional.ofNullable(incoming.clientId())
+				                            .orElse(existing.clientId())
+		                    )
+		                    .clientSecret(
+				                    Optional.ofNullable(incoming.clientSecret())
+				                            .orElse(existing.clientSecret())
+		                    )
+		                    .accessToken(
+				                    Optional.ofNullable(incoming.accessToken())
+				                            .orElse(existing.accessToken())
+		                    )
+		                    .refreshToken(
+				                    Optional.ofNullable(incoming.refreshToken())
+				                            .orElse(existing.refreshToken())
+		                    )
+		                    .expiresAt(
+				                    Optional.ofNullable(incoming.expiresAt())
+				                            .orElse(existing.expiresAt())
+		                    )
+		                    .scopes(
+				                    Optional.ofNullable(incoming.scopes())
+				                            .orElse(existing.scopes())
+		                    )
+		                    .region(
+				                    Optional.ofNullable(incoming.region())
+				                            .orElse(existing.region())
+		                    )
+		                    .apiRegion(
+				                    Optional.ofNullable(incoming.apiRegion())
+				                            .orElse(existing.apiRegion())
+		                    )
+		                    .provider(
+				                    Optional.ofNullable(incoming.provider())
+				                            .orElse(existing.provider())
+		                    )
+		                    .projectId(
+				                    Optional.ofNullable(incoming.projectId())
+				                            .orElse(existing.projectId())
+		                    )
+		                    .build();
 	}
 
 	private static boolean matches(
