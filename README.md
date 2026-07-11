@@ -1,10 +1,18 @@
-# Kiro Gateway
+# Suprim Gateway
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png" width="120" />
+  <img src="https://avatars.githubusercontent.com/u/248639477?s=400&u=4f31236a2e82cde0eb0f067921b5182f93bf790f&v=4" width="120"  alt=""/>
 </p>
 
-Proxy gateway for Kiro API (AWS Q Developer) — OpenAI-compatible API with admin dashboard and virtual key system.
+Proxy gateway for LLM providers — OpenAI-compatible API with admin dashboard and virtual key system.
+
+## Supported Providers
+
+| Provider                                                                                                                                                             | Status | Note            |
+|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|-----------------|
+| <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png" width="16" /> Kiro (AWS Q Developer)      | Active | Use at own risk |
+| <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/openai.png" width="16" /> Codex (OpenAI)                  | Active | Use at own risk |
+| <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/antigravity-color.png" width="16" /> Antigravity (Google) | Active | Use at own risk |
 
 ## Stack
 
@@ -35,74 +43,12 @@ Proxy gateway for Kiro API (AWS Q Developer) — OpenAI-compatible API with admi
 - **Retry logic** — auto-retry on 403/429/5xx with exponential backoff
 - **Proxy chain** — HTTP/SOCKS5 proxy list with automatic failover (geo-bypass)
 
-## Project Structure
-
-```
-kiro-gateway/
-├── pom.xml
-├── .env
-├── src/main/java/dev/suprim/gateway/
-│   ├── KiroGatewayApplication.java
-│   ├── config/
-│   │   ├── AppConfig.java              # @ConfigurationProperties
-│   │   └── SecurityConfig.java         # Spring Security (form login)
-│   ├── auth/
-│   │   ├── KiroAuthManager.java        # Token lifecycle (refresh, multi-source)
-│   │   └── KiroCredentials.java        # Token holder
-│   ├── proxy/
-│   │   ├── KiroHttpClient.java         # Upstream HTTP + retry
-│   │   ├── KiroHeaders.java            # Spoofed headers
-│   │   ├── KiroEventParser.java        # AWS event stream binary parser
-│   │   ├── StreamConverter.java        # Kiro events → OpenAI SSE
-│   │   └── PayloadBuilder.java         # OpenAI request → Kiro format
-│   ├── model/
-│   │   ├── ModelResolver.java          # Name normalization
-│   │   └── ModelRegistry.java          # Dynamic model fetch + cache
-│   ├── virtualkey/
-│   │   ├── VirtualKey.java
-│   │   ├── VirtualKeyRepository.java
-│   │   ├── VirtualKeyService.java
-│   │   ├── VirtualKeyAuthFilter.java
-│   │   └── RateLimiter.java            # Sliding window in-memory
-│   ├── logging/
-│   │   ├── RequestLog.java
-│   │   ├── RequestLogRepository.java
-│   │   └── RequestLogService.java
-│   ├── utils/
-│   │   ├── TokenEstimator.java         # jtokkit cl100k_base + 1.15x factor
-│   │   └── PricingService.java         # Per-model cost calculation
-│   ├── api/                            # REST controllers (proxy)
-│   │   ├── CompletionsController.java  # POST /v1/chat/completions
-│   │   ├── MessagesController.java     # POST /v1/messages
-│   │   ├── ModelsController.java       # GET /v1/models
-│   │   └── HealthController.java       # GET /health
-│   └── admin/                          # Thymeleaf controllers (dashboard)
-│       ├── DashboardController.java
-│       ├── LogsController.java
-│       ├── KeysController.java
-│       ├── UsageController.java
-│       ├── SettingsController.java
-│       └── LoginController.java
-├── src/main/resources/
-│   ├── application.yml
-│   ├── db/migration/V1__initial_schema.sql
-│   └── templates/
-│       ├── layout.html
-│       ├── fragments/ (head, sidebar)
-│       ├── dashboard.html
-│       ├── logs.html
-│       ├── keys.html
-│       ├── usage.html
-│       ├── settings.html
-│       └── login.html
-```
-
 ## Quick Start
 
 ```bash
 # Clone
-git clone https://github.com/sant1ago/kiro-gateway.git
-cd kiro-gateway
+git clone https://github.com/sant1ago/suprim-gateway.git
+cd suprim-gateway
 
 # Configure
 cp .env.example .env

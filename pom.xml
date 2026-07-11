@@ -12,9 +12,9 @@
 	</parent>
 
 	<groupId>dev.suprim</groupId>
-	<artifactId>kiro-gateway</artifactId>
+	<artifactId>suprim-gateway</artifactId>
 	<version>0.2.0</version>
-	<name>kiro-gateway</name>
+	<name>suprim-gateway</name>
 	<description>Proxy gateway for Kiro API with admin dashboard</description>
 
 	<properties>

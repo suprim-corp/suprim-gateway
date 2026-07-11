@@ -1,5 +1,5 @@
 services:
-  kiro-gateway:
+  suprim-gateway:
     container_name: kijaro
     image: suprim/kijaro:${COMMIT_HASH}
     build: .

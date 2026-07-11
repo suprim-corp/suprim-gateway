@@ -6,7 +6,7 @@ import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@ConfigurationProperties(prefix = "kiro")
+@ConfigurationProperties(prefix = "suprim")
 public record AppConfig(
 		String adminApiKey,
 		String credsFile,
