@@ -1,8 +1,9 @@
 package dev.suprim.gateway.api;
 
+import dev.suprim.gateway.api.request.MessagesRequest;
+import dev.suprim.gateway.api.request.RequestMapper;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.model.ModelRouter;
-import dev.suprim.gateway.proxy.ContentExtractor;
 import dev.suprim.gateway.proxy.ProxyFacade;
 import dev.suprim.gateway.utils.ErrorResponse;
 import dev.suprim.gateway.utils.RequestContext;
@@ -11,10 +12,12 @@ import dev.suprim.gateway.virtualkey.RateLimiter;
 import dev.suprim.gateway.virtualkey.VirtualKey;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.databind.JsonNode;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -30,10 +33,9 @@ class MessagesController {
 	private final RateLimiter rateLimiter;
 	private final TokenEstimator tokenEstimator;
 
-	@SuppressWarnings("unchecked")
 	@PostMapping("/v1/messages")
 	void messages(
-			@RequestBody Map<String, Object> request,
+			@Valid @RequestBody MessagesRequest request,
 			HttpServletRequest httpReq, HttpServletResponse httpRes
 	) throws Exception {
 		VirtualKey key = RequestContext.resolveKey();
@@ -47,16 +49,14 @@ class MessagesController {
 			return;
 		}
 
-		String model = (String) request.getOrDefault(
-				"model",
-				"claude-sonnet-4-5"
-		);
-		boolean stream = Boolean.TRUE.equals(request.get("stream"));
+		String model = request.model();
+		boolean stream = Boolean.TRUE.equals(request.stream());
 
 		List<Map<String, Object>> openAiMessages = convertAnthropicToOpenAi(
 				request);
-		List<Map<String, Object>> tools = (List<Map<String, Object>>) request.get(
-				"tools");
+		List<Map<String, Object>> tools = RequestMapper.toolsToList(
+				request.tools()
+		);
 		int inputTokens = tokenEstimator.estimateRequest(openAiMessages, tools);
 
 		HashMap<String, Object> openAiReq = new HashMap<>();
@@ -91,20 +91,19 @@ class MessagesController {
 		);
 	}
 
-	@SuppressWarnings("unchecked")
-	private List<Map<String, Object>> convertAnthropicToOpenAi(Map<String, Object> request) {
+	private List<Map<String, Object>> convertAnthropicToOpenAi(MessagesRequest request) {
 		List<Map<String, Object>> result = new ArrayList<>();
 
-		if (request.containsKey("system")) {
-			Object sys = request.get("system");
+		JsonNode sys = request.system();
+		if (sys != null) {
 			String systemText;
-			if (sys instanceof String s) {
-				systemText = s;
-			} else if (sys instanceof List<?> list) {
+			if (sys.isString()) {
+				systemText = sys.stringValue();
+			} else if (sys.isArray()) {
 				StringBuilder sb = new StringBuilder();
-				for (Object item : list) {
-					if (item instanceof Map<?, ?> m && m.containsKey("text"))
-						sb.append(m.get("text"));
+				for (JsonNode item : sys) {
+					if (item.has("text")) sb.append(item.get("text")
+					                                    .stringValue());
 				}
 				systemText = sb.toString();
 			} else {
@@ -113,35 +112,50 @@ class MessagesController {
 			result.add(Map.of("role", "system", "content", systemText));
 		}
 
-		List<Map<String, Object>> messages = (List<Map<String, Object>>) request.get(
-				"messages");
-		if (messages != null) {
-			for (Map<String, Object> msg : messages) {
-				String role = (String) msg.get("role");
-				Object content = msg.get("content");
-				if (content instanceof List<?> list && ContentExtractor.hasImageBlock(list)) {
-					result.add(Map.of("role", role, "content", list));
-				} else {
-					String textContent;
-					if (content instanceof String s) {
-						textContent = s;
-					} else if (content instanceof List<?> list2) {
-						StringBuilder sb = new StringBuilder();
-						for (Object item : list2) {
-							if (item instanceof Map<?, ?> m) {
-								if ("text".equals(m.get("type")))
-									sb.append(m.get("text"));
-							}
-						}
-						textContent = sb.toString();
-					} else {
-						textContent = content != null ? content.toString() : "";
+		if (request.messages() != null) {
+			for (MessagesRequest.Message msg : request.messages()) {
+				String role = msg.role();
+				JsonNode content = msg.content();
+				if (content == null) {
+					result.add(Map.of("role", role, "content", ""));
+				} else if (content.isString()) {
+					result.add(Map.of(
+							"role",
+							role,
+							"content",
+							content.stringValue()
+					));
+				} else if (content.isArray() && hasImageBlock(content)) {
+					List<Object> parts = RequestMapper.toList(content);
+					result.add(Map.of("role", role, "content", parts));
+				} else if (content.isArray()) {
+					StringBuilder sb = new StringBuilder();
+					for (JsonNode item : content) {
+						if (item.has("type") && "text".equals(item.get("type")
+						                                          .stringValue()))
+							sb.append(item.get("text").stringValue());
 					}
-					result.add(Map.of("role", role, "content", textContent));
+					result.add(Map.of("role", role, "content", sb.toString()));
+				} else {
+					result.add(Map.of(
+							"role",
+							role,
+							"content",
+							content.toString()
+					));
 				}
 			}
 		}
 
 		return result;
+	}
+
+	private boolean hasImageBlock(JsonNode contentArray) {
+		for (JsonNode item : contentArray) {
+			if (item.has("type") && "image".equals(item.get("type")
+			                                           .stringValue()))
+				return true;
+		}
+		return false;
 	}
 }

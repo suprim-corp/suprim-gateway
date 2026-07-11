@@ -1,5 +1,7 @@
 package dev.suprim.gateway.api;
 
+import dev.suprim.gateway.api.request.RequestMapper;
+import dev.suprim.gateway.api.request.ResponsesRequest;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.model.ModelRouter;
 import dev.suprim.gateway.proxy.PayloadBuilder;
@@ -11,6 +13,7 @@ import dev.suprim.gateway.virtualkey.RateLimiter;
 import dev.suprim.gateway.virtualkey.VirtualKey;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -31,10 +34,9 @@ class ResponsesController {
 	private final RateLimiter rateLimiter;
 	private final TokenEstimator tokenEstimator;
 
-	@SuppressWarnings("unchecked")
 	@PostMapping("/v1/responses")
 	void responses(
-			@RequestBody Map<String, Object> request,
+			@Valid @RequestBody ResponsesRequest request,
 			HttpServletRequest httpReq, HttpServletResponse httpRes
 	) throws Exception {
 		VirtualKey key = RequestContext.resolveKey();
@@ -48,41 +50,40 @@ class ResponsesController {
 			return;
 		}
 
-		String model = (String) request.getOrDefault(
-				"model",
-				"claude-sonnet-4-5"
-		);
-		Object input = request.get("input");
-		boolean stream = Boolean.TRUE.equals(request.get("stream"));
-
-		if (input == null) {
-			ErrorResponse.badRequest(httpRes, "model and input are required");
-			return;
-		}
+		String model = request.model();
+		boolean stream = Boolean.TRUE.equals(request.stream());
 
 		List<Map<String, Object>> messages = new ArrayList<>(
-				payloadBuilder.convertResponsesInput(input)
+				payloadBuilder.convertResponsesInput(request.input())
 		);
 
-		Object instructions = request.get("instructions");
-		if (instructions instanceof String instr && !instr.isBlank()) {
-			messages.addFirst(Map.of("role", "system", "content", instr));
+		String instructions = request.instructions();
+		if (instructions != null && !instructions.isBlank()) {
+			messages.addFirst(
+					Map.of(
+							"role",
+							"system",
+							"content",
+							instructions
+					)
+			);
 		}
 
-		List<Map<String, Object>> tools = (List<Map<String, Object>>) request.get(
-				"tools");
+		List<Map<String, Object>> tools = RequestMapper.toolsToList(
+				request.tools()
+		);
 		int inputTokens = tokenEstimator.estimateRequest(messages, tools);
 
 		HashMap<String, Object> openAiReq = new HashMap<>();
 		openAiReq.put("messages", messages);
 		openAiReq.put("stream", stream);
 		if (tools != null) openAiReq.put("tools", tools);
-		if (request.containsKey("temperature")) openAiReq.put(
+		if (request.temperature() != null) openAiReq.put(
 				"temperature",
-				request.get("temperature")
+				request.temperature()
 		);
-		if (request.containsKey("max_output_tokens"))
-			openAiReq.put("max_tokens", request.get("max_output_tokens"));
+		if (request.maxOutputTokens() != null)
+			openAiReq.put("max_tokens", request.maxOutputTokens());
 
 		Provider provider = ModelRouter.resolveProvider(model);
 		String actualModel = ModelRouter.stripPrefix(model);
