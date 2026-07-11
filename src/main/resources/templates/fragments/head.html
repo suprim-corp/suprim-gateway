@@ -10,6 +10,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js@1.12.0/src/toastify.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js@1.12.0/src/toastify.min.css">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -29,7 +31,29 @@
         body {
             font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
         }
+        .toastify {
+            font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+            font-size: 12px;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
     </style>
+    <script>
+        function toast(text, type) {
+            const bg = {
+                success: 'linear-gradient(to right, #065f46, #064e3b)',
+                error: 'linear-gradient(to right, #7f1d1d, #991b1b)',
+                info: 'linear-gradient(to right, #18181b, #27272a)'
+            };
+            Toastify({
+                text: text,
+                duration: 2500,
+                gravity: 'bottom',
+                position: 'right',
+                style: { background: bg[type] || bg.info }
+            }).showToast();
+        }
+    </script>
 </head>
 <body></body>
 </html>
