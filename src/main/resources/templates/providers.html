@@ -58,6 +58,9 @@
                             <img th:if="${account.provider() == 'CODEX'}"
                                  src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/openai.png"
                                  class="size-4" alt="Codex">
+                            <img th:if="${account.provider() == 'XAI'}"
+                                 src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/xai.png"
+                                 class="size-4" alt="xAI">
                             <span class="text-zinc-400"
                                   th:text="${account.provider() != null ? account.provider() : 'UNKNOWN'}"></span>
                         </div>
@@ -167,6 +170,15 @@
                         <div class="text-[10px] text-zinc-500">Add API key</div>
                     </div>
                 </button>
+                <button onclick="showProviderForm('xai')"
+                        class="flex items-center gap-3 p-3 border border-zinc-800 rounded-lg hover:border-neon-purple hover:bg-purple-500/5 transition-colors cursor-pointer w-full text-left">
+                    <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/xai.png"
+                         class="size-8" alt="xAI">
+                    <div>
+                        <div class="text-xs font-medium text-zinc-100">xAI</div>
+                        <div class="text-[10px] text-zinc-500">Connect via xAI OAuth</div>
+                    </div>
+                </button>
             </div>
 
             <!-- Kiro import form -->
@@ -229,6 +241,21 @@
                     </button>
                 </div>
             </form>
+
+            <!-- xAI OAuth form -->
+            <div id="xaiForm" class="hidden space-y-3">
+                <p class="text-xs text-zinc-400">Connect your xAI account via OAuth to use Grok models.</p>
+                <div class="flex gap-2 justify-end">
+                    <button type="button" onclick="showChoices()"
+                            class="h-8 px-3 text-xs text-zinc-400 hover:text-zinc-100 cursor-pointer transition-colors">
+                        Back
+                    </button>
+                    <a href="/auth/xai"
+                       class="inline-flex items-center h-8 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
+                        Connect with xAI
+                    </a>
+                </div>
+            </div>
         </div>
     </dialog>
 
@@ -321,8 +348,8 @@
             });
         });
 
-        const titles = {kiro: 'Add Kiro Account', antigravity: 'Add Antigravity Account', codex: 'Add Codex Account'};
-        const forms = ['kiroForm', 'antigravityForm', 'codexForm'];
+        const titles = {kiro: 'Add Kiro Account', antigravity: 'Add Antigravity Account', codex: 'Add Codex Account', xai: 'Add xAI Account'};
+        const forms = ['kiroForm', 'antigravityForm', 'codexForm', 'xaiForm'];
 
         function showProviderForm(provider) {
             document.getElementById('providerChoices').classList.add('hidden');

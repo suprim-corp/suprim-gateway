@@ -1,5 +1,7 @@
 package dev.suprim.gateway.api;
 
+import dev.suprim.gateway.auth.Provider;
+import dev.suprim.gateway.model.ModelRouter;
 import dev.suprim.gateway.proxy.PayloadBuilder;
 import dev.suprim.gateway.proxy.ProxyFacade;
 import dev.suprim.gateway.utils.ErrorResponse;
@@ -7,6 +9,7 @@ import dev.suprim.gateway.utils.RequestContext;
 import dev.suprim.gateway.utils.TokenEstimator;
 import dev.suprim.gateway.virtualkey.RateLimiter;
 import dev.suprim.gateway.virtualkey.VirtualKey;
+import dev.suprim.gateway.xai.XaiFacade;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +27,7 @@ import java.util.Map;
 class ResponsesController {
 
 	private final ProxyFacade proxyFacade;
+	private final XaiFacade xaiFacade;
 	private final PayloadBuilder payloadBuilder;
 	private final RateLimiter rateLimiter;
 	private final TokenEstimator tokenEstimator;
@@ -81,6 +85,17 @@ class ResponsesController {
 		);
 		if (request.containsKey("max_output_tokens"))
 			openAiReq.put("max_tokens", request.get("max_output_tokens"));
+
+		Provider provider = ModelRouter.resolveProvider(model);
+		if (provider == Provider.GROK || provider == Provider.XAI) {
+			String actualModel = ModelRouter.stripPrefix(model);
+			openAiReq.put("model", actualModel);
+			xaiFacade.handle(
+					openAiReq, actualModel, stream, inputTokens, keyId,
+					RequestContext.clientIp(httpReq), httpRes
+			);
+			return;
+		}
 
 		proxyFacade.handle(
 				ProxyFacade.buildRequest(

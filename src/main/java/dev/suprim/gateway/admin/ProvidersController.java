@@ -1,6 +1,5 @@
 package dev.suprim.gateway.admin;
 
-import dev.suprim.gateway.antigravity.AntigravityAuthManager;
 import dev.suprim.gateway.auth.KiroCredentialStore;
 import dev.suprim.gateway.auth.StoredAccount;
 import dev.suprim.gateway.model.ModelRegistry;
@@ -23,7 +22,6 @@ class ProvidersController {
 
 	private final KiroCredentialStore credentialStore;
 	private final ModelRegistry modelRegistry;
-	private final AntigravityAuthManager antigravityAuthManager;
 
 	@GetMapping("/providers")
 	String providers(Model model) {
@@ -77,14 +75,6 @@ class ProvidersController {
 		}
 		StoredAccount account = accounts.get(index);
 		String provider = account.provider();
-		if ("KIRO".equals(provider)) {
-			return modelRegistry.getAvailableModels().stream()
-			                    .map(id -> Map.<String, Object>of("id", id))
-			                    .toList();
-		}
-		if ("ANTIGRAVITY".equals(provider)) {
-			return antigravityAuthManager.listModels();
-		}
-		return List.of();
+		return modelRegistry.getModelsForProvider(provider);
 	}
 }

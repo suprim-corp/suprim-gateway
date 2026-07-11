@@ -3,6 +3,7 @@ package dev.suprim.gateway.model;
 import dev.suprim.gateway.antigravity.AntigravityAuthManager;
 import dev.suprim.gateway.config.AppConfig;
 import dev.suprim.gateway.proxy.KiroHttpClient;
+import dev.suprim.gateway.xai.XaiAuthManager;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -49,6 +50,7 @@ public class ModelRegistry {
 	private final KiroHttpClient client;
 	private final AppConfig config;
 	private final AntigravityAuthManager antigravityAuthManager;
+	private final XaiAuthManager xaiAuthManager;
 	private final List<String> cachedModels = new CopyOnWriteArrayList<>(
 			FALLBACK_MODELS);
 
@@ -126,14 +128,85 @@ public class ModelRegistry {
 		long now = System.currentTimeMillis() / 1000;
 
 		getAvailableModels().forEach(id ->
-				result.add(Map.of("id", id, "object", "model", "created", now, "owned_by", "kiro"))
+				result.add(Map.of(
+						"id",
+						id,
+						"object",
+						"model",
+						"created",
+						now,
+						"owned_by",
+						"kiro"
+				))
 		);
 
 		getAntigravityModels().forEach(id ->
-				result.add(Map.of("id", id, "object", "model", "created", now, "owned_by", "antigravity"))
+				result.add(Map.of(
+						"id",
+						id,
+						"object",
+						"model",
+						"created",
+						now,
+						"owned_by",
+						"antigravity"
+				))
+		);
+
+		getXaiModels().forEach(id ->
+				result.add(Map.of(
+						"id",
+						id,
+						"object",
+						"model",
+						"created",
+						now,
+						"owned_by",
+						"xai"
+				))
 		);
 
 		return result;
+	}
+
+	private List<String> getXaiModels() {
+		if (!xaiAuthManager.isConnected()) return List.of();
+		try {
+			return xaiAuthManager.listModels().stream()
+			                     .map(m -> (String) m.get("id"))
+			                     .toList();
+		} catch (Exception e) {
+			return List.of();
+		}
+	}
+
+	public List<Map<String, Object>> getModelsForProvider(String provider) {
+		return switch (provider) {
+			case "KIRO" -> getAvailableModels().stream()
+			                                   .map(id -> Map.<String, Object>of(
+							                                   "id",
+							                                   id
+					                                   )
+			                                   )
+			                                   .toList();
+			case "ANTIGRAVITY" ->
+					safeListModels(antigravityAuthManager::listModels);
+			case "XAI" -> safeListModels(xaiAuthManager::listModels);
+			default -> List.of();
+		};
+	}
+
+	private List<Map<String, Object>> safeListModels(ModelsFetcher fetcher) {
+		try {
+			return fetcher.fetch();
+		} catch (Exception e) {
+			return List.of();
+		}
+	}
+
+	@FunctionalInterface
+	private interface ModelsFetcher {
+		List<Map<String, Object>> fetch() throws Exception;
 	}
 
 	private List<String> parseModelIds(String json) {
