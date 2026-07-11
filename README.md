@@ -8,11 +8,11 @@ Proxy gateway for LLM providers — OpenAI-compatible API with admin dashboard a
 
 ## Supported Providers
 
-| Provider                                                                                                                                                             | Status | Note            |
-|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|-----------------|
-| <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png" width="16" /> Kiro (AWS Q Developer)      | Active | Use at own risk |
-| <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/openai.png" width="16" /> Codex (OpenAI)                  | Active | Use at own risk |
-| <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/antigravity-color.png" width="16" /> Antigravity (Google) | Active | Use at own risk |
+| Provider                                                                                                                                                                                                                                                                                                                                | Status | Note            |
+|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|-----------------|
+| <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png" width="16" /> Kiro (AWS Q Developer)                                                                                                                                                                         | Active | Use at own risk |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/openai.png"><img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/openai.png" width="16" /></picture> Codex (OpenAI) | Active | Use at own risk |
+| <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/antigravity-color.png" width="16" /> Antigravity (Google)                                                                                                                                                                    | Active | Use at own risk |
 
 ## Stack
 
