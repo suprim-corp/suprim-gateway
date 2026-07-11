@@ -173,6 +173,8 @@ public class KiroFacade {
 				startTime
 		);
 
+		log.debug("[KiroFacade] stream done, outputTokens={}, content length={}", result.outputTokens(), result.content().length());
+
 		writer.write(
 				finale(
 						req.format(),
