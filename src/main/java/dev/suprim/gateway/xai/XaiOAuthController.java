@@ -29,6 +29,7 @@ public class XaiOAuthController {
 	private final XaiLoopbackServer loopbackServer;
 
 	private final ConcurrentHashMap<String, String> pendingVerifiers = new ConcurrentHashMap<>();
+	private final ConcurrentHashMap<String, String> pendingAuthUrls = new ConcurrentHashMap<>();
 
 	@GetMapping("/auth/xai")
 	String initiateOAuth(HttpServletRequest httpReq) {
@@ -95,13 +96,13 @@ public class XaiOAuthController {
 			return "redirect:" + url;
 		}
 
-		return "redirect:/auth/xai/remote?url=" + encode(url) + "&state=" +
-		       encode(state);
+		pendingAuthUrls.put(state, url);
+		return "redirect:/auth/xai/remote?state=" + encode(state);
 	}
 
 	@GetMapping("/auth/xai/remote")
 	@ResponseBody
-	String remotePage(String url, String state, HttpServletRequest httpReq) {
+	String remotePage(String state, HttpServletRequest httpReq) {
 		String gatewayBase = buildGatewayBase(httpReq);
 		return """
 				<!DOCTYPE html>
@@ -124,44 +125,31 @@ public class XaiOAuthController {
 	@ResponseBody
 	String agentScript(String state, HttpServletRequest httpReq) {
 		String codeVerifier = pendingVerifiers.get(state);
-		if (codeVerifier == null) {
+		String authUrl = pendingAuthUrls.get(state);
+		if (codeVerifier == null || authUrl == null) {
 			return "echo 'Error: invalid or expired state'";
 		}
 		String gatewayBase = buildGatewayBase(httpReq);
-		String codeChallenge = generateCodeChallenge(codeVerifier);
-		String nonce = generateRandom();
-
-		String authUrl = Xai.AUTH_URL
-		                 + "?response_type=code"
-		                 + "&client_id=" + encode(Xai.CLIENT_ID)
-		                 + "&redirect_uri=" + encode(Xai.REDIRECT_URI)
-		                 + "&scope=" + encode(Xai.SCOPE)
-		                 + "&code_challenge=" + encode(codeChallenge)
-		                 + "&code_challenge_method=S256"
-		                 + "&state=" + encode(state)
-		                 + "&nonce=" + encode(nonce)
-		                 + "&plan=generic"
-		                 + "&referrer=cli-proxy-api";
 
 		return "#!/bin/bash\n"
+		       + "GATEWAY='" + gatewayBase + "'\n"
+		       + "STATE='" + state + "'\n"
 		       + "echo 'Starting xAI OAuth agent...'\n"
 		       + "echo 'Opening browser for authentication...'\n"
-		       + "open '" + authUrl + "' 2>/dev/null || xdg-open '" + authUrl +
-		       "' 2>/dev/null || echo 'Open this URL manually: " + authUrl +
-		       "'\n"
+		       + "open '" + authUrl + "' 2>/dev/null || xdg-open '" + authUrl
+		       + "' 2>/dev/null || echo 'Open this URL manually:'\n"
 		       + "echo 'Waiting for callback on port 56121...'\n"
-		       + "RESPONSE=$(nc -l 56121 < /dev/null)\n"
-		       +
-		       "CODE=$(echo \"$RESPONSE\" | grep -o 'code=[^& ]*' | head -1 | cut -d= -f2)\n"
-		       +
-		       "if [ -z \"$CODE\" ]; then echo 'Error: no code received'; exit 1; fi\n"
-		       + "printf 'HTTP/1.1 302 Found\\r\\nLocation: " + gatewayBase +
-		       "/providers?xai=connected\\r\\nContent-Length: 0\\r\\n\\r\\n' | nc -l 56121 &\n"
-		       + "echo 'Got code, sending to gateway...'\n"
-		       + "curl -sL -X POST '" + gatewayBase + "/auth/xai/exchange' \\\n"
+		       + "TMPFILE=$(mktemp)\n"
+		       + "{ echo -ne 'HTTP/1.1 302 Found\\r\\nLocation: '$GATEWAY'/providers?xai=connected\\r\\nContent-Length: 0\\r\\n\\r\\n'; cat; } | nc -l 56121 > \"$TMPFILE\"\n"
+		       + "CODE=$(grep -o 'code=[^& ]*' \"$TMPFILE\" | head -1 | cut -d= -f2)\n"
+		       + "rm -f \"$TMPFILE\"\n"
+		       + "if [ -z \"$CODE\" ]; then echo 'Error: no code received'; exit 1; fi\n"
+		       + "echo \"Got code: ${CODE:0:10}...\"\n"
+		       + "echo 'Sending to gateway...'\n"
+		       + "curl -sL -X POST \"$GATEWAY/auth/xai/exchange\" \\\n"
 		       + "  -H 'Content-Type: application/json' \\\n"
-		       + "  -d '{\"code\":\"'$CODE'\",\"state\":\"" + state + "\"}'\n"
-		       + "echo ''\necho 'Done! xAI account connected.'\n";
+		       + "  -d '{\"code\":\"'\"$CODE\"'\",\"state\":\"'\"$STATE\"'\"}'\n"
+		       + "echo ''\necho 'Done!'\n";
 	}
 
 	@PostMapping("/auth/xai/exchange")
