@@ -66,8 +66,10 @@ class ResponsesController {
 		for (int i = 0; i < messages.size(); i++) {
 			Message msg = messages.get(i);
 			String content = msg.content() != null ? msg.content().toString() : "null";
-			log.debug("[Responses] msg[{}] role={} content={}",
-					i, msg.role(), content.length() > 100 ? content.substring(0, 100) + "..." : content);
+			log.debug("[Responses] msg[{}] role={} toolCalls={} content={}",
+					i, msg.role(),
+					msg.toolCalls() != null ? msg.toolCalls().size() : 0,
+					content.length() > 100 ? content.substring(0, 100) + "..." : content);
 		}
 
 		List<Tool> tools = ToolMapper.fromResponses(request.tools());
