@@ -97,7 +97,7 @@ public final class ContentExtractor {
 					String bType = Optional.ofNullable(m.get("type"))
 					                       .map(Object::toString)
 					                       .orElse("");
-					if ("input_text".equals(bType) || "text".equals(bType)) {
+					if ("input_text".equals(bType) || "text".equals(bType) || "output_text".equals(bType)) {
 						Object text = m.get("text");
 						if (text != null) sb.append(text);
 					}
