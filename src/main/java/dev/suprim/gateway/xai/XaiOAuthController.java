@@ -114,7 +114,7 @@ public class XaiOAuthController {
 				<body><div class="card">
 				<h1>xAI OAuth (Remote Setup)</h1>
 				<p>xAI requires localhost callback. Run this on your local machine:</p>
-				<pre><code>curl -s "%s/auth/xai/agent?state=%s" | bash</code></pre>
+				<pre><code>curl -sL "%s/auth/xai/agent?state=%s" | bash</code></pre>
 				<p>After login, token will be sent back to this gateway automatically.</p>
 				</div></body></html>
 				""".formatted(gatewayBase, state);
@@ -158,7 +158,7 @@ public class XaiOAuthController {
 		       + "printf 'HTTP/1.1 302 Found\\r\\nLocation: " + gatewayBase +
 		       "/providers?xai=connected\\r\\nContent-Length: 0\\r\\n\\r\\n' | nc -l 56121 &\n"
 		       + "echo 'Got code, sending to gateway...'\n"
-		       + "curl -s -X POST '" + gatewayBase + "/auth/xai/exchange' \\\n"
+		       + "curl -sL -X POST '" + gatewayBase + "/auth/xai/exchange' \\\n"
 		       + "  -H 'Content-Type: application/json' \\\n"
 		       + "  -d '{\"code\":\"'$CODE'\",\"state\":\"" + state + "\"}'\n"
 		       + "echo ''\necho 'Done! xAI account connected.'\n";
