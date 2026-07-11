@@ -131,9 +131,9 @@ public class OpenAiRelayHandler {
 			List<Object> toolCallMaps = new ArrayList<>();
 			for (ToolCallChunk tc : toolCalls) {
 				KiroEvent toolEvent = KiroEvent.toolUse(
-						tc.id(),
 						tc.name(),
-						tc.arguments()
+						tc.arguments(),
+						tc.id()
 				);
 				String toolCallSse = streamConverter.toResponsesToolCall(
 						toolEvent,
