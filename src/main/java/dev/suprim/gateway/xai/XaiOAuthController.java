@@ -229,11 +229,20 @@ public class XaiOAuthController {
 	}
 
 	private static String buildGatewayBase(HttpServletRequest request) {
-		String scheme = request.getScheme();
-		String host = request.getServerName();
-		int port = request.getServerPort();
-		boolean defaultPort = ("http".equals(scheme) && port == 80) ||
-		                      ("https".equals(scheme) && port == 443);
-		return scheme + "://" + host + (defaultPort ? "" : ":" + port);
+		String scheme = request.getHeader("X-Forwarded-Proto");
+		if (scheme == null || scheme.isEmpty()) {
+			scheme = request.getScheme();
+		}
+		String host = request.getHeader("X-Forwarded-Host");
+		if (host == null || host.isEmpty()) {
+			host = request.getServerName();
+			int port = request.getServerPort();
+			boolean defaultPort = ("http".equals(scheme) && port == 80) ||
+			                      ("https".equals(scheme) && port == 443);
+			if (!defaultPort) {
+				host = host + ":" + port;
+			}
+		}
+		return scheme + "://" + host;
 	}
 }
