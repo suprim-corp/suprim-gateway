@@ -2,6 +2,7 @@ package dev.suprim.gateway.proxy;
 
 import dev.suprim.gateway.auth.KiroAuthManager;
 import dev.suprim.gateway.config.AppConfig;
+import lombok.Builder;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +28,7 @@ public class KiroHttpClient {
 	private final AppConfig config;
 	private final ProxyChain proxyChain;
 
+	@Builder
 	public record KiroResponse(
 			int status, InputStream body, String contentType
 	) {}
@@ -53,7 +55,10 @@ public class KiroHttpClient {
 				if (!proxyChain.hasProxies()) {
 					throw e;
 				}
-				log.warn("[Proxy] Error with current proxy: {}", e.getMessage());
+				log.warn(
+						"[Proxy] Error with current proxy: {}",
+						e.getMessage()
+				);
 				proxyChain.onFailure();
 			}
 		}
@@ -94,7 +99,11 @@ public class KiroHttpClient {
 				if (status == 200) {
 					String contentType = response.headers().firstValue(
 							"content-type").orElse("");
-					return new KiroResponse(200, response.body(), contentType);
+					return KiroResponse.builder()
+					                   .status(200)
+					                   .body(response.body())
+					                   .contentType(contentType)
+					                   .build();
 				}
 
 				if (status == 403) {
@@ -141,7 +150,11 @@ public class KiroHttpClient {
 						status,
 						contentType
 				);
-				return new KiroResponse(status, response.body(), contentType);
+				return KiroResponse.builder()
+				                   .status(status)
+				                   .body(response.body())
+				                   .contentType(contentType)
+				                   .build();
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
 				throw e;
@@ -164,11 +177,11 @@ public class KiroHttpClient {
 		if (lastResponse != null) {
 			String contentType = lastResponse.headers().firstValue(
 					"content-type").orElse("");
-			return new KiroResponse(
-					lastResponse.statusCode(),
-					lastResponse.body(),
-					contentType
-			);
+			return KiroResponse.builder()
+			                   .status(lastResponse.statusCode())
+			                   .body(lastResponse.body())
+			                   .contentType(contentType)
+			                   .build();
 		}
 		throw lastError != null ? lastError : new RuntimeException(
 				"All retries exhausted");
