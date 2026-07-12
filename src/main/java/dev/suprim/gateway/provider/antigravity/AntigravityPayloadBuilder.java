@@ -173,7 +173,11 @@ class AntigravityPayloadBuilder {
 			"$schema", "propertyNames", "additionalProperties", "allOf",
 			"anyOf", "oneOf", "not", "if", "then", "else",
 			"patternProperties", "unevaluatedProperties", "definitions",
-			"$defs", "$ref", "$id", "$comment"
+			"$defs", "$ref", "$id", "$comment",
+			"exclusiveMinimum", "exclusiveMaximum", "multipleOf",
+			"minLength", "maxLength", "pattern", "minItems", "maxItems",
+			"uniqueItems", "minProperties", "maxProperties",
+			"const", "default", "examples", "deprecated", "readOnly", "writeOnly"
 	);
 
 	private static JsonNode stripUnsupportedFields(JsonNode node) {
