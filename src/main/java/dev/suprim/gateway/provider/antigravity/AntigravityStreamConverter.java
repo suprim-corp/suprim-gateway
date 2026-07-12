@@ -8,42 +8,36 @@ class AntigravityStreamConverter {
 
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 
-	static String convertChunk(String geminiData, String model, String id) {
+	static String extractText(String geminiData) {
 		try {
 			JsonNode root = MAPPER.readTree(geminiData);
 			JsonNode responseNode = root.get("response");
-			if (responseNode == null) {
-				responseNode = root;
-			}
+			if (responseNode == null) responseNode = root;
 
 			JsonNode candidates = responseNode.get("candidates");
-			if (candidates == null || candidates.isEmpty()) {
-				return null;
-			}
+			if (candidates == null || candidates.isEmpty()) return null;
 
 			JsonNode candidate = candidates.get(0);
 			JsonNode content = candidate.get("content");
-			String text = "";
-			if (content != null && content.has("parts")) {
-				JsonNode parts = content.get("parts");
-				if (!parts.isEmpty() && parts.get(0).has("text")) {
-					text = parts.get(0).get("text").asString();
-				}
-			}
+			if (content == null || !content.has("parts")) return null;
 
-			String finishReason = null;
+			JsonNode parts = content.get("parts");
+			if (parts.isEmpty() || !parts.get(0).has("text")) return null;
+
+			String text = parts.get(0).get("text").asString();
+
 			if (candidate.has("finishReason") && !candidate.get("finishReason").isNull()) {
-				finishReason = mapFinishReason(candidate.get("finishReason").asString());
+				if (text.isEmpty()) return null;
 			}
 
-			if (text.isEmpty() && finishReason != null) {
-				return null;
-			}
-
-			return buildChunk(id, model, text, finishReason);
+			return text;
 		} catch (Exception e) {
 			return null;
 		}
+	}
+
+	static String buildChunkPublic(String id, String model, String text) {
+		return buildChunk(id, model, text, null);
 	}
 
 	static String buildStopChunk(String model, String id) {
@@ -93,14 +87,5 @@ class AntigravityStreamConverter {
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
-	}
-
-	private static String mapFinishReason(String geminiReason) {
-		return switch (geminiReason) {
-			case "STOP" -> "stop";
-			case "MAX_TOKENS" -> "length";
-			case "SAFETY" -> "content_filter";
-			default -> geminiReason.toLowerCase();
-		};
 	}
 }

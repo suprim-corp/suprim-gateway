@@ -4,6 +4,8 @@ import dev.suprim.gateway.logging.RequestLogEvent;
 import dev.suprim.gateway.logging.RequestLogPublisher;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
+import dev.suprim.gateway.proxy.KiroEvent;
+import dev.suprim.gateway.proxy.StreamConverter;
 import dev.suprim.gateway.utils.ErrorResponse;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +30,7 @@ public class AntigravityFacade {
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 	private final AntigravityAuthManager authManager;
 	private final RequestLogPublisher logPublisher;
+	private final StreamConverter streamConverter;
 
 	public void handle(
 			InternalRequest request,
@@ -91,6 +94,7 @@ public class AntigravityFacade {
 					keyId,
 					clientIp,
 					startTime,
+					format,
 					httpRes
 			);
 		} else {
@@ -101,6 +105,7 @@ public class AntigravityFacade {
 					keyId,
 					clientIp,
 					startTime,
+					format,
 					httpRes
 			);
 		}
@@ -148,16 +153,21 @@ public class AntigravityFacade {
 	private void handleStream(
 			AntigravityHttpClient.AntigravityResponse response,
 			String model, int inputTokens, String keyId, String clientIp,
-			long startTime, HttpServletResponse httpRes
+			long startTime, Format format, HttpServletResponse httpRes
 	) throws Exception {
 		httpRes.setCharacterEncoding("UTF-8");
 		httpRes.setContentType("text/event-stream; charset=utf-8");
 		httpRes.setHeader("Cache-Control", "no-cache");
 		PrintWriter writer = httpRes.getWriter();
 
-		String id = "chatcmpl-" + UUID.randomUUID();
+		String id = generateId(format);
 		int outputTokens = 0;
 		Long firstTokenMs = null;
+
+		if (format == Format.ANTHROPIC) {
+			writer.write(streamConverter.toAnthropicPreamble(id, model, inputTokens));
+			writer.flush();
+		}
 
 		try (BufferedReader reader = new BufferedReader(new InputStreamReader(
 				response.body()))) {
@@ -165,28 +175,35 @@ public class AntigravityFacade {
 			while ((line = reader.readLine()) != null) {
 				if (!line.startsWith("data: ")) continue;
 				String data = line.substring(6).trim();
-				if (data.isEmpty()) {
-					continue;
+				if (data.isEmpty()) continue;
+
+				String text = AntigravityStreamConverter.extractText(data);
+				if (text == null || text.isEmpty()) continue;
+
+				if (firstTokenMs == null) {
+					firstTokenMs = System.currentTimeMillis() - startTime;
 				}
 
-				String chunk = AntigravityStreamConverter.convertChunk(
-						data,
-						model,
-						id
-				);
-				if (chunk != null) {
-					if (firstTokenMs == null) {
-						firstTokenMs = System.currentTimeMillis() - startTime;
-					}
-					writer.write(chunk);
-					writer.flush();
-					outputTokens++;
-				}
+				String chunk = switch (format) {
+					case ANTHROPIC -> streamConverter.toAnthropicDelta(text);
+					case OPENAI -> AntigravityStreamConverter.buildChunkPublic(id, model, text);
+					case RESPONSES -> streamConverter.toResponsesTextDelta(text);
+				};
+
+				writer.write(chunk);
+				writer.flush();
+				outputTokens++;
 			}
 		}
 
-		writer.write(AntigravityStreamConverter.buildStopChunk(model, id));
-		writer.write(AntigravityStreamConverter.buildDoneEvent());
+		String finale = switch (format) {
+			case ANTHROPIC -> streamConverter.toAnthropicFinale(outputTokens, false);
+			case OPENAI -> AntigravityStreamConverter.buildStopChunk(model, id)
+			               + AntigravityStreamConverter.buildDoneEvent();
+			case RESPONSES -> streamConverter.toResponsesTextDone("", id)
+			                  + streamConverter.toResponsesCompleted(id, model, "", List.of(), inputTokens, outputTokens);
+		};
+		writer.write(finale);
 		writer.flush();
 
 		int latency = (int) (System.currentTimeMillis() - startTime);
@@ -209,7 +226,7 @@ public class AntigravityFacade {
 	private void handleNonStream(
 			AntigravityHttpClient.AntigravityResponse response,
 			String model, int inputTokens, String keyId, String clientIp,
-			long startTime, HttpServletResponse httpRes
+			long startTime, Format format, HttpServletResponse httpRes
 	) throws Exception {
 		StringBuilder content = new StringBuilder();
 
@@ -221,49 +238,32 @@ public class AntigravityFacade {
 				String data = line.substring(6).trim();
 				if (data.isEmpty()) continue;
 
-				String chunk = AntigravityStreamConverter.convertChunk(
-						data,
-						model,
-						"tmp"
-				);
-				if (chunk != null && chunk.contains("\"content\":")) {
-					int start = chunk.indexOf("\"content\":\"") + 11;
-					int end = chunk.indexOf("\"", start);
-					if (start > 10 && end > start) {
-						content.append(chunk, start, end);
-					}
+				String text = AntigravityStreamConverter.extractText(data);
+				if (text != null && !text.isEmpty()) {
+					content.append(text);
 				}
 			}
 		}
 
-		// For non-stream, rebuild as proper JSON response
 		String text = content.toString();
-		String id = "chatcmpl-" + UUID.randomUUID();
+		String id = generateId(format);
 		int outputTokens = text.length() / 4;
 
 		httpRes.setCharacterEncoding("UTF-8");
 		httpRes.setContentType("application/json; charset=utf-8");
 
-		Map<String, Object> responseBody = Map.of(
-				"id", id,
-				"object", "chat.completion",
-				"model", model,
-				"choices", List.of(
-						Map.of(
-								"index",
-								0,
-								"message",
-								Map.of("role", "assistant", "content", text),
-								"finish_reason",
-								"stop"
-						)
-				),
-				"usage", Map.of(
-						"prompt_tokens", inputTokens,
-						"completion_tokens", outputTokens,
-						"total_tokens", inputTokens + outputTokens
-				)
-		);
+		Map<String, Object> responseBody = switch (format) {
+			case ANTHROPIC -> streamConverter.toAnthropicNonStreaming(
+					id, model, text, inputTokens, outputTokens
+			);
+			case OPENAI -> streamConverter.toOpenAiNonStreaming(
+					List.of(KiroEvent.content(text)),
+					model
+			);
+			case RESPONSES -> streamConverter.toResponsesNonStreaming(
+					id, model, text, inputTokens, outputTokens
+			);
+		};
 		MAPPER.writeValue(httpRes.getWriter(), responseBody);
 
 		int latency = (int) (System.currentTimeMillis() - startTime);
@@ -281,5 +281,13 @@ public class AntigravityFacade {
 				               .clientIp(clientIp)
 				               .build()
 		);
+	}
+
+	private String generateId(Format format) {
+		return switch (format) {
+			case ANTHROPIC -> "msg_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+			case RESPONSES -> "resp_" + UUID.randomUUID();
+			default -> "chatcmpl-" + UUID.randomUUID();
+		};
 	}
 }
