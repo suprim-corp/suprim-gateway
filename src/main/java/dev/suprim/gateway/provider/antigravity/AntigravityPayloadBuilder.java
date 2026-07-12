@@ -174,24 +174,33 @@ class AntigravityPayloadBuilder {
 	}
 
 	private static final Set<String> SUPPORTED_SCHEMA_FIELDS = Set.of(
-			"type", "properties", "required", "items", "enum",
-			"description", "format", "nullable", "minimum", "maximum"
+			"type", "title", "description",
+			"properties", "required", "additionalProperties",
+			"enum", "format",
+			"minimum", "maximum",
+			"items", "prefixItems", "minItems", "maxItems",
+			"nullable"
 	);
 
 	private static JsonNode stripUnsupportedFields(JsonNode node) {
 		if (node.isObject()) {
 			ObjectNode obj = (ObjectNode) node;
-			List<String> toRemove = new ArrayList<>();
-			for (String fieldName : obj.propertyNames()) {
-				if (!SUPPORTED_SCHEMA_FIELDS.contains(fieldName)) {
-					toRemove.add(fieldName);
+			if (obj.has("type") || obj.has("properties") || obj.has("items")) {
+				List<String> toRemove = new ArrayList<>();
+				for (String fieldName : obj.propertyNames()) {
+					if (!SUPPORTED_SCHEMA_FIELDS.contains(fieldName)) {
+						toRemove.add(fieldName);
+					}
 				}
-			}
-			if (!toRemove.isEmpty()) {
-				log.debug("[Antigravity] Stripping unsupported schema fields: {}", toRemove);
-			}
-			for (String field : toRemove) {
-				obj.remove(field);
+				if (!toRemove.isEmpty()) {
+					log.debug(
+							"[Antigravity] Stripping unsupported schema fields: {}",
+							toRemove
+					);
+					for (String field : toRemove) {
+						obj.remove(field);
+					}
+				}
 			}
 			for (String fieldName : List.copyOf(obj.propertyNames())) {
 				JsonNode child = obj.get(fieldName);
