@@ -69,11 +69,10 @@ public class AntigravityOAuthController {
 				encode(Antigravity.CLIENT_ID)
 				+ "&redirect_uri=" + encode(REDIRECT_URI)
 				+ "&response_type=code"
-				+ "&scope=" + encode(Antigravity.OAUTH_SCOPE)
+				+ "&scope=" + encode(Antigravity.OAUTH_SCOPE).replace("+", "%20")
 				+ "&code_challenge=" + encode(codeChallenge)
 				+ "&code_challenge_method=S256"
-				+ "&access_type=offline"
-				+ "&prompt=consent";
+				+ "&access_type=offline";
 
 		return "redirect:" + url;
 	}
@@ -83,18 +82,27 @@ public class AntigravityOAuthController {
 	String agentScript(HttpServletRequest httpReq) {
 		String gatewayBase = buildGatewayBase(httpReq);
 
+		String authBaseUrl = Antigravity.GOOGLE_AUTH_URL
+		                     + "?client_id=" + encode(Antigravity.CLIENT_ID)
+		                     + "&redirect_uri=" + encode(REDIRECT_URI)
+		                     + "&response_type=code"
+		                     + "&scope=" + encode(Antigravity.OAUTH_SCOPE)
+		                     + "&code_challenge_method=S256"
+		                     + "&access_type=offline"
+		                     + "&prompt=consent";
+
 		return "#!/bin/bash\n"
 		       + "GATEWAY='" + gatewayBase + "'\n"
 		       + "REDIRECT_URI='" + REDIRECT_URI + "'\n"
 		       + "CLIENT_ID='" + Antigravity.CLIENT_ID + "'\n"
 		       + "CLIENT_SECRET='" + Antigravity.CLIENT_SECRET + "'\n"
-		       + "SCOPE='" + Antigravity.OAUTH_SCOPE + "'\n"
 		       + "PORT=51121\n"
 		       + "\n"
-		       + "CODE_VERIFIER=$(openssl rand -base64 32 | tr -d '=/+' | head -c 43)\n"
+		       + "CODE_VERIFIER=$(openssl rand -hex 32)\n"
 		       + "CODE_CHALLENGE=$(printf '%s' \"$CODE_VERIFIER\" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')\n"
+		       + "STATE=$(openssl rand -hex 16)\n"
 		       + "\n"
-		       + "AUTH_URL=\"https://accounts.google.com/o/oauth2/v2/auth?client_id=$(printf '%s' \"$CLIENT_ID\" | sed 's/ /%20/g')&redirect_uri=$(printf '%s' \"$REDIRECT_URI\" | sed 's/:/%3A/g;s/\\//%2F/g')&response_type=code&scope=$(printf '%s' \"$SCOPE\" | sed 's/ /%20/g;s/:/%3A/g;s/\\//%2F/g')&code_challenge=$CODE_CHALLENGE&code_challenge_method=S256&access_type=offline&prompt=consent\"\n"
+		       + "AUTH_URL=\"" + authBaseUrl + "&code_challenge=${CODE_CHALLENGE}&state=${STATE}\"\n"
 		       + "\n"
 		       + "echo 'Opening browser for Google OAuth...'\n"
 		       + "open \"$AUTH_URL\" 2>/dev/null || xdg-open \"$AUTH_URL\" 2>/dev/null || echo \"Open this URL: $AUTH_URL\"\n"

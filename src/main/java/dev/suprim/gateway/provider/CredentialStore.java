@@ -224,8 +224,11 @@ public class CredentialStore {
 			StoredAccount incoming
 	) {
 		if (incoming.provider() != null && existing.provider() != null) {
-			return existing.provider().equals(incoming.provider())
-			       && existing.clientId() != null
+			if (!existing.provider().equals(incoming.provider())) return false;
+			if (incoming.name() != null && existing.name() != null) {
+				return existing.name().equals(incoming.name());
+			}
+			return existing.clientId() != null
 			       && existing.clientId().equals(incoming.clientId());
 		}
 		if (incoming.profileArn() != null && existing.profileArn() != null) {
@@ -236,7 +239,6 @@ public class CredentialStore {
 		}
 		return false;
 	}
-
 	public boolean exists() {
 		return Files.exists(storePath);
 	}
