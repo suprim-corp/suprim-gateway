@@ -111,7 +111,7 @@ public class PayloadBuilder {
 		userInputMessage.put("origin", "AI_EDITOR");
 		ImageAppender.append(userInputMessage, currentImages);
 
-		attachContext(userInputMessage, tools, currentToolResults);
+		attachContext(userInputMessage, tools, currentToolResults, history);
 
 		if (!history.isEmpty()) {
 			conversationState.set("history", history);
@@ -127,7 +127,8 @@ public class PayloadBuilder {
 	private void attachContext(
 			ObjectNode userInputMessage,
 			List<Tool> tools,
-			List<Message> currentToolResults
+			List<Message> currentToolResults,
+			ArrayNode history
 	) {
 		boolean hasTools = tools != null && !tools.isEmpty();
 		boolean hasToolResults =
@@ -144,9 +145,19 @@ public class PayloadBuilder {
 			}
 		}
 		if (hasToolResults) {
-			ArrayNode resultsNode = ctx.putArray("toolResults");
-			for (Message tr : currentToolResults) {
-				ToolResultAppender.appendResult(resultsNode, tr);
+			int allowedCount = countLastAssistantToolUses(history);
+			if (allowedCount > 0) {
+				ArrayNode resultsNode = ctx.putArray("toolResults");
+				int a = Math.min(
+						currentToolResults.size(),
+						allowedCount
+				);
+				for (int i = 0; i < a; i++) {
+					ToolResultAppender.appendResult(
+							resultsNode,
+							currentToolResults.get(i)
+					);
+				}
 			}
 		}
 	}
@@ -225,5 +236,17 @@ public class PayloadBuilder {
 		}
 
 		return ".";
+	}
+
+	private static int countLastAssistantToolUses(ArrayNode history) {
+		for (int i = history.size() - 1; i >= 0; i--) {
+			JsonNode entry = history.get(i);
+			JsonNode assistantMsg = entry.get("assistantResponseMessage");
+			if (assistantMsg != null) {
+				JsonNode toolUses = assistantMsg.get("toolUses");
+				return toolUses != null ? toolUses.size() : 0;
+			}
+		}
+		return 0;
 	}
 }
