@@ -146,13 +146,18 @@ public class PayloadBuilder {
 		}
 		if (hasToolResults) {
 			int allowedCount = countLastAssistantToolUses(history);
+			log.debug(
+					"[Payload] toolResults={}, allowedByHistory={}",
+					currentToolResults.size(),
+					allowedCount
+			);
 			if (allowedCount > 0) {
 				ArrayNode resultsNode = ctx.putArray("toolResults");
-				int a = Math.min(
+				int count = Math.min(
 						currentToolResults.size(),
 						allowedCount
 				);
-				for (int i = 0; i < a; i++) {
+				for (int i = 0; i < count; i++) {
 					ToolResultAppender.appendResult(
 							resultsNode,
 							currentToolResults.get(i)

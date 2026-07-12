@@ -363,8 +363,8 @@ public class KiroFacade {
 	) throws Exception {
 		String payload = payloadBuilder.buildOpenAiPayload(request, auth);
 		log.debug(
-				"[Upstream] payload: {}",
-				payload.length() > 3000 ? payload.substring(0, 3000) : payload
+				"[Upstream] payload length: {}",
+				payload.length()
 		);
 		String url = kiroClient.getGenerateUrl();
 		return kiroClient.request("POST", url, payload, stream);
