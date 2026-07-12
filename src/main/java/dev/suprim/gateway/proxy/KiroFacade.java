@@ -252,7 +252,7 @@ public class KiroFacade {
 			int inputTokens
 	) throws Exception {
 		return switch (format) {
-			case OPENAI -> "";
+			case COMPLETION -> "";
 			case ANTHROPIC -> streamConverter.toAnthropicPreamble(
 					id,
 					model,
@@ -271,7 +271,7 @@ public class KiroFacade {
 			String id
 	) throws Exception {
 		return switch (format) {
-			case OPENAI -> streamConverter.toOpenAiChunk(event, model, id);
+			case COMPLETION -> streamConverter.toOpenAiChunk(event, model, id);
 			case ANTHROPIC -> {
 				if ("content".equals(event.type()) && event.content() != null)
 					yield streamConverter.toAnthropicDelta(event.content());
@@ -297,8 +297,8 @@ public class KiroFacade {
 			int inputTokens
 	) throws Exception {
 		return switch (format) {
-			case OPENAI -> streamConverter.toOpenAiStopChunk(model, id) +
-			               streamConverter.toOpenAiDone();
+			case COMPLETION -> streamConverter.toOpenAiStopChunk(model, id) +
+			                   streamConverter.toOpenAiDone();
 			case ANTHROPIC ->
 					streamConverter.toAnthropicFinale(result.outputTokens(), result.hasToolUse());
 			case RESPONSES ->
@@ -323,7 +323,7 @@ public class KiroFacade {
 			int outputTokens
 	) {
 		return switch (format) {
-			case OPENAI -> streamConverter.toOpenAiNonStreaming(
+			case COMPLETION -> streamConverter.toOpenAiNonStreaming(
 					List.of(KiroEvent.content(content)), model
 			);
 			case ANTHROPIC -> streamConverter.toAnthropicNonStreaming(
@@ -345,7 +345,7 @@ public class KiroFacade {
 
 	private String generateId(Format format) {
 		return switch (format) {
-			case OPENAI -> "chatcmpl-" + UUID.randomUUID();
+			case COMPLETION -> "chatcmpl-" + UUID.randomUUID();
 			case ANTHROPIC -> "msg_" + UUID.randomUUID().toString().replace(
 					"-",
 					""

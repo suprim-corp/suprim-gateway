@@ -6,7 +6,6 @@ import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.OpenAiRelayHandler;
 import dev.suprim.gateway.proxy.StreamConverter;
 import dev.suprim.gateway.proxy.InternalRequest;
-import dev.suprim.gateway.proxy.Message;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -49,7 +48,7 @@ class XaiFacadeTest {
 		MockHttpServletResponse response = new MockHttpServletResponse();
 		facade.handle(
 				request, "grok-4", true, 10, "key1", "127.0.0.1",
-				Format.OPENAI, response
+				Format.COMPLETION, response
 		);
 		assertEquals(401, response.getStatus());
 		assertTrue(response.getContentAsString().contains("not connected"));
@@ -69,7 +68,7 @@ class XaiFacadeTest {
 		try {
 			facade.handle(
 					request, "grok-4", true, 10, "key1", "127.0.0.1",
-					Format.OPENAI, response
+					Format.COMPLETION, response
 			);
 		} catch (Exception e) {
 			// Expected - can't reach real xAI server in tests

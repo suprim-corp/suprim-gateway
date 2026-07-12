@@ -168,44 +168,66 @@ public class AntigravityFacade {
 		Long firstTokenMs = null;
 		boolean hasToolUse = false;
 		int toolIndex = 0;
+		StringBuilder fullContent = new StringBuilder();
 
 		if (format == Format.ANTHROPIC) {
-			writer.write(streamConverter.toAnthropicPreamble(
-					id,
-					model,
-					inputTokens
-			));
+			writer.write(
+					streamConverter.toAnthropicPreamble(
+							id,
+							model,
+							inputTokens
+					)
+			);
+			writer.flush();
+		} else if (format == Format.RESPONSES) {
+			writer.write(streamConverter.toResponsesCreated(id, model)
+			             + streamConverter.toResponsesOutputItemAdded(id)
+			             + streamConverter.toResponsesContentPartAdded());
 			writer.flush();
 		}
 
-		try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-				response.body()))) {
+		try (
+				BufferedReader reader = new BufferedReader(
+						new InputStreamReader(
+								response.body()
+						)
+				)
+		) {
 			String line;
 			while ((line = reader.readLine()) != null) {
-				if (!line.startsWith("data: ")) continue;
+				if (!line.startsWith("data: ")) {
+					continue;
+				}
 				String data = line.substring(6).trim();
-				if (data.isEmpty()) continue;
+				if (data.isEmpty()) {
+					continue;
+				}
 
-				AntigravityStreamConverter.ParsedChunk parsed = AntigravityStreamConverter.parseChunk(
-						data);
-				if (parsed == null) continue;
+				AntigravityStreamConverter.ParsedChunk parsed =
+						AntigravityStreamConverter.parseChunk(data);
+				if (parsed == null) {
+					continue;
+				}
 
 				if (parsed.text() != null && !parsed.text().isEmpty()) {
 					if (firstTokenMs == null) {
 						firstTokenMs = System.currentTimeMillis() - startTime;
 					}
+					fullContent.append(parsed.text());
 
 					String chunk = switch (format) {
 						case ANTHROPIC -> streamConverter.toAnthropicDelta(
-								parsed.text());
-						case OPENAI ->
+								parsed.text()
+						);
+						case COMPLETION ->
 								AntigravityStreamConverter.buildChunkPublic(
 										id,
 										model,
 										parsed.text()
 								);
 						case RESPONSES -> streamConverter.toResponsesTextDelta(
-								parsed.text());
+								parsed.text()
+						);
 					};
 					writer.write(chunk);
 					writer.flush();
@@ -240,7 +262,7 @@ public class AntigravityFacade {
 								event,
 								toolIndex
 						);
-						case OPENAI -> streamConverter.toOpenAiChunk(
+						case COMPLETION -> streamConverter.toOpenAiChunk(
 								event,
 								model,
 								id
@@ -264,7 +286,7 @@ public class AntigravityFacade {
 					outputTokens,
 					hasToolUse
 			);
-			case OPENAI -> {
+			case COMPLETION -> {
 				if (hasToolUse) {
 					yield AntigravityStreamConverter.buildDoneEvent();
 				} else {
@@ -273,14 +295,25 @@ public class AntigravityFacade {
 				}
 			}
 			case RESPONSES -> {
+				String text = fullContent.toString();
 				if (hasToolUse) {
 					yield streamConverter.toResponsesCompleted(
-							id, model, "", List.of(), inputTokens, outputTokens
+							id,
+							model,
+							text,
+							List.of(),
+							inputTokens,
+							outputTokens
 					);
 				} else {
-					yield streamConverter.toResponsesTextDone("", id)
+					yield streamConverter.toResponsesTextDone(text, id)
 					      + streamConverter.toResponsesCompleted(
-							id, model, "", List.of(), inputTokens, outputTokens
+							id,
+							model,
+							text,
+							List.of(),
+							inputTokens,
+							outputTokens
 					);
 				}
 			}
@@ -296,20 +329,26 @@ public class AntigravityFacade {
 		);
 
 		int latency = (int) (System.currentTimeMillis() - startTime);
-		logPublisher.publish(RequestLogEvent.builder()
-		                                    .virtualKeyId(keyId)
-		                                    .model(model)
-		                                    .requestedModel(model)
-		                                    .status(200)
-		                                    .promptTokens(inputTokens)
-		                                    .completionTokens(outputTokens >
-		                                                      0 ? outputTokens : null)
-		                                    .latencyMs(latency)
-		                                    .firstTokenMs(firstTokenMs !=
-		                                                  null ? firstTokenMs.intValue() : null)
-		                                    .streaming(true)
-		                                    .clientIp(clientIp)
-		                                    .build());
+		logPublisher.publish(
+				RequestLogEvent.builder()
+				               .virtualKeyId(keyId)
+				               .model(model)
+				               .requestedModel(model)
+				               .status(200)
+				               .promptTokens(inputTokens)
+				               .completionTokens(
+						               outputTokens >
+						               0 ? outputTokens : null
+				               )
+				               .latencyMs(latency)
+				               .firstTokenMs(
+						               firstTokenMs !=
+						               null ? firstTokenMs.intValue() : null
+				               )
+				               .streaming(true)
+				               .clientIp(clientIp)
+				               .build()
+		);
 	}
 
 	private void handleNonStream(
@@ -319,13 +358,22 @@ public class AntigravityFacade {
 	) throws Exception {
 		StringBuilder content = new StringBuilder();
 
-		try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-				response.body()))) {
+		try (
+				BufferedReader reader = new BufferedReader(
+						new InputStreamReader(
+								response.body()
+						)
+				)
+		) {
 			String line;
 			while ((line = reader.readLine()) != null) {
-				if (!line.startsWith("data: ")) continue;
+				if (!line.startsWith("data: ")) {
+					continue;
+				}
 				String data = line.substring(6).trim();
-				if (data.isEmpty()) continue;
+				if (data.isEmpty()) {
+					continue;
+				}
 
 				String text = AntigravityStreamConverter.extractText(data);
 				if (text != null && !text.isEmpty()) {
@@ -345,7 +393,7 @@ public class AntigravityFacade {
 			case ANTHROPIC -> streamConverter.toAnthropicNonStreaming(
 					id, model, text, inputTokens, outputTokens
 			);
-			case OPENAI -> streamConverter.toOpenAiNonStreaming(
+			case COMPLETION -> streamConverter.toOpenAiNonStreaming(
 					List.of(KiroEvent.content(text)),
 					model
 			);

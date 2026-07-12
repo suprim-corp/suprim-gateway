@@ -97,7 +97,7 @@ class CompletionsController {
 
 		providerDispatcher.resolve(provider).handle(
 				internalReq, actualModel, stream, inputTokens, keyId,
-				RequestContext.clientIp(httpReq), Format.OPENAI,
+				RequestContext.clientIp(httpReq), Format.COMPLETION,
 				httpRes
 		);
 	}
