@@ -50,6 +50,7 @@ class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/login", "/css/**", "/js/**", "/error").permitAll()
                         .requestMatchers("/auth/xai/agent", "/auth/xai/exchange", "/auth/xai/device-exchange").permitAll()
+                        .requestMatchers("/auth/antigravity/agent", "/auth/antigravity/token-exchange").permitAll()
                         .anyRequest().authenticated()
                 )
                 .formLogin(form -> form
