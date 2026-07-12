@@ -7,6 +7,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.io.IOException;
 import java.net.URI;
@@ -20,6 +23,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Map;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -72,6 +76,77 @@ public class AntigravityOAuthController {
 				+ "&prompt=consent";
 
 		return "redirect:" + url;
+	}
+
+	@GetMapping(value = "/auth/antigravity/agent", produces = "text/plain")
+	@ResponseBody
+	String agentScript(HttpServletRequest httpReq) {
+		String gatewayBase = buildGatewayBase(httpReq);
+
+		return "#!/bin/bash\n"
+		       + "GATEWAY='" + gatewayBase + "'\n"
+		       + "REDIRECT_URI='" + REDIRECT_URI + "'\n"
+		       + "CLIENT_ID='" + Antigravity.CLIENT_ID + "'\n"
+		       + "CLIENT_SECRET='" + Antigravity.CLIENT_SECRET + "'\n"
+		       + "SCOPE='" + Antigravity.OAUTH_SCOPE + "'\n"
+		       + "PORT=51121\n"
+		       + "\n"
+		       + "CODE_VERIFIER=$(openssl rand -base64 32 | tr -d '=/+' | head -c 43)\n"
+		       + "CODE_CHALLENGE=$(printf '%s' \"$CODE_VERIFIER\" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')\n"
+		       + "\n"
+		       + "AUTH_URL=\"https://accounts.google.com/o/oauth2/v2/auth?client_id=$(python3 -c \"import urllib.parse;print(urllib.parse.quote('$CLIENT_ID'))\")&redirect_uri=$(python3 -c \"import urllib.parse;print(urllib.parse.quote('$REDIRECT_URI'))\")&response_type=code&scope=$(python3 -c \"import urllib.parse;print(urllib.parse.quote('$SCOPE'))\")&code_challenge=$CODE_CHALLENGE&code_challenge_method=S256&access_type=offline&prompt=consent\"\n"
+		       + "\n"
+		       + "echo 'Opening browser for Google OAuth...'\n"
+		       + "open \"$AUTH_URL\" 2>/dev/null || xdg-open \"$AUTH_URL\" 2>/dev/null || echo \"Open this URL: $AUTH_URL\"\n"
+		       + "\n"
+		       + "echo 'Waiting for OAuth callback on localhost:'$PORT'...'\n"
+		       + "RESPONSE=$(nc -l $PORT 2>/dev/null || nc -l -p $PORT 2>/dev/null)\n"
+		       + "CODE=$(echo \"$RESPONSE\" | grep -oP 'code=\\K[^& ]*' || echo \"$RESPONSE\" | sed -n 's/.*code=\\([^& ]*\\).*/\\1/p')\n"
+		       + "\n"
+		       + "if [ -z \"$CODE\" ]; then echo 'Error: no code received'; exit 1; fi\n"
+		       + "echo 'Code received, exchanging for tokens...'\n"
+		       + "\n"
+		       + "TOKEN_RESP=$(curl -s -X POST 'https://oauth2.googleapis.com/token' \\\n"
+		       + "  -H 'Content-Type: application/x-www-form-urlencoded' \\\n"
+		       + "  -d \"grant_type=authorization_code&code=$CODE&redirect_uri=$REDIRECT_URI&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&code_verifier=$CODE_VERIFIER\")\n"
+		       + "\n"
+		       + "if echo \"$TOKEN_RESP\" | grep -q '\"access_token\"'; then\n"
+		       + "  echo 'Sending tokens to gateway...'\n"
+		       + "  curl -sL -X POST \"$GATEWAY/auth/antigravity/token-exchange\" \\\n"
+		       + "    -H 'Content-Type: application/json' \\\n"
+		       + "    -d \"$TOKEN_RESP\"\n"
+		       + "  echo ''\n"
+		       + "  echo 'Done! Antigravity account connected.'\n"
+		       + "else\n"
+		       + "  echo \"Error: $TOKEN_RESP\"\n"
+		       + "  exit 1\n"
+		       + "fi\n";
+	}
+
+	@PostMapping("/auth/antigravity/token-exchange")
+	@ResponseBody
+	Map<String, String> tokenExchange(@RequestBody Map<String, Object> body) {
+		String accessToken = (String) body.get("access_token");
+		String refreshToken = (String) body.get("refresh_token");
+		Object expiresInObj = body.get("expires_in");
+
+		if (accessToken == null) {
+			return Map.of("error", "missing access_token");
+		}
+
+		int expiresIn = expiresInObj instanceof Number n ? n.intValue() : 3600;
+		Instant expiresAt = Instant.now().plusSeconds(expiresIn);
+
+		try {
+			String email = fetchEmail(accessToken);
+			String projectId = ProjectIdFetcher.fetch(accessToken);
+			authManager.saveCredentials(accessToken, refreshToken, expiresAt, projectId, email);
+			log.info("[Antigravity] OAuth complete (remote), email={}, projectId={}", email, projectId);
+			return Map.of("status", "ok", "email", email != null ? email : "");
+		} catch (Exception e) {
+			log.error("[Antigravity] Remote token exchange failed: {}", e.getMessage());
+			return Map.of("error", e.getMessage());
+		}
 	}
 
 	private void exchangeCodeAndStore(
