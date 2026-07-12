@@ -366,6 +366,14 @@ public class KiroFacade {
 				"[Upstream] payload length: {}",
 				payload.length()
 		);
+
+		try {
+			java.nio.file.Files.writeString(
+					java.nio.file.Path.of("/tmp/kiro-last-payload.json"),
+					payload
+			);
+		} catch (Exception ignored) {}
+
 		String url = kiroClient.getGenerateUrl();
 		return kiroClient.request("POST", url, payload, stream);
 	}
