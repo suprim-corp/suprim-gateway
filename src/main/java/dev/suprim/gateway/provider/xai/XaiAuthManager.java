@@ -1,6 +1,7 @@
 package dev.suprim.gateway.provider.xai;
 
 import dev.suprim.gateway.provider.OAuthProviderAuthManager;
+import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.instants.Xai;
@@ -33,7 +34,7 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 
 	@PostConstruct
 	public void init() {
-		Optional<StoredAccount> account = credentialStore.findByProvider(Xai.PROVIDER);
+		Optional<StoredAccount> account = credentialStore.findByProvider(Provider.XAI.name());
 		account.ifPresent(this::applyCredentials);
 		if (account.isPresent()) {
 			log.info("[xAI] Loaded credentials, email={}", email);
@@ -42,7 +43,7 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 
 	@Override
 	public String getProviderName() {
-		return Xai.PROVIDER;
+		return Provider.XAI.name();
 	}
 
 	@Override
@@ -124,7 +125,7 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 	private void persistToStore() {
 		StoredAccount account = StoredAccount.builder()
 		                                     .name(email)
-		                                     .provider(Xai.PROVIDER)
+		                                     .provider(Provider.XAI.name())
 		                                     .clientId(Xai.CLIENT_ID)
 		                                     .accessToken(accessToken)
 		                                     .refreshToken(refreshToken)

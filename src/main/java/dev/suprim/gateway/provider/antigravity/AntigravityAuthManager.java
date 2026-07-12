@@ -3,6 +3,7 @@ package dev.suprim.gateway.provider.antigravity;
 import dev.suprim.gateway.instants.Antigravity;
 
 import dev.suprim.gateway.provider.OAuthProviderAuthManager;
+import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
 import lombok.RequiredArgsConstructor;
@@ -35,7 +36,7 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 	@PostConstruct
 	public void init() {
 		Optional<StoredAccount> account = credentialStore.findByProvider(
-				Antigravity.PROVIDER
+				Provider.ANTIGRAVITY.name()
 		);
 		account.ifPresent(this::applyCredentials);
 		if (account.isPresent()) {
@@ -48,7 +49,7 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 
 	@Override
 	public String getProviderName() {
-		return Antigravity.PROVIDER;
+		return Provider.ANTIGRAVITY.name();
 	}
 
 	@Override
@@ -148,7 +149,7 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 		StoredAccount account =
 				StoredAccount.builder()
 				             .name(email)
-				             .provider(Antigravity.PROVIDER)
+				             .provider(Provider.ANTIGRAVITY.name())
 				             .clientId(Antigravity.CLIENT_ID)
 				             .clientSecret(Antigravity.CLIENT_SECRET)
 				             .accessToken(accessToken)

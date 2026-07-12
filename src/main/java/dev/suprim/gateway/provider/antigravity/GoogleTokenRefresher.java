@@ -12,7 +12,7 @@ import java.time.Duration;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-class GoogleTokenRefresher {
+public class GoogleTokenRefresher {
 
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 	private static final HttpClient HTTP_CLIENT =
@@ -20,7 +20,7 @@ class GoogleTokenRefresher {
 			          .connectTimeout(Duration.ofSeconds(10))
 			          .build();
 
-	static GoogleTokenResponse refresh(
+	public static GoogleTokenResponse refresh(
 			String refreshToken,
 			String clientId,
 			String clientSecret

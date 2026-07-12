@@ -2,6 +2,7 @@ package dev.suprim.gateway.provider.kiro;
 
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
+import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.ProviderAuthManager;
 
 import dev.suprim.gateway.provider.kiro.reader.CredentialStoreReader;
@@ -242,7 +243,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 
 	@Override
 	public String getProviderName() {
-		return "KIRO";
+		return Provider.KIRO.name();
 	}
 
 	@Override

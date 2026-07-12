@@ -1,5 +1,6 @@
 package dev.suprim.gateway.model;
 
+import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.antigravity.AntigravityAuthManager;
 import dev.suprim.gateway.config.AppConfig;
 import dev.suprim.gateway.proxy.KiroHttpClient;
@@ -154,16 +155,18 @@ public class ModelRegistry {
 		);
 
 		getXaiModels().forEach(id ->
-				result.add(Map.of(
-						"id",
-						id,
-						"object",
-						"model",
-						"created",
-						now,
-						"owned_by",
-						"xai"
-				))
+				result.add(
+						Map.of(
+								"id",
+								id,
+								"object",
+								"model",
+								"created",
+								now,
+								"owned_by",
+								"xai"
+						)
+				)
 		);
 
 		return result;
@@ -181,11 +184,11 @@ public class ModelRegistry {
 	}
 
 	public List<ModelInfo> getModelsForProvider(String provider) {
-		return switch (provider) {
-			case "KIRO" -> getAvailableModels().stream()
+		return switch (Provider.valueOf(provider)) {
+			case KIRO -> getAvailableModels().stream()
 			                                   .map(ModelInfo::of)
 			                                   .toList();
-			case "ANTIGRAVITY" -> safeListModels(
+			case ANTIGRAVITY -> safeListModels(
 					() -> antigravityAuthManager.listModels()
 					                            .stream()
 					                            .map(m -> {
@@ -205,7 +208,7 @@ public class ModelRegistry {
 					                            })
 					                            .toList()
 			);
-			case "XAI" -> safeListModels(
+			case XAI -> safeListModels(
 					() -> xaiAuthManager.listModels()
 					                    .stream()
 					                    .map(m -> ModelInfo.of(

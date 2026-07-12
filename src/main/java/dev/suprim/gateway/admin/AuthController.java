@@ -3,6 +3,7 @@ package dev.suprim.gateway.admin;
 import dev.suprim.gateway.provider.kiro.ImportRequest;
 import dev.suprim.gateway.provider.kiro.ImportResult;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
+import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
 import lombok.RequiredArgsConstructor;
@@ -94,7 +95,7 @@ public class AuthController {
 					             .scopes(imported.scopes())
 					             .region(imported.region())
 					             .apiRegion(imported.apiRegion())
-					             .provider("KIRO")
+					             .provider(Provider.KIRO.name())
 					             .projectId(imported.projectId())
 					             .build();
 			credentialStore.upsert(withMeta);

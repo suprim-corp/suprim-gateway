@@ -17,7 +17,7 @@ import java.time.Duration;
 import java.util.Base64;
 
 @Slf4j
-class XaiTokenRefresher {
+public class XaiTokenRefresher {
 
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 	private static final HttpClient HTTP_CLIENT =
@@ -39,7 +39,7 @@ class XaiTokenRefresher {
 		return postToken(body);
 	}
 
-	static XaiTokenResponse refresh(String refreshToken) throws IOException {
+	public static XaiTokenResponse refresh(String refreshToken) throws IOException {
 		String body = "grant_type=refresh_token"
 		              + "&client_id=" + encode(Xai.CLIENT_ID)
 		              + "&refresh_token=" + encode(refreshToken);
@@ -56,7 +56,11 @@ class XaiTokenRefresher {
 			return null;
 		}
 		try {
-			String payload = new String(Base64.getUrlDecoder().decode(padBase64(parts[1])), StandardCharsets.UTF_8);
+			String payload = new String(
+					Base64.getUrlDecoder()
+					      .decode(padBase64(parts[1])),
+					StandardCharsets.UTF_8
+			);
 			JsonNode json = MAPPER.readTree(payload);
 			if (json.has("email")) {
 				return json.get("email").asString();
@@ -77,21 +81,40 @@ class XaiTokenRefresher {
 	private static XaiTokenResponse postToken(String body) throws IOException {
 		HttpRequest request = HttpRequest.newBuilder()
 		                                 .uri(URI.create(Xai.TOKEN_URL))
-		                                 .header("Content-Type", "application/x-www-form-urlencoded")
-		                                 .POST(HttpRequest.BodyPublishers.ofString(body))
+		                                 .header(
+				                                 "Content-Type",
+				                                 "application/x-www-form-urlencoded"
+		                                 )
+		                                 .POST(HttpRequest.BodyPublishers.ofString(
+				                                 body))
 		                                 .build();
 		try {
-			HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+			HttpResponse<String> response = HTTP_CLIENT.send(
+					request,
+					HttpResponse.BodyHandlers.ofString()
+			);
 			if (response.statusCode() != 200) {
-				throw new IOException("xAI token request failed: " + response.statusCode() + " " + response.body());
+				throw new IOException(
+						"xAI token request failed: " + response.statusCode() +
+						" " + response.body());
 			}
 			JsonNode json = MAPPER.readTree(response.body());
-			return new XaiTokenResponse(
-					json.get("access_token").asString(),
-					json.has("refresh_token") ? json.get("refresh_token").asString() : null,
-					json.has("id_token") ? json.get("id_token").asString() : null,
-					json.get("expires_in").asInt()
-			);
+			return XaiTokenResponse.builder()
+			                       .accessToken(
+					                       json.get("access_token")
+					                           .asString()
+			                       )
+			                       .refreshToken(
+					                       json.has("refresh_token") ? json.get(
+							                                                       "refresh_token")
+					                                                       .asString() : null
+			                       )
+			                       .idToken(
+					                       json.has("id_token") ? json.get(
+							                       "id_token").asString() : null
+			                       )
+			                       .expiresIn(json.get("expires_in").asInt())
+			                       .build();
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			throw new IOException("xAI token request interrupted", e);
