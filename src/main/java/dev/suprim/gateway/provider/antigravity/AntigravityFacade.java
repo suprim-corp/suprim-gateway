@@ -163,6 +163,8 @@ public class AntigravityFacade {
 		String id = generateId(format);
 		int outputTokens = 0;
 		Long firstTokenMs = null;
+		boolean hasToolUse = false;
+		int toolIndex = 0;
 
 		if (format == Format.ANTHROPIC) {
 			writer.write(streamConverter.toAnthropicPreamble(id, model, inputTokens));
@@ -177,27 +179,53 @@ public class AntigravityFacade {
 				String data = line.substring(6).trim();
 				if (data.isEmpty()) continue;
 
-				String text = AntigravityStreamConverter.extractText(data);
-				if (text == null || text.isEmpty()) continue;
+				AntigravityStreamConverter.ParsedChunk parsed = AntigravityStreamConverter.parseChunk(data);
+				if (parsed == null) continue;
 
-				if (firstTokenMs == null) {
-					firstTokenMs = System.currentTimeMillis() - startTime;
+				if (parsed.text() != null && !parsed.text().isEmpty()) {
+					if (firstTokenMs == null) {
+						firstTokenMs = System.currentTimeMillis() - startTime;
+					}
+
+					String chunk = switch (format) {
+						case ANTHROPIC -> streamConverter.toAnthropicDelta(parsed.text());
+						case OPENAI -> AntigravityStreamConverter.buildChunkPublic(id, model, parsed.text());
+						case RESPONSES -> streamConverter.toResponsesTextDelta(parsed.text());
+					};
+					writer.write(chunk);
+					writer.flush();
+					outputTokens++;
 				}
 
-				String chunk = switch (format) {
-					case ANTHROPIC -> streamConverter.toAnthropicDelta(text);
-					case OPENAI -> AntigravityStreamConverter.buildChunkPublic(id, model, text);
-					case RESPONSES -> streamConverter.toResponsesTextDelta(text);
-				};
-
-				writer.write(chunk);
-				writer.flush();
-				outputTokens++;
+				if (parsed.functionCall() != null) {
+					hasToolUse = true;
+					if (firstTokenMs == null) {
+						firstTokenMs = System.currentTimeMillis() - startTime;
+					}
+					toolIndex++;
+					KiroEvent event = KiroEvent.toolUse(
+							parsed.functionCall().name(),
+							parsed.functionCall().args(),
+							parsed.functionCall().id() != null
+									? parsed.functionCall().id()
+									: "call_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20)
+					);
+					String chunk = switch (format) {
+						case ANTHROPIC -> streamConverter.toAnthropicToolUse(event, toolIndex);
+						case OPENAI -> streamConverter.toOpenAiChunk(event, model, id);
+						case RESPONSES -> streamConverter.toResponsesToolCall(event, toolIndex);
+					};
+					if (chunk != null) {
+						writer.write(chunk);
+						writer.flush();
+					}
+					outputTokens++;
+				}
 			}
 		}
 
 		String finale = switch (format) {
-			case ANTHROPIC -> streamConverter.toAnthropicFinale(outputTokens, false);
+			case ANTHROPIC -> streamConverter.toAnthropicFinale(outputTokens, hasToolUse);
 			case OPENAI -> AntigravityStreamConverter.buildStopChunk(model, id)
 			               + AntigravityStreamConverter.buildDoneEvent();
 			case RESPONSES -> streamConverter.toResponsesTextDone("", id)

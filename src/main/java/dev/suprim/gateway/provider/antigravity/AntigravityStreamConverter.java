@@ -1,39 +1,94 @@
 package dev.suprim.gateway.provider.antigravity;
 
+import lombok.Builder;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 class AntigravityStreamConverter {
 
-	private static final ObjectMapper MAPPER = new ObjectMapper();
+	private static final JsonMapper MAPPER = new JsonMapper();
 
-	static String extractText(String geminiData) {
+	private static final ParsedChunk FINISHED =
+			ParsedChunk.builder()
+			           .finished(true)
+			           .build();
+
+	@Builder
+	record ParsedChunk(
+			String text, FunctionCall functionCall, boolean finished
+	) {}
+
+	@Builder
+	record FunctionCall(String name, String args, String id) {}
+
+	static ParsedChunk parseChunk(String geminiData) {
 		try {
 			JsonNode root = MAPPER.readTree(geminiData);
-			JsonNode responseNode = root.get("response");
-			if (responseNode == null) responseNode = root;
-
-			JsonNode candidates = responseNode.get("candidates");
-			if (candidates == null || candidates.isEmpty()) return null;
-
-			JsonNode candidate = candidates.get(0);
-			JsonNode content = candidate.get("content");
-			if (content == null || !content.has("parts")) return null;
-
-			JsonNode parts = content.get("parts");
-			if (parts.isEmpty() || !parts.get(0).has("text")) return null;
-
-			String text = parts.get(0).get("text").asString();
-
-			if (candidate.has("finishReason") && !candidate.get("finishReason").isNull()) {
-				if (text.isEmpty()) return null;
+			JsonNode responseNode;
+			if (root.get("response") == null) {
+				responseNode = root;
+			} else {
+				responseNode = root.get("response");
 			}
 
-			return text;
+			JsonNode candidates = responseNode.get("candidates");
+			if (candidates == null || candidates.isEmpty()) {
+				return null;
+			}
+
+			JsonNode candidate = candidates.get(0);
+			boolean finished = candidate.has("finishReason")
+			                   && !candidate.get("finishReason").isNull();
+
+			JsonNode content = candidate.get("content");
+			if (content == null || !content.has("parts")) {
+				return finished ? FINISHED : null;
+			}
+
+			JsonNode parts = content.get("parts");
+			if (parts.isEmpty()) {
+				return finished ? FINISHED : null;
+			}
+
+			JsonNode firstPart = parts.get(0);
+
+			if (firstPart.has("functionCall")) {
+				JsonNode fc = firstPart.get("functionCall");
+				String name = fc.has("name") ? fc.get("name").asString() : "";
+				String args = fc.has("args") ? fc.get("args").toString() : "{}";
+				String id = fc.has("id") ? fc.get("id").asString() : null;
+				return ParsedChunk.builder()
+				                  .functionCall(
+						                  FunctionCall.builder()
+						                              .name(name)
+						                              .args(args)
+						                              .id(id)
+						                              .build()
+				                  )
+				                  .finished(finished)
+				                  .build();
+			}
+
+			if (firstPart.has("text")) {
+				String text = firstPart.get("text").asString();
+				if (text.isEmpty() && finished) return FINISHED;
+				return ParsedChunk.builder()
+				                  .text(text)
+				                  .finished(finished)
+				                  .build();
+			}
+
+			return finished ? FINISHED : null;
 		} catch (Exception e) {
 			return null;
 		}
+	}
+
+	static String extractText(String geminiData) {
+		ParsedChunk chunk = parseChunk(geminiData);
+		if (chunk == null) return null;
+		return chunk.text();
 	}
 
 	static String buildChunkPublic(String id, String model, String text) {
@@ -62,7 +117,12 @@ class AntigravityStreamConverter {
 		return "data: [DONE]\n\n";
 	}
 
-	private static String buildChunk(String id, String model, String text, String finishReason) {
+	private static String buildChunk(
+			String id,
+			String model,
+			String text,
+			String finishReason
+	) {
 		ObjectNode root = MAPPER.createObjectNode();
 		root.put("id", id);
 		root.put("object", "chat.completion.chunk");

@@ -47,13 +47,43 @@ class AntigravityStreamConverterTest {
 	}
 
 	@Test
-	void extractText_noParts_returnsNull() {
+	void parseChunk_functionCall() {
 		String geminiData = """
-				{"response":{"candidates":[{"content":{"role":"model"}}]}}""";
+				{"response":{"candidates":[{"content":{"parts":[{"functionCall":{"name":"get_weather","args":{"location":"Hanoi"}}}],"role":"model"}}]}}""";
 
-		String result = AntigravityStreamConverter.extractText(geminiData);
+		AntigravityStreamConverter.ParsedChunk parsed = AntigravityStreamConverter.parseChunk(geminiData);
 
-		assertNull(result);
+		assertNotNull(parsed);
+		assertNull(parsed.text());
+		assertNotNull(parsed.functionCall());
+		assertEquals("get_weather", parsed.functionCall().name());
+		assertTrue(parsed.functionCall().args().contains("Hanoi"));
+	}
+
+	@Test
+	void parseChunk_textContent() {
+		String geminiData = """
+				{"response":{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"}}]}}""";
+
+		AntigravityStreamConverter.ParsedChunk parsed = AntigravityStreamConverter.parseChunk(geminiData);
+
+		assertNotNull(parsed);
+		assertEquals("Hello", parsed.text());
+		assertNull(parsed.functionCall());
+		assertFalse(parsed.finished());
+	}
+
+	@Test
+	void parseChunk_finishedWithNoText_returnsFinished() {
+		String geminiData = """
+				{"response":{"candidates":[{"content":{"parts":[{"text":""}],"role":"model"},"finishReason":"STOP"}]}}""";
+
+		AntigravityStreamConverter.ParsedChunk parsed = AntigravityStreamConverter.parseChunk(geminiData);
+
+		assertNotNull(parsed);
+		assertNull(parsed.text());
+		assertNull(parsed.functionCall());
+		assertTrue(parsed.finished());
 	}
 
 	@Test

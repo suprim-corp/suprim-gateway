@@ -2,6 +2,8 @@ package dev.suprim.gateway.provider.antigravity;
 
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.Message;
+import dev.suprim.gateway.proxy.Tool;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -30,14 +32,57 @@ class AntigravityPayloadBuilder {
 
 		for (Message msg : messages) {
 			String role = msg.role();
-			String content = Optional.ofNullable(msg.content())
-			                         .map(Object::toString)
-			                         .orElse("");
 
 			if ("system".equals(role)) {
+				String text = Optional.ofNullable(msg.content())
+				                      .map(Object::toString)
+				                      .orElse("");
 				systemInstruction = MAPPER.createObjectNode();
 				ArrayNode parts = systemInstruction.putArray("parts");
-				parts.addObject().put("text", content);
+				parts.addObject().put("text", text);
+				continue;
+			}
+
+			if ("assistant".equals(role) && msg.toolCalls() != null && !msg.toolCalls().isEmpty()) {
+				ObjectNode entry = contents.addObject();
+				entry.put("role", "model");
+				ArrayNode parts = entry.putArray("parts");
+				String text = Optional.ofNullable(msg.content())
+				                      .map(Object::toString)
+				                      .orElse("");
+				if (!text.isEmpty()) {
+					parts.addObject().put("text", text);
+				}
+				for (Message.ToolCall tc : msg.toolCalls()) {
+					if (tc.function() == null) continue;
+					ObjectNode fcNode = parts.addObject().putObject("functionCall");
+					fcNode.put("name", tc.function().name());
+					String args = tc.function().arguments();
+					if (args != null && !args.isEmpty()) {
+						fcNode.set("args", MAPPER.readTree(args));
+					} else {
+						fcNode.putObject("args");
+					}
+				}
+				continue;
+			}
+
+			if ("tool".equals(role) && msg.toolCallId() != null) {
+				ObjectNode entry = contents.addObject();
+				entry.put("role", "user");
+				ArrayNode parts = entry.putArray("parts");
+				ObjectNode frNode = parts.addObject().putObject("functionResponse");
+				frNode.put("name", msg.name() != null ? msg.name() : msg.toolCallId());
+				String content = Optional.ofNullable(msg.content())
+				                         .map(Object::toString)
+				                         .orElse("{}");
+				try {
+					frNode.set("response", MAPPER.readTree(content));
+				} catch (Exception e) {
+					ObjectNode wrapper = MAPPER.createObjectNode();
+					wrapper.put("result", content);
+					frNode.set("response", wrapper);
+				}
 				continue;
 			}
 
@@ -45,11 +90,34 @@ class AntigravityPayloadBuilder {
 			ObjectNode entry = contents.addObject();
 			entry.put("role", geminiRole);
 			ArrayNode parts = entry.putArray("parts");
-			parts.addObject().put("text", content);
+			String text = Optional.ofNullable(msg.content())
+			                      .map(Object::toString)
+			                      .orElse("");
+			parts.addObject().put("text", text);
 		}
 
 		if (systemInstruction != null) {
 			reqNode.set("systemInstruction", systemInstruction);
+		}
+
+		if (request.tools() != null && !request.tools().isEmpty()) {
+			ArrayNode toolsArray = reqNode.putArray("tools");
+			ObjectNode toolObj = toolsArray.addObject();
+			ArrayNode declarations = toolObj.putArray("functionDeclarations");
+			for (Tool tool : request.tools()) {
+				if (tool.function() == null) {
+					continue;
+				}
+				ObjectNode decl = declarations.addObject();
+				decl.put("name", tool.function().name());
+				if (tool.function().description() != null) {
+					decl.put("description", tool.function().description());
+				}
+				JsonNode params = tool.function().parameters();
+				if (params != null) {
+					decl.set("parameters", params);
+				}
+			}
 		}
 
 		ObjectNode generationConfig = reqNode.putObject("generationConfig");
