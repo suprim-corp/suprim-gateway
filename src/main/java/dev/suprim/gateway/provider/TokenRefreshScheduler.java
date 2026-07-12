@@ -12,6 +12,10 @@ import java.util.List;
 @Component
 public class TokenRefreshScheduler {
 
+	private static final String GREEN = "[32m";
+	private static final String RED = "[31m";
+	private static final String RESET = "[0m";
+
 	private final List<ProviderAuthManager> providers;
 
 	@Scheduled(fixedDelay = 2_700_000)
@@ -24,13 +28,17 @@ public class TokenRefreshScheduler {
 			try {
 				provider.getAccessToken();
 				log.info(
-						"[{}] Scheduled refresh OK",
-						provider.getProviderName()
+						"⟳ {}[{}]{} Scheduled refresh OK",
+						GREEN,
+						provider.getProviderName(),
+						RESET
 				);
 			} catch (Exception e) {
 				log.warn(
-						"[{}] Scheduled refresh failed: {}",
+						"⟳ {}[{}]{} Scheduled refresh failed: {}",
+						RED,
 						provider.getProviderName(),
+						RESET,
 						e.getMessage()
 				);
 			}
