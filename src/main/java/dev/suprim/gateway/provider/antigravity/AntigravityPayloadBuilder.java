@@ -11,6 +11,7 @@ import tools.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 class AntigravityPayloadBuilder {
 
@@ -142,7 +143,10 @@ class AntigravityPayloadBuilder {
 				}
 				JsonNode params = tool.function().parameters();
 				if (params != null) {
-					decl.set("parameters", params);
+					decl.set(
+							"parameters",
+							stripUnsupportedFields(params.deepCopy())
+					);
 				}
 			}
 		}
@@ -163,5 +167,30 @@ class AntigravityPayloadBuilder {
 		} catch (Exception e) {
 			throw new RuntimeException("Failed to serialize Gemini payload", e);
 		}
+	}
+
+	private static final Set<String> UNSUPPORTED_FIELDS = Set.of(
+			"$schema", "propertyNames", "additionalProperties", "allOf",
+			"anyOf", "oneOf", "not", "if", "then", "else",
+			"patternProperties", "unevaluatedProperties", "definitions",
+			"$defs", "$ref", "$id", "$comment"
+	);
+
+	private static JsonNode stripUnsupportedFields(JsonNode node) {
+		if (node.isObject()) {
+			ObjectNode obj = (ObjectNode) node;
+			obj.remove(UNSUPPORTED_FIELDS);
+			for (String fieldName : List.copyOf(obj.propertyNames())) {
+				JsonNode child = obj.get(fieldName);
+				if (child != null && (child.isObject() || child.isArray())) {
+					stripUnsupportedFields(child);
+				}
+			}
+		} else if (node.isArray()) {
+			for (JsonNode child : node) {
+				stripUnsupportedFields(child);
+			}
+		}
+		return node;
 	}
 }
