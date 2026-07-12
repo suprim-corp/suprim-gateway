@@ -8,11 +8,15 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 class AntigravityPayloadBuilder {
 
 	private static final JsonMapper MAPPER = new JsonMapper();
@@ -169,21 +173,26 @@ class AntigravityPayloadBuilder {
 		}
 	}
 
-	private static final Set<String> UNSUPPORTED_FIELDS = Set.of(
-			"$schema", "propertyNames", "additionalProperties", "allOf",
-			"anyOf", "oneOf", "not", "if", "then", "else",
-			"patternProperties", "unevaluatedProperties", "definitions",
-			"$defs", "$ref", "$id", "$comment",
-			"exclusiveMinimum", "exclusiveMaximum", "multipleOf",
-			"minLength", "maxLength", "pattern", "minItems", "maxItems",
-			"uniqueItems", "minProperties", "maxProperties",
-			"const", "default", "examples", "deprecated", "readOnly", "writeOnly"
+	private static final Set<String> SUPPORTED_SCHEMA_FIELDS = Set.of(
+			"type", "properties", "required", "items", "enum",
+			"description", "format", "nullable", "minimum", "maximum"
 	);
 
 	private static JsonNode stripUnsupportedFields(JsonNode node) {
 		if (node.isObject()) {
 			ObjectNode obj = (ObjectNode) node;
-			obj.remove(UNSUPPORTED_FIELDS);
+			List<String> toRemove = new ArrayList<>();
+			for (String fieldName : obj.propertyNames()) {
+				if (!SUPPORTED_SCHEMA_FIELDS.contains(fieldName)) {
+					toRemove.add(fieldName);
+				}
+			}
+			if (!toRemove.isEmpty()) {
+				log.debug("[Antigravity] Stripping unsupported schema fields: {}", toRemove);
+			}
+			for (String field : toRemove) {
+				obj.remove(field);
+			}
 			for (String fieldName : List.copyOf(obj.propertyNames())) {
 				JsonNode child = obj.get(fieldName);
 				if (child != null && (child.isObject() || child.isArray())) {
