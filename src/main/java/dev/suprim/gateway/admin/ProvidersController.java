@@ -2,6 +2,7 @@ package dev.suprim.gateway.admin;
 
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
+import dev.suprim.gateway.model.ModelInfo;
 import dev.suprim.gateway.model.ModelRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
@@ -14,7 +15,6 @@ import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @RequiredArgsConstructor
 @Controller
@@ -68,7 +68,7 @@ class ProvidersController {
 
 	@GetMapping("/providers/{index}/models")
 	@ResponseBody
-	List<Map<String, Object>> models(@PathVariable int index) throws Exception {
+	List<ModelInfo> models(@PathVariable int index) throws Exception {
 		List<StoredAccount> accounts = credentialStore.load();
 		if (index < 0 || index >= accounts.size()) {
 			return List.of();

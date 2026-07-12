@@ -180,41 +180,44 @@ public class ModelRegistry {
 		}
 	}
 
-	public List<Map<String, Object>> getModelsForProvider(String provider) {
+	public List<ModelInfo> getModelsForProvider(String provider) {
 		return switch (provider) {
 			case "KIRO" -> getAvailableModels().stream()
-			                                   .map(id -> Map.<String, Object>of(
-							                                   "id",
-							                                   id
-					                                   )
-			                                   )
+			                                   .map(ModelInfo::of)
 			                                   .toList();
-			case "ANTIGRAVITY" ->
-					safeListModels(() -> antigravityAuthManager.listModels()
-					                                           .stream()
-					                                           .map(m -> {
-								                                           Map<String, Object> item = new LinkedHashMap<>();
-								                                           item.put(
-										                                           "id",
-										                                           "ag/" +
-										                                           m.get("id")
-								                                           );
-								                                           if (m.containsKey("quota"))
-									                                           item.put(
-											                                           "quota",
-											                                           m.get("quota")
-									                                           );
-								                                           return item;
-							                                           }
-					                                           )
-					                                           .toList()
-					);
-			case "XAI" -> safeListModels(xaiAuthManager::listModels);
+			case "ANTIGRAVITY" -> safeListModels(
+					() -> antigravityAuthManager.listModels()
+					                            .stream()
+					                            .map(m -> {
+						                            Object quota = m.get("quota");
+						                            if (quota instanceof Integer q) {
+							                            return ModelInfo.of(
+									                            "ag/" +
+									                            m.get("id"),
+									                            q
+							                            );
+						                            }
+
+						                            return ModelInfo.of(
+								                            "ag/" +
+								                            m.get("id")
+						                            );
+					                            })
+					                            .toList()
+			);
+			case "XAI" -> safeListModels(
+					() -> xaiAuthManager.listModels()
+					                    .stream()
+					                    .map(m -> ModelInfo.of(
+							                    (String) m.get("id")
+					                    ))
+					                    .toList()
+			);
 			default -> List.of();
 		};
 	}
 
-	private List<Map<String, Object>> safeListModels(ModelsFetcher fetcher) {
+	private List<ModelInfo> safeListModels(ModelsFetcher fetcher) {
 		try {
 			return fetcher.fetch();
 		} catch (Exception e) {
@@ -224,7 +227,7 @@ public class ModelRegistry {
 
 	@FunctionalInterface
 	private interface ModelsFetcher {
-		List<Map<String, Object>> fetch() throws Exception;
+		List<ModelInfo> fetch() throws Exception;
 	}
 
 	private List<String> parseModelIds(String json) {
