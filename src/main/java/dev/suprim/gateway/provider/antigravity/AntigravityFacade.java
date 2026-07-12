@@ -279,6 +279,13 @@ public class AntigravityFacade {
 		writer.write(finale);
 		writer.flush();
 
+		log.debug(
+				"[Antigravity] Stream done: textChunks={}, toolCalls={}, hasToolUse={}",
+				outputTokens - toolIndex,
+				toolIndex,
+				hasToolUse
+		);
+
 		int latency = (int) (System.currentTimeMillis() - startTime);
 		logPublisher.publish(RequestLogEvent.builder()
 		                                    .virtualKeyId(keyId)

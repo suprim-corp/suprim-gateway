@@ -70,7 +70,15 @@ public final class ToolMapper {
 		List<Tool> result = new ArrayList<>(tools.size());
 		for (ResponsesRequest.Tool tool : tools) {
 			if (!"function".equals(tool.type())) {
-				log.debug("Skipping non-function tool: {}", tool);
+				log.debug(
+						"Skipping non-function tool: type={}, name={}, description.len={}, params={}, strict={}, additionalKeys={}",
+						tool.type(),
+						tool.name(),
+						tool.description() != null ? tool.description().length() : 0,
+						tool.parameters() != null,
+						tool.strict(),
+						tool.additionalProperties() != null ? tool.additionalProperties().keySet() : "null"
+				);
 				continue;
 			}
 			result.add(Tool.builder()
