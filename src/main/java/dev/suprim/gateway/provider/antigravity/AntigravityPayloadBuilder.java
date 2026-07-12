@@ -173,13 +173,20 @@ class AntigravityPayloadBuilder {
 		}
 	}
 
+	/**
+	 * Allowlist of JSON Schema fields accepted by the Antigravity (cloudcode-pa) API.
+	 * Fields outside this set cause 400 errors and must be stripped before sending.
+	 *
+	 * @see <a href="https://github.com/NoeFabris/opencode-antigravity-auth/blob/main/docs/ANTIGRAVITY_API_SPEC.md">Antigravity API Spec</a>
+	 */
 	private static final Set<String> SUPPORTED_SCHEMA_FIELDS = Set.of(
 			"type", "title", "description",
 			"properties", "required", "additionalProperties",
 			"enum", "format",
 			"minimum", "maximum",
 			"items", "prefixItems", "minItems", "maxItems",
-			"nullable"
+			"nullable",
+			"anyOf", "allOf", "oneOf"
 	);
 
 	private static JsonNode stripUnsupportedFields(JsonNode node) {
@@ -216,16 +223,20 @@ class AntigravityPayloadBuilder {
 		return node;
 	}
 
+	/**
+	 * Determines if a JSON object node is a schema definition (strip-eligible)
+	 * vs a properties map (which just maps names to child schemas).
+	 * A properties map like {@code {element: {type:string}, target: {type:string}}}
+	 * must NOT be treated as a schema node even if one property is named "type".
+	 */
 	private static boolean isSchemaNode(ObjectNode obj) {
 		JsonNode typeNode = obj.get("type");
-		if (typeNode != null && typeNode.isTextual()) {
+		if (typeNode != null && typeNode.isString()) {
 			return true;
 		}
 		if (obj.has("items") && !obj.has("type")) {
 			JsonNode itemsNode = obj.get("items");
-			if (itemsNode != null && itemsNode.isObject()) {
-				return true;
-			}
+			return itemsNode != null && itemsNode.isObject();
 		}
 		return false;
 	}
