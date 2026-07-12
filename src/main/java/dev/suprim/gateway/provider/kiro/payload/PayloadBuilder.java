@@ -71,8 +71,6 @@ public class PayloadBuilder {
 			history = reordered;
 		}
 
-		fixToolResultMismatches(history);
-
 		if (history.size() > 2) {
 			log.debug("[Payload] history[0] keys: {}", history.get(0).propertyNames());
 			log.debug("[Payload] history[1] keys: {}", history.get(1).propertyNames());
@@ -216,6 +214,9 @@ public class PayloadBuilder {
 			if (history.isEmpty()) conversationState.remove("history");
 			json = mapper.writeValueAsString(root);
 		}
+
+		fixToolResultMismatches(history);
+		json = mapper.writeValueAsString(root);
 
 		return json;
 	}
