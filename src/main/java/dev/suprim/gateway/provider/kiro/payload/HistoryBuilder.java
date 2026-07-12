@@ -3,6 +3,7 @@ package dev.suprim.gateway.provider.kiro.payload;
 import dev.suprim.gateway.proxy.ContentExtractor;
 import dev.suprim.gateway.proxy.Message;
 import lombok.Builder;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -128,14 +129,30 @@ final class HistoryBuilder {
 			currentToolResults.add(msg);
 
 			if (!nextIsTool && !isLast) {
+				int allowed = countPreviousToolUses();
+				List<Message> capped = allowed > 0
+						? currentToolResults.subList(
+						0,
+						Math.min(currentToolResults.size(), allowed)
+				)
+						: currentToolResults;
 				history.add(
-						ToolResultEntryBuilder.build(
-								currentToolResults,
-								modelId
-						)
+						ToolResultEntryBuilder.build(capped, modelId)
 				);
 				currentToolResults = null;
 			}
+		}
+
+		private int countPreviousToolUses() {
+			for (int i = history.size() - 1; i >= 0; i--) {
+				JsonNode entry = history.get(i);
+				JsonNode assistantMsg = entry.get("assistantResponseMessage");
+				if (assistantMsg != null) {
+					JsonNode toolUses = assistantMsg.get("toolUses");
+					return toolUses != null ? toolUses.size() : 0;
+				}
+			}
+			return 0;
 		}
 	}
 }
