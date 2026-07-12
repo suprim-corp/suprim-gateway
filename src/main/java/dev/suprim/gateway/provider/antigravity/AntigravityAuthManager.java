@@ -7,7 +7,6 @@ import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
@@ -109,18 +108,6 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 		return AntigravityHttpClient.listModels(getAccessToken(), projectId);
 	}
 
-	@Scheduled(fixedDelay = 3_000_000)
-	void scheduledRefresh() {
-		if (!isConnected()) return;
-		try {
-			log.info("[Antigravity] Scheduled token refresh");
-			refresh();
-			log.info("[Antigravity] Scheduled refresh OK, expires at {}", expiresAt);
-		} catch (Exception e) {
-			log.warn("[Antigravity] Scheduled refresh failed: {}", e.getMessage());
-		}
-	}
-
 	void refresh() {
 		refreshLock.lock();
 		try {
@@ -158,16 +145,17 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 	}
 
 	private void persistToStore() {
-		StoredAccount account = StoredAccount.builder()
-		                                     .name(email)
-		                                     .provider(Antigravity.PROVIDER)
-		                                     .clientId(Antigravity.CLIENT_ID)
-		                                     .clientSecret(Antigravity.CLIENT_SECRET)
-		                                     .accessToken(accessToken)
-		                                     .refreshToken(refreshToken)
-		                                     .expiresAt(expiresAt)
-		                                     .projectId(projectId)
-		                                     .build();
+		StoredAccount account =
+				StoredAccount.builder()
+				             .name(email)
+				             .provider(Antigravity.PROVIDER)
+				             .clientId(Antigravity.CLIENT_ID)
+				             .clientSecret(Antigravity.CLIENT_SECRET)
+				             .accessToken(accessToken)
+				             .refreshToken(refreshToken)
+				             .expiresAt(expiresAt)
+				             .projectId(projectId)
+				             .build();
 		credentialStore.upsert(account);
 	}
 }

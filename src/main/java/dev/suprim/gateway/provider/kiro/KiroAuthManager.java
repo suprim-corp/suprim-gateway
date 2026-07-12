@@ -14,7 +14,6 @@ import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.net.http.HttpClient;
@@ -147,19 +146,6 @@ public class KiroAuthManager implements ProviderAuthManager {
 
 	String getApiRegion() {
 		return config.apiRegion();
-	}
-
-	@Scheduled(fixedDelay = 2_700_000)
-		// 45 phút
-	void scheduledRefresh() {
-		if (refreshToken == null) return;
-		try {
-			log.info("[Auth] Scheduled token refresh");
-			refresh();
-			log.info("[Auth] Scheduled refresh OK, expires at {}", expiresAt);
-		} catch (Exception e) {
-			log.warn("[Auth] Scheduled refresh failed: {}", e.getMessage());
-		}
 	}
 
 	private void refresh() throws Exception {
