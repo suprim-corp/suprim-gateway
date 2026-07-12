@@ -187,6 +187,8 @@ public class PayloadBuilder {
 				json.length(), history.size(), hasTools, hasToolResults
 		);
 
+		validateToolUseMismatch(history);
+
 		while (json.length() > MAX_PAYLOAD_BYTES && history.size() > 2) {
 			int removeIdx =
 					!systemPrompt.isEmpty() && history.size() > 2 ? 2 : 0;
@@ -253,5 +255,32 @@ public class PayloadBuilder {
 			}
 		}
 		return 0;
+	}
+
+	private void validateToolUseMismatch(ArrayNode history) {
+		int lastToolUseCount = 0;
+		for (int i = 0; i < history.size(); i++) {
+			JsonNode entry = history.get(i);
+			JsonNode assistantMsg = entry.get("assistantResponseMessage");
+			if (assistantMsg != null) {
+				JsonNode toolUses = assistantMsg.get("toolUses");
+				lastToolUseCount = toolUses != null ? toolUses.size() : 0;
+				continue;
+			}
+			JsonNode userMsg = entry.get("userInputMessage");
+			if (userMsg != null) {
+				JsonNode ctx = userMsg.get("userInputMessageContext");
+				if (ctx != null) {
+					JsonNode toolResults = ctx.get("toolResults");
+					if (toolResults != null && toolResults.size() > lastToolUseCount) {
+						log.warn(
+								"[Payload] MISMATCH at history[{}]: toolResults={} > previousToolUses={}",
+								i, toolResults.size(), lastToolUseCount
+						);
+					}
+				}
+				lastToolUseCount = 0;
+			}
+		}
 	}
 }
