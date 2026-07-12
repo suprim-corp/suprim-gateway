@@ -130,15 +130,15 @@ final class HistoryBuilder {
 
 			if (!nextIsTool && !isLast) {
 				int allowed = countPreviousToolUses();
-				List<Message> capped = allowed > 0
-						? currentToolResults.subList(
-						0,
-						Math.min(currentToolResults.size(), allowed)
-				)
-						: currentToolResults;
-				history.add(
-						ToolResultEntryBuilder.build(capped, modelId)
-				);
+				if (allowed > 0) {
+					List<Message> capped = currentToolResults.subList(
+							0,
+							Math.min(currentToolResults.size(), allowed)
+					);
+					history.add(
+							ToolResultEntryBuilder.build(capped, modelId)
+					);
+				}
 				currentToolResults = null;
 			}
 		}
