@@ -73,6 +73,25 @@ public class PayloadBuilder {
 
 		fixToolResultMismatches(history);
 
+		if (history.size() > 2) {
+			log.debug("[Payload] history[0] keys: {}", history.get(0).propertyNames());
+			log.debug("[Payload] history[1] keys: {}", history.get(1).propertyNames());
+			JsonNode entry2 = history.get(2);
+			log.debug("[Payload] history[2] keys: {}", entry2.propertyNames());
+			JsonNode userMsg2 = entry2.get("userInputMessage");
+			if (userMsg2 != null) {
+				String content2 = userMsg2.has("content") ? userMsg2.get("content").asString() : "null";
+				log.debug("[Payload] history[2] content (first 100): {}", content2.length() > 100 ? content2.substring(0, 100) : content2);
+				JsonNode ctx2 = userMsg2.get("userInputMessageContext");
+				if (ctx2 != null) {
+					log.debug("[Payload] history[2] ctx keys: {}", ctx2.propertyNames());
+					if (ctx2.has("toolResults")) {
+						log.debug("[Payload] history[2] toolResults count: {}", ctx2.get("toolResults").size());
+					}
+				}
+			}
+		}
+
 		String currentContent = resolveCurrentContent(
 				historyResult.currentContent(),
 				historyResult.currentImages(),
@@ -287,6 +306,15 @@ public class PayloadBuilder {
 							}
 							((ObjectNode) ctx).set("toolResults", capped);
 						}
+					}
+				}
+				// Check content for "Tool results:" pattern that Bedrock might interpret
+				JsonNode contentNode = userMsg.get("content");
+				if (contentNode != null && lastToolUseCount == 0) {
+					String content = contentNode.asString();
+					if (content != null && content.startsWith("Tool results:")) {
+						log.warn("[Payload] Clearing 'Tool results:' content at history[{}] (no preceding toolUses)", i);
+						((ObjectNode) userMsg).put("content", ".");
 					}
 				}
 				lastToolUseCount = 0;
