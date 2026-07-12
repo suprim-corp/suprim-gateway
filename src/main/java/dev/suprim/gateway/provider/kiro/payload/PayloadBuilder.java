@@ -62,7 +62,6 @@ public class PayloadBuilder {
 
 		if (!systemPrompt.isEmpty()) {
 			HistoryBuilder.addSystemPriming(history, systemPrompt, modelId);
-			// Priming goes at start — shift existing history after it
 			ArrayNode reordered = mapper.createArrayNode();
 			reordered.add(history.get(history.size() - 2));
 			reordered.add(history.get(history.size() - 1));
@@ -71,6 +70,8 @@ public class PayloadBuilder {
 			}
 			history = reordered;
 		}
+
+		fixToolResultMismatches(history);
 
 		String currentContent = resolveCurrentContent(
 				historyResult.currentContent(),
@@ -255,6 +256,42 @@ public class PayloadBuilder {
 			}
 		}
 		return 0;
+	}
+
+	private void fixToolResultMismatches(ArrayNode history) {
+		int lastToolUseCount = 0;
+		for (int i = 0; i < history.size(); i++) {
+			JsonNode entry = history.get(i);
+			JsonNode assistantMsg = entry.get("assistantResponseMessage");
+			if (assistantMsg != null) {
+				JsonNode toolUses = assistantMsg.get("toolUses");
+				lastToolUseCount = toolUses != null ? toolUses.size() : 0;
+				continue;
+			}
+			JsonNode userMsg = entry.get("userInputMessage");
+			if (userMsg != null) {
+				JsonNode ctx = userMsg.get("userInputMessageContext");
+				if (ctx != null && ctx.has("toolResults")) {
+					JsonNode toolResults = ctx.get("toolResults");
+					if (toolResults != null && toolResults.size() > lastToolUseCount) {
+						log.warn(
+								"[Payload] Fixing mismatch at history[{}]: toolResults={} > toolUses={}",
+								i, toolResults.size(), lastToolUseCount
+						);
+						if (lastToolUseCount == 0) {
+							((ObjectNode) ctx).remove("toolResults");
+						} else {
+							ArrayNode capped = mapper.createArrayNode();
+							for (int j = 0; j < lastToolUseCount; j++) {
+								capped.add(toolResults.get(j));
+							}
+							((ObjectNode) ctx).set("toolResults", capped);
+						}
+					}
+				}
+				lastToolUseCount = 0;
+			}
+		}
 	}
 
 	private void validateToolUseMismatch(ArrayNode history) {
