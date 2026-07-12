@@ -19,6 +19,7 @@ import java.io.PrintWriter;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -28,6 +29,7 @@ import tools.jackson.databind.ObjectMapper;
 public class AntigravityFacade {
 
 	private static final ObjectMapper MAPPER = new ObjectMapper();
+	private static final Map<String, String> THOUGHT_SIGNATURES = new ConcurrentHashMap<>();
 	private final AntigravityAuthManager authManager;
 	private final RequestLogPublisher logPublisher;
 	private final StreamConverter streamConverter;
@@ -58,7 +60,8 @@ public class AntigravityFacade {
 		String payload = AntigravityPayloadBuilder.build(
 				request,
 				model,
-				projectId
+				projectId,
+				THOUGHT_SIGNATURES
 		);
 
 		log.debug(
@@ -167,7 +170,11 @@ public class AntigravityFacade {
 		int toolIndex = 0;
 
 		if (format == Format.ANTHROPIC) {
-			writer.write(streamConverter.toAnthropicPreamble(id, model, inputTokens));
+			writer.write(streamConverter.toAnthropicPreamble(
+					id,
+					model,
+					inputTokens
+			));
 			writer.flush();
 		}
 
@@ -179,7 +186,8 @@ public class AntigravityFacade {
 				String data = line.substring(6).trim();
 				if (data.isEmpty()) continue;
 
-				AntigravityStreamConverter.ParsedChunk parsed = AntigravityStreamConverter.parseChunk(data);
+				AntigravityStreamConverter.ParsedChunk parsed = AntigravityStreamConverter.parseChunk(
+						data);
 				if (parsed == null) continue;
 
 				if (parsed.text() != null && !parsed.text().isEmpty()) {
@@ -188,9 +196,16 @@ public class AntigravityFacade {
 					}
 
 					String chunk = switch (format) {
-						case ANTHROPIC -> streamConverter.toAnthropicDelta(parsed.text());
-						case OPENAI -> AntigravityStreamConverter.buildChunkPublic(id, model, parsed.text());
-						case RESPONSES -> streamConverter.toResponsesTextDelta(parsed.text());
+						case ANTHROPIC -> streamConverter.toAnthropicDelta(
+								parsed.text());
+						case OPENAI ->
+								AntigravityStreamConverter.buildChunkPublic(
+										id,
+										model,
+										parsed.text()
+								);
+						case RESPONSES -> streamConverter.toResponsesTextDelta(
+								parsed.text());
 					};
 					writer.write(chunk);
 					writer.flush();
@@ -203,17 +218,37 @@ public class AntigravityFacade {
 						firstTokenMs = System.currentTimeMillis() - startTime;
 					}
 					toolIndex++;
+					String toolCallId = parsed.functionCall().id() != null
+							? parsed.functionCall().id()
+							: "call_" + UUID.randomUUID().toString().replace(
+							"-",
+							""
+					).substring(0, 20);
+					if (parsed.thoughtSignature() != null) {
+						THOUGHT_SIGNATURES.put(
+								toolCallId,
+								parsed.thoughtSignature()
+						);
+					}
 					KiroEvent event = KiroEvent.toolUse(
 							parsed.functionCall().name(),
 							parsed.functionCall().args(),
-							parsed.functionCall().id() != null
-									? parsed.functionCall().id()
-									: "call_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20)
+							toolCallId
 					);
 					String chunk = switch (format) {
-						case ANTHROPIC -> streamConverter.toAnthropicToolUse(event, toolIndex);
-						case OPENAI -> streamConverter.toOpenAiChunk(event, model, id);
-						case RESPONSES -> streamConverter.toResponsesToolCall(event, toolIndex);
+						case ANTHROPIC -> streamConverter.toAnthropicToolUse(
+								event,
+								toolIndex
+						);
+						case OPENAI -> streamConverter.toOpenAiChunk(
+								event,
+								model,
+								id
+						);
+						case RESPONSES -> streamConverter.toResponsesToolCall(
+								event,
+								toolIndex
+						);
 					};
 					if (chunk != null) {
 						writer.write(chunk);
@@ -225,11 +260,21 @@ public class AntigravityFacade {
 		}
 
 		String finale = switch (format) {
-			case ANTHROPIC -> streamConverter.toAnthropicFinale(outputTokens, hasToolUse);
+			case ANTHROPIC -> streamConverter.toAnthropicFinale(
+					outputTokens,
+					hasToolUse
+			);
 			case OPENAI -> AntigravityStreamConverter.buildStopChunk(model, id)
 			               + AntigravityStreamConverter.buildDoneEvent();
 			case RESPONSES -> streamConverter.toResponsesTextDone("", id)
-			                  + streamConverter.toResponsesCompleted(id, model, "", List.of(), inputTokens, outputTokens);
+			                  + streamConverter.toResponsesCompleted(
+					id,
+					model,
+					"",
+					List.of(),
+					inputTokens,
+					outputTokens
+			);
 		};
 		writer.write(finale);
 		writer.flush();
@@ -313,7 +358,10 @@ public class AntigravityFacade {
 
 	private String generateId(Format format) {
 		return switch (format) {
-			case ANTHROPIC -> "msg_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+			case ANTHROPIC -> "msg_" + UUID.randomUUID().toString().replace(
+					"-",
+					""
+			).substring(0, 20);
 			case RESPONSES -> "resp_" + UUID.randomUUID();
 			default -> "chatcmpl-" + UUID.randomUUID();
 		};

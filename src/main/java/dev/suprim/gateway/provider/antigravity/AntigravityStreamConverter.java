@@ -16,7 +16,8 @@ class AntigravityStreamConverter {
 
 	@Builder
 	record ParsedChunk(
-			String text, FunctionCall functionCall, boolean finished
+			String text, FunctionCall functionCall, boolean finished,
+			String thoughtSignature
 	) {}
 
 	@Builder
@@ -51,6 +52,16 @@ class AntigravityStreamConverter {
 				return finished ? FINISHED : null;
 			}
 
+			// Extract thoughtSignature from any part that has it
+			String thoughtSignature = null;
+			for (int i = 0; i < parts.size(); i++) {
+				JsonNode part = parts.get(i);
+				if (part.has("thoughtSignature")) {
+					thoughtSignature = part.get("thoughtSignature").asString();
+					break;
+				}
+			}
+
 			JsonNode firstPart = parts.get(0);
 
 			if (firstPart.has("functionCall")) {
@@ -67,15 +78,22 @@ class AntigravityStreamConverter {
 						                              .build()
 				                  )
 				                  .finished(finished)
+				                  .thoughtSignature(thoughtSignature)
 				                  .build();
 			}
 
 			if (firstPart.has("text")) {
 				String text = firstPart.get("text").asString();
-				if (text.isEmpty() && finished) return FINISHED;
+				if (text.isEmpty() && finished) {
+					return ParsedChunk.builder()
+					                  .finished(true)
+					                  .thoughtSignature(thoughtSignature)
+					                  .build();
+				}
 				return ParsedChunk.builder()
 				                  .text(text)
 				                  .finished(finished)
+				                  .thoughtSignature(thoughtSignature)
 				                  .build();
 			}
 

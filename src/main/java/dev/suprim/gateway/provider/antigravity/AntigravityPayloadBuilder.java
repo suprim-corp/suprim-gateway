@@ -9,6 +9,7 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 class AntigravityPayloadBuilder {
@@ -16,7 +17,20 @@ class AntigravityPayloadBuilder {
 	private static final JsonMapper MAPPER = new JsonMapper();
 	private static final int DEFAULT_MAX_OUTPUT_TOKENS = 65536;
 
-	static String build(InternalRequest request, String model, String projectId) {
+	static String build(
+			InternalRequest request,
+			String model,
+			String projectId
+	) {
+		return build(request, model, projectId, Map.of());
+	}
+
+	static String build(
+			InternalRequest request,
+			String model,
+			String projectId,
+			Map<String, String> thoughtSignatures
+	) {
 		List<Message> messages = request.messages() != null
 				? request.messages()
 				: List.of();
@@ -43,7 +57,8 @@ class AntigravityPayloadBuilder {
 				continue;
 			}
 
-			if ("assistant".equals(role) && msg.toolCalls() != null && !msg.toolCalls().isEmpty()) {
+			if ("assistant".equals(role) && msg.toolCalls() != null &&
+			    !msg.toolCalls().isEmpty()) {
 				ObjectNode entry = contents.addObject();
 				entry.put("role", "model");
 				ArrayNode parts = entry.putArray("parts");
@@ -54,14 +69,22 @@ class AntigravityPayloadBuilder {
 					parts.addObject().put("text", text);
 				}
 				for (Message.ToolCall tc : msg.toolCalls()) {
-					if (tc.function() == null) continue;
-					ObjectNode fcNode = parts.addObject().putObject("functionCall");
+					if (tc.function() == null) {
+						continue;
+					}
+					ObjectNode fcPart = parts.addObject();
+					ObjectNode fcNode = fcPart.putObject("functionCall");
 					fcNode.put("name", tc.function().name());
 					String args = tc.function().arguments();
 					if (args != null && !args.isEmpty()) {
 						fcNode.set("args", MAPPER.readTree(args));
 					} else {
 						fcNode.putObject("args");
+					}
+					String sig = tc.id() !=
+					             null ? thoughtSignatures.get(tc.id()) : null;
+					if (sig != null) {
+						fcPart.put("thoughtSignature", sig);
 					}
 				}
 				continue;
@@ -71,8 +94,12 @@ class AntigravityPayloadBuilder {
 				ObjectNode entry = contents.addObject();
 				entry.put("role", "user");
 				ArrayNode parts = entry.putArray("parts");
-				ObjectNode frNode = parts.addObject().putObject("functionResponse");
-				frNode.put("name", msg.name() != null ? msg.name() : msg.toolCallId());
+				ObjectNode frNode = parts.addObject().putObject(
+						"functionResponse");
+				frNode.put(
+						"name",
+						msg.name() != null ? msg.name() : msg.toolCallId()
+				);
 				String content = Optional.ofNullable(msg.content())
 				                         .map(Object::toString)
 				                         .orElse("{}");
