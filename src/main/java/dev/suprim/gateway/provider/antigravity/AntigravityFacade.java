@@ -264,17 +264,26 @@ public class AntigravityFacade {
 					outputTokens,
 					hasToolUse
 			);
-			case OPENAI -> AntigravityStreamConverter.buildStopChunk(model, id)
-			               + AntigravityStreamConverter.buildDoneEvent();
-			case RESPONSES -> streamConverter.toResponsesTextDone("", id)
-			                  + streamConverter.toResponsesCompleted(
-					id,
-					model,
-					"",
-					List.of(),
-					inputTokens,
-					outputTokens
-			);
+			case OPENAI -> {
+				if (hasToolUse) {
+					yield AntigravityStreamConverter.buildDoneEvent();
+				} else {
+					yield AntigravityStreamConverter.buildStopChunk(model, id)
+					      + AntigravityStreamConverter.buildDoneEvent();
+				}
+			}
+			case RESPONSES -> {
+				if (hasToolUse) {
+					yield streamConverter.toResponsesCompleted(
+							id, model, "", List.of(), inputTokens, outputTokens
+					);
+				} else {
+					yield streamConverter.toResponsesTextDone("", id)
+					      + streamConverter.toResponsesCompleted(
+							id, model, "", List.of(), inputTokens, outputTokens
+					);
+				}
+			}
 		};
 		writer.write(finale);
 		writer.flush();
