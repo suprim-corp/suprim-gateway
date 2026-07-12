@@ -54,6 +54,7 @@ public class AntigravityFacade {
 		String projectId = authManager.getProjectId();
 		String payload = AntigravityPayloadBuilder.build(
 				request,
+				model,
 				projectId
 		);
 
@@ -164,7 +165,9 @@ public class AntigravityFacade {
 			while ((line = reader.readLine()) != null) {
 				if (!line.startsWith("data: ")) continue;
 				String data = line.substring(6).trim();
-				if (data.isEmpty()) continue;
+				if (data.isEmpty()) {
+					continue;
+				}
 
 				String chunk = AntigravityStreamConverter.convertChunk(
 						data,

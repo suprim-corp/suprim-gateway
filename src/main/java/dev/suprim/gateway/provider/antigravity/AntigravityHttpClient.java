@@ -32,8 +32,8 @@ class AntigravityHttpClient {
 	@Builder
 	record AntigravityResponse(int status, InputStream body) {}
 
-	static String buildUrl(String model) {
-		return Antigravity.CLOUDCODE_MODELS + model + ":streamGenerateContent?alt=sse";
+	static String buildUrl() {
+		return Antigravity.CLOUDCODE_BASE + "/v1internal:streamGenerateContent?alt=sse";
 	}
 
 	static Map<String, String> buildHeaders(String accessToken) {
@@ -129,7 +129,7 @@ class AntigravityHttpClient {
 			String payload,
 			String accessToken
 	) throws IOException {
-		String url = buildUrl(model);
+		String url = buildUrl();
 		Map<String, String> headers = buildHeaders(accessToken);
 
 		for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {

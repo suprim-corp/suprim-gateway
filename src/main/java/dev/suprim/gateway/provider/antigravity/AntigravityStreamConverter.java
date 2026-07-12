@@ -11,8 +11,15 @@ class AntigravityStreamConverter {
 	static String convertChunk(String geminiData, String model, String id) {
 		try {
 			JsonNode root = MAPPER.readTree(geminiData);
-			JsonNode candidates = root.get("candidates");
-			if (candidates == null || candidates.isEmpty()) return null;
+			JsonNode responseNode = root.get("response");
+			if (responseNode == null) {
+				responseNode = root;
+			}
+
+			JsonNode candidates = responseNode.get("candidates");
+			if (candidates == null || candidates.isEmpty()) {
+				return null;
+			}
 
 			JsonNode candidate = candidates.get(0);
 			JsonNode content = candidate.get("content");
@@ -27,6 +34,10 @@ class AntigravityStreamConverter {
 			String finishReason = null;
 			if (candidate.has("finishReason") && !candidate.get("finishReason").isNull()) {
 				finishReason = mapFinishReason(candidate.get("finishReason").asString());
+			}
+
+			if (text.isEmpty() && finishReason != null) {
+				return null;
 			}
 
 			return buildChunk(id, model, text, finishReason);

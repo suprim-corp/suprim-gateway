@@ -2,7 +2,7 @@ package dev.suprim.gateway.provider.antigravity;
 
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.Message;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -11,16 +11,21 @@ import java.util.Optional;
 
 class AntigravityPayloadBuilder {
 
-	private static final ObjectMapper MAPPER = new ObjectMapper();
+	private static final JsonMapper MAPPER = new JsonMapper();
 	private static final int DEFAULT_MAX_OUTPUT_TOKENS = 65536;
 
-	static String build(InternalRequest request, String projectId) {
+	static String build(InternalRequest request, String model, String projectId) {
 		List<Message> messages = request.messages() != null
 				? request.messages()
 				: List.of();
 
 		ObjectNode root = MAPPER.createObjectNode();
-		ArrayNode contents = root.putArray("contents");
+		root.put("model", model);
+		root.put("project", projectId);
+		root.put("userAgent", "antigravity");
+
+		ObjectNode reqNode = root.putObject("request");
+		ArrayNode contents = reqNode.putArray("contents");
 		ObjectNode systemInstruction = null;
 
 		for (Message msg : messages) {
@@ -44,10 +49,10 @@ class AntigravityPayloadBuilder {
 		}
 
 		if (systemInstruction != null) {
-			root.set("systemInstruction", systemInstruction);
+			reqNode.set("systemInstruction", systemInstruction);
 		}
 
-		ObjectNode generationConfig = root.putObject("generationConfig");
+		ObjectNode generationConfig = reqNode.putObject("generationConfig");
 		if (request.maxTokens() != null) {
 			generationConfig.put("maxOutputTokens", request.maxTokens());
 		} else {
@@ -57,8 +62,6 @@ class AntigravityPayloadBuilder {
 		if (request.temperature() != null) {
 			generationConfig.put("temperature", request.temperature());
 		}
-
-		root.put("project", projectId);
 
 		try {
 			return MAPPER.writeValueAsString(root);
