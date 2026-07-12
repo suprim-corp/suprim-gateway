@@ -7,66 +7,63 @@ import static org.junit.jupiter.api.Assertions.*;
 class AntigravityStreamConverterTest {
 
 	@Test
-	void convertChunk_textContent() {
+	void extractText_fromResponseWrapper() {
 		String geminiData = """
-				{"candidates":[{"content":{"parts":[{"text":"Hello world"}],"role":"model"}}]}""";
+				{"response":{"candidates":[{"content":{"parts":[{"text":"Hello world"}],"role":"model"}}]}}""";
 
-		String openAiChunk = AntigravityStreamConverter.convertChunk(geminiData, "gemini-2.5-flash", "chatcmpl-123");
+		String text = AntigravityStreamConverter.extractText(geminiData);
 
-		assertTrue(openAiChunk.contains("\"delta\":{\"content\":\"Hello world\"}"));
-		assertTrue(openAiChunk.contains("\"model\":\"gemini-2.5-flash\""));
-		assertTrue(openAiChunk.contains("\"id\":\"chatcmpl-123\""));
-		assertTrue(openAiChunk.contains("\"object\":\"chat.completion.chunk\""));
+		assertEquals("Hello world", text);
 	}
 
 	@Test
-	void convertChunk_finishReasonStop() {
-		String geminiData = """
-				{"candidates":[{"content":{"parts":[{"text":""}],"role":"model"},"finishReason":"STOP"}]}""";
-
-		String openAiChunk = AntigravityStreamConverter.convertChunk(geminiData, "gemini-2.5-flash", "chatcmpl-123");
-
-		assertTrue(openAiChunk.contains("\"finish_reason\":\"stop\""));
-	}
-
-	@Test
-	void convertChunk_finishReasonMaxTokens() {
-		String geminiData = """
-				{"candidates":[{"content":{"parts":[{"text":""}],"role":"model"},"finishReason":"MAX_TOKENS"}]}""";
-
-		String openAiChunk = AntigravityStreamConverter.convertChunk(geminiData, "gemini-2.5-flash", "id-1");
-
-		assertTrue(openAiChunk.contains("\"finish_reason\":\"length\""));
-	}
-
-	@Test
-	void convertChunk_finishReasonSafety() {
-		String geminiData = """
-				{"candidates":[{"content":{"parts":[{"text":""}],"role":"model"},"finishReason":"SAFETY"}]}""";
-
-		String openAiChunk = AntigravityStreamConverter.convertChunk(geminiData, "gemini-2.5-flash", "id-1");
-
-		assertTrue(openAiChunk.contains("\"finish_reason\":\"content_filter\""));
-	}
-
-	@Test
-	void convertChunk_noFinishReason_null() {
+	void extractText_fromRootCandidates() {
 		String geminiData = """
 				{"candidates":[{"content":{"parts":[{"text":"Hi"}],"role":"model"}}]}""";
 
-		String openAiChunk = AntigravityStreamConverter.convertChunk(geminiData, "gemini-2.5-flash", "id-1");
+		String text = AntigravityStreamConverter.extractText(geminiData);
 
-		assertTrue(openAiChunk.contains("\"finish_reason\":null"));
+		assertEquals("Hi", text);
 	}
 
 	@Test
-	void convertChunk_emptyCandidates_returnsNull() {
+	void extractText_emptyTextWithFinishReason_returnsNull() {
 		String geminiData = """
-				{"candidates":[]}""";
+				{"response":{"candidates":[{"content":{"parts":[{"text":""}],"role":"model"},"finishReason":"STOP"}]}}""";
 
-		String result = AntigravityStreamConverter.convertChunk(geminiData, "gemini-2.5-flash", "id-1");
+		String text = AntigravityStreamConverter.extractText(geminiData);
+
+		assertNull(text);
+	}
+
+	@Test
+	void extractText_emptyCandidates_returnsNull() {
+		String geminiData = """
+				{"response":{"candidates":[]}}""";
+
+		String result = AntigravityStreamConverter.extractText(geminiData);
 
 		assertNull(result);
+	}
+
+	@Test
+	void extractText_noParts_returnsNull() {
+		String geminiData = """
+				{"response":{"candidates":[{"content":{"role":"model"}}]}}""";
+
+		String result = AntigravityStreamConverter.extractText(geminiData);
+
+		assertNull(result);
+	}
+
+	@Test
+	void buildChunkPublic_correctFormat() {
+		String chunk = AntigravityStreamConverter.buildChunkPublic("chatcmpl-123", "gemini-2.5-flash", "Hello");
+
+		assertTrue(chunk.contains("\"delta\":{\"content\":\"Hello\"}"));
+		assertTrue(chunk.contains("\"model\":\"gemini-2.5-flash\""));
+		assertTrue(chunk.contains("\"id\":\"chatcmpl-123\""));
+		assertTrue(chunk.contains("\"finish_reason\":null"));
 	}
 
 	@Test

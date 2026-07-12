@@ -17,12 +17,15 @@ class AntigravityPayloadBuilderTest {
 				.messages(List.of(Message.of("user", "Hello")))
 				.build();
 
-		String json = AntigravityPayloadBuilder.build(request, "projects/test-123");
+		String json = AntigravityPayloadBuilder.build(request, "gemini-2.5-flash", "projects/test-123");
 
+		assertTrue(json.contains("\"request\""));
 		assertTrue(json.contains("\"contents\""));
 		assertTrue(json.contains("\"role\":\"user\""));
 		assertTrue(json.contains("\"text\":\"Hello\""));
 		assertTrue(json.contains("\"project\":\"projects/test-123\""));
+		assertTrue(json.contains("\"model\":\"gemini-2.5-flash\""));
+		assertTrue(json.contains("\"userAgent\":\"antigravity\""));
 	}
 
 	@Test
@@ -35,7 +38,7 @@ class AntigravityPayloadBuilderTest {
 				))
 				.build();
 
-		String json = AntigravityPayloadBuilder.build(request, "projects/p1");
+		String json = AntigravityPayloadBuilder.build(request, "gemini-2.5-flash", "projects/p1");
 
 		assertTrue(json.contains("\"systemInstruction\""));
 		assertTrue(json.contains("You are helpful"));
@@ -53,7 +56,7 @@ class AntigravityPayloadBuilderTest {
 				))
 				.build();
 
-		String json = AntigravityPayloadBuilder.build(request, "projects/p1");
+		String json = AntigravityPayloadBuilder.build(request, "gemini-2.5-flash", "projects/p1");
 
 		assertTrue(json.contains("\"role\":\"model\""));
 		assertFalse(json.contains("\"role\":\"assistant\""));
@@ -67,7 +70,7 @@ class AntigravityPayloadBuilderTest {
 				.maxTokens(1024)
 				.build();
 
-		String json = AntigravityPayloadBuilder.build(request, "projects/p1");
+		String json = AntigravityPayloadBuilder.build(request, "gemini-2.5-flash", "projects/p1");
 
 		assertTrue(json.contains("\"maxOutputTokens\":1024"));
 	}
@@ -79,7 +82,7 @@ class AntigravityPayloadBuilderTest {
 				.messages(List.of(Message.of("user", "Hi")))
 				.build();
 
-		String json = AntigravityPayloadBuilder.build(request, "projects/p1");
+		String json = AntigravityPayloadBuilder.build(request, "gemini-2.5-flash", "projects/p1");
 
 		assertTrue(json.contains("\"maxOutputTokens\":65536"));
 	}
@@ -92,8 +95,22 @@ class AntigravityPayloadBuilderTest {
 				.temperature(0.7)
 				.build();
 
-		String json = AntigravityPayloadBuilder.build(request, "projects/p1");
+		String json = AntigravityPayloadBuilder.build(request, "gemini-2.5-flash", "projects/p1");
 
 		assertTrue(json.contains("\"temperature\":0.7"));
+	}
+
+	@Test
+	void build_contentInsideRequestWrapper() {
+		InternalRequest request = InternalRequest.builder()
+				.model("gemini-2.5-flash")
+				.messages(List.of(Message.of("user", "Hi")))
+				.build();
+
+		String json = AntigravityPayloadBuilder.build(request, "gemini-2.5-flash", "projects/p1");
+
+		int requestIdx = json.indexOf("\"request\"");
+		int contentsIdx = json.indexOf("\"contents\"");
+		assertTrue(requestIdx < contentsIdx);
 	}
 }

@@ -10,20 +10,10 @@ class AntigravityHttpClientTest {
 
 	@Test
 	void buildUrl_correctFormat() {
-		String url = AntigravityHttpClient.buildUrl("gemini-2.5-flash");
+		String url = AntigravityHttpClient.buildUrl();
 
 		assertEquals(
-				"https://cloudcode-pa.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
-				url
-		);
-	}
-
-	@Test
-	void buildUrl_differentModel() {
-		String url = AntigravityHttpClient.buildUrl("gemini-2.5-pro");
-
-		assertEquals(
-				"https://cloudcode-pa.googleapis.com/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse",
+				"https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
 				url
 		);
 	}
