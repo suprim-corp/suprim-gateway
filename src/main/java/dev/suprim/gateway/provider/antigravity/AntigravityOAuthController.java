@@ -3,12 +3,10 @@ package dev.suprim.gateway.provider.antigravity;
 import dev.suprim.gateway.instants.Antigravity;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 
 import java.io.IOException;
 import java.net.URI;
@@ -31,82 +29,74 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 public class AntigravityOAuthController {
 
+	private static final String REDIRECT_URI = Antigravity.REDIRECT_URI;
 	private static final ObjectMapper MAPPER = new ObjectMapper();
-	private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
-	                                                        .connectTimeout(
-			                                                        Duration.ofSeconds(
-					                                                        10))
-	                                                        .build();
+	private static final HttpClient HTTP_CLIENT =
+			HttpClient.newBuilder()
+			          .connectTimeout(Duration.ofSeconds(10))
+			          .build();
 
 	private final AntigravityAuthManager authManager;
+	private final AntigravityLoopbackServer loopbackServer;
 
 	@GetMapping("/auth/antigravity")
-	String initiateOAuth(HttpServletRequest httpReq, HttpSession session) {
+	String initiateOAuth(HttpServletRequest httpReq) {
 		String codeVerifier = generateCodeVerifier();
-		session.setAttribute("ag_code_verifier", codeVerifier);
 		String codeChallenge = generateCodeChallenge(codeVerifier);
-		String redirectUri = buildRedirectUri(httpReq);
-		session.setAttribute("ag_redirect_uri", redirectUri);
+		String gatewayBase = buildGatewayBase(httpReq);
+
+		loopbackServer.start(
+				codeVerifier, gatewayBase, (code) -> {
+					try {
+						exchangeCodeAndStore(code, codeVerifier);
+						log.info("[Antigravity] OAuth complete via loopback");
+					} catch (Exception e) {
+						log.error(
+								"[Antigravity] Token exchange failed: {}",
+								e.getMessage()
+						);
+						throw new RuntimeException(e);
+					}
+				}
+		);
 
 		String url =
-				Antigravity.GOOGLE_AUTH_URL + "?client_id=" + encode(
-						Antigravity.CLIENT_ID) + "&redirect_uri=" +
-				encode(redirectUri) + "&response_type=code" + "&scope=" +
-				encode(Antigravity.OAUTH_SCOPE) + "&code_challenge=" +
-				encode(codeChallenge) + "&code_challenge_method=S256" +
-				"&access_type=offline" + "&prompt=consent";
+				Antigravity.GOOGLE_AUTH_URL + "?client_id=" +
+				encode(Antigravity.CLIENT_ID)
+				+ "&redirect_uri=" + encode(REDIRECT_URI)
+				+ "&response_type=code"
+				+ "&scope=" + encode(Antigravity.OAUTH_SCOPE)
+				+ "&code_challenge=" + encode(codeChallenge)
+				+ "&code_challenge_method=S256"
+				+ "&access_type=offline"
+				+ "&prompt=consent";
 
 		return "redirect:" + url;
 	}
 
-	@GetMapping("/callback/antigravity")
-	String handleCallback(
-			@RequestParam("code") String code,
-			HttpServletRequest httpReq,
-			HttpSession session
-	) {
-		String codeVerifier = (String) session.getAttribute("ag_code_verifier");
-		String redirectUri = (String) session.getAttribute("ag_redirect_uri");
-		session.removeAttribute("ag_code_verifier");
-		session.removeAttribute("ag_redirect_uri");
-
-		if (codeVerifier == null) {
-			log.error("[Antigravity] No code_verifier in session");
-			return "redirect:/?error=missing_verifier";
-		}
-		if (redirectUri == null) {
-			redirectUri = buildRedirectUri(httpReq);
-		}
-
-		try {
-			exchangeCodeAndStore(code, codeVerifier, redirectUri);
-			return "redirect:/?antigravity=connected";
-		} catch (Exception e) {
-			log.error(
-					"[Antigravity] OAuth callback failed: {}",
-					e.getMessage()
-			);
-			return "redirect:/?error=antigravity_auth_failed";
-		}
-	}
-
 	private void exchangeCodeAndStore(
 			String code,
-			String codeVerifier,
-			String redirectUri
+			String codeVerifier
 	) throws IOException {
 		String body =
-				"grant_type=authorization_code" + "&code=" + encode(code) +
-				"&redirect_uri=" + encode(redirectUri) + "&client_id=" + encode(
-						Antigravity.CLIENT_ID) + "&client_secret=" +
-				encode(Antigravity.CLIENT_SECRET) +
-				"&code_verifier=" + encode(codeVerifier);
+				"grant_type=authorization_code"
+				+ "&code=" + encode(code)
+				+ "&redirect_uri=" + encode(REDIRECT_URI)
+				+ "&client_id=" + encode(Antigravity.CLIENT_ID)
+				+ "&client_secret=" + encode(Antigravity.CLIENT_SECRET)
+				+ "&code_verifier=" + encode(codeVerifier);
 
-		HttpRequest request = HttpRequest.newBuilder().uri(URI.create(
-				Antigravity.GOOGLE_TOKEN_URL)).header(
-				"Content-Type",
-				"application/x-www-form-urlencoded"
-		).POST(HttpRequest.BodyPublishers.ofString(body)).build();
+		HttpRequest request =
+				HttpRequest.newBuilder()
+				           .uri(URI.create(Antigravity.GOOGLE_TOKEN_URL))
+				           .header(
+						           "Content-Type",
+						           "application/x-www-form-urlencoded"
+				           )
+				           .POST(
+						           HttpRequest.BodyPublishers.ofString(body)
+				           )
+				           .build();
 
 		try {
 			HttpResponse<String> response = HTTP_CLIENT.send(
@@ -116,13 +106,15 @@ public class AntigravityOAuthController {
 			if (response.statusCode() != 200) {
 				throw new IOException(
 						"Token exchange failed: " + response.statusCode() +
-						" " + response.body());
+						" " + response.body()
+				);
 			}
 
 			JsonNode json = MAPPER.readTree(response.body());
 			String accessToken = json.get("access_token").asString();
-			String refreshToken = json.has("refresh_token") ? json.get(
-					"refresh_token").asString() : null;
+			String refreshToken =
+					json.has("refresh_token") ? json.get("refresh_token")
+					                                .asString() : null;
 			int expiresIn = json.get("expires_in").asInt();
 			Instant expiresAt = Instant.now().plusSeconds(expiresIn);
 
@@ -135,7 +127,11 @@ public class AntigravityOAuthController {
 					projectId,
 					email
 			);
-			log.info("[Antigravity] OAuth complete, email={}, projectId={}", email, projectId);
+			log.info(
+					"[Antigravity] OAuth complete, email={}, projectId={}",
+					email,
+					projectId
+			);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			throw new IOException("Token exchange interrupted", e);
@@ -158,14 +154,26 @@ public class AntigravityOAuthController {
 		}
 	}
 
-	private static String buildRedirectUri(HttpServletRequest request) {
+	private static String buildGatewayBase(HttpServletRequest request) {
+		String forwardedProto = request.getHeader("X-Forwarded-Proto");
+		String forwardedHost = request.getHeader("X-Forwarded-Host");
+
+		if (forwardedProto != null && !forwardedProto.isEmpty()) {
+			String host = (forwardedHost != null && !forwardedHost.isEmpty())
+					? forwardedHost
+					: request.getServerName();
+			return forwardedProto + "://" + host;
+		}
+
 		String scheme = request.getScheme();
 		String host = request.getServerName();
 		int port = request.getServerPort();
 		boolean defaultPort = ("http".equals(scheme) && port == 80) ||
 		                      ("https".equals(scheme) && port == 443);
-		String base = scheme + "://" + host + (defaultPort ? "" : ":" + port);
-		return base + Antigravity.CALLBACK_PATH;
+		if (!defaultPort) {
+			host = host + ":" + port;
+		}
+		return scheme + "://" + host;
 	}
 
 	private static String encode(String value) {
@@ -176,10 +184,16 @@ public class AntigravityOAuthController {
 		try {
 			HttpRequest request = HttpRequest.newBuilder()
 			                                 .uri(URI.create(Antigravity.USERINFO_URL))
-			                                 .header("Authorization", "Bearer " + accessToken)
+			                                 .header(
+					                                 "Authorization",
+					                                 "Bearer " + accessToken
+			                                 )
 			                                 .GET()
 			                                 .build();
-			HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+			HttpResponse<String> response = HTTP_CLIENT.send(
+					request,
+					HttpResponse.BodyHandlers.ofString()
+			);
 			if (response.statusCode() == 200) {
 				JsonNode json = MAPPER.readTree(response.body());
 				JsonNode email = json.get("email");

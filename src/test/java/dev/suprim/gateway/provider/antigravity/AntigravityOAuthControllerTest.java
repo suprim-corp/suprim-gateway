@@ -1,16 +1,19 @@
 package dev.suprim.gateway.provider.antigravity;
 
+import dev.suprim.gateway.instants.Antigravity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import dev.suprim.gateway.provider.CredentialStore;
 
 import java.nio.file.Path;
+import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -20,14 +23,14 @@ class AntigravityOAuthControllerTest {
 	Path tempDir;
 
 	private MockMvc mockMvc;
-	private AntigravityAuthManager authManager;
 
 	@BeforeEach
 	void setUp() {
 		Path storePath = tempDir.resolve("credentials.json");
 		CredentialStore store = new CredentialStore(storePath);
-		authManager = new AntigravityAuthManager(store);
-		AntigravityOAuthController controller = new AntigravityOAuthController(authManager);
+		AntigravityAuthManager authManager = new AntigravityAuthManager(store);
+		AntigravityLoopbackServer loopbackServer = mock(AntigravityLoopbackServer.class);
+		AntigravityOAuthController controller = new AntigravityOAuthController(authManager, loopbackServer);
 		mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 	}
 
@@ -45,7 +48,7 @@ class AntigravityOAuthControllerTest {
 		                            .getResponse()
 		                            .getRedirectedUrl();
 
-		assert redirectUrl != null;
+		assertNotNull(redirectUrl);
 		assertTrue(redirectUrl.contains("client_id="));
 		assertTrue(redirectUrl.contains("redirect_uri="));
 		assertTrue(redirectUrl.contains("code_challenge="));
@@ -56,33 +59,14 @@ class AntigravityOAuthControllerTest {
 	}
 
 	@Test
-	void initiateOAuth_storesCodeVerifierInSession() throws Exception {
-		MockHttpSession session = new MockHttpSession();
-		mockMvc.perform(get("/auth/antigravity").session(session));
-
-		Object verifier = session.getAttribute("ag_code_verifier");
-		assertNotNull(verifier);
-		assertTrue(((String) verifier).length() >= 43);
-	}
-
-	@Test
-	void initiateOAuth_redirectUriUsesRequestPort() throws Exception {
+	void initiateOAuth_usesFixedRedirectUri() throws Exception {
 		String redirectUrl = mockMvc.perform(get("/auth/antigravity"))
 		                            .andReturn()
 		                            .getResponse()
 		                            .getRedirectedUrl();
 
-		assert redirectUrl != null;
-		// MockMvc defaults to localhost:80, so redirect_uri should be http://localhost/callback/antigravity
-		assertTrue(redirectUrl.contains("redirect_uri=http"));
-		assertTrue(redirectUrl.contains("callback%2Fantigravity") || redirectUrl.contains("/callback/antigravity"));
-	}
-
-	private static void assertTrue(boolean condition) {
-		org.junit.jupiter.api.Assertions.assertTrue(condition);
-	}
-
-	private static void assertNotNull(Object obj) {
-		org.junit.jupiter.api.Assertions.assertNotNull(obj);
+		assertNotNull(redirectUrl);
+		String encodedRedirectUri = java.net.URLEncoder.encode(Antigravity.REDIRECT_URI, java.nio.charset.StandardCharsets.UTF_8);
+		assertTrue(redirectUrl.contains("redirect_uri=" + encodedRedirectUri));
 	}
 }
