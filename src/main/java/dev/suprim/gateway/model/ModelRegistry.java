@@ -192,11 +192,20 @@ public class ModelRegistry {
 			case "ANTIGRAVITY" ->
 					safeListModels(() -> antigravityAuthManager.listModels()
 					                                           .stream()
-					                                           .map(m -> Map.<String, Object>of(
-									                                           "id",
-									                                           "ag/" +
-									                                           m.get("id")
-							                                           )
+					                                           .map(m -> {
+								                                           Map<String, Object> item = new LinkedHashMap<>();
+								                                           item.put(
+										                                           "id",
+										                                           "ag/" +
+										                                           m.get("id")
+								                                           );
+								                                           if (m.containsKey("quota"))
+									                                           item.put(
+											                                           "quota",
+											                                           m.get("quota")
+									                                           );
+								                                           return item;
+							                                           }
 					                                           )
 					                                           .toList()
 					);
