@@ -185,7 +185,7 @@ class AntigravityPayloadBuilder {
 	private static JsonNode stripUnsupportedFields(JsonNode node) {
 		if (node.isObject()) {
 			ObjectNode obj = (ObjectNode) node;
-			if (obj.has("type") || obj.has("properties") || obj.has("items")) {
+			if (isSchemaNode(obj)) {
 				List<String> toRemove = new ArrayList<>();
 				for (String fieldName : obj.propertyNames()) {
 					if (!SUPPORTED_SCHEMA_FIELDS.contains(fieldName)) {
@@ -214,5 +214,19 @@ class AntigravityPayloadBuilder {
 			}
 		}
 		return node;
+	}
+
+	private static boolean isSchemaNode(ObjectNode obj) {
+		JsonNode typeNode = obj.get("type");
+		if (typeNode != null && typeNode.isTextual()) {
+			return true;
+		}
+		if (obj.has("items") && !obj.has("type")) {
+			JsonNode itemsNode = obj.get("items");
+			if (itemsNode != null && itemsNode.isObject()) {
+				return true;
+			}
+		}
+		return false;
 	}
 }
