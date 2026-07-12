@@ -15,7 +15,7 @@ import java.util.Map;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record CompletionsRequest(
 		@NotBlank String model,
-		@NotNull @Valid List<Message> messages,
+		@NotNull List<@Valid Message> messages,
 		Boolean stream,
 		Double temperature,
 		@JsonProperty("top_p") Double topP,
@@ -25,7 +25,7 @@ public record CompletionsRequest(
 		@JsonProperty("frequency_penalty") Double frequencyPenalty,
 		@JsonProperty("presence_penalty") Double presencePenalty,
 		@JsonProperty("logit_bias") Map<String, Integer> logitBias,
-		@Valid List<Tool> tools,
+		List<@Valid Tool> tools,
 		@JsonProperty("tool_choice") JsonNode toolChoice,
 		@JsonProperty("response_format") JsonNode responseFormat,
 		String user,
