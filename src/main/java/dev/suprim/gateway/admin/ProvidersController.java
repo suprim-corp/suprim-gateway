@@ -74,7 +74,6 @@ class ProvidersController {
 			return List.of();
 		}
 		StoredAccount account = accounts.get(index);
-		String provider = account.provider();
-		return modelRegistry.getModelsForProvider(provider);
+		return modelRegistry.getModelsForProvider(account);
 	}
 }

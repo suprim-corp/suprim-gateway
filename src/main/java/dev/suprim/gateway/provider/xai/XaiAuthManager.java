@@ -93,6 +93,13 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 		return XaiHttpClient.listModels(getAccessToken());
 	}
 
+	public List<Map<String, Object>> listModels(StoredAccount account) throws IOException {
+		if (account.accessToken() == null) {
+			return List.of();
+		}
+		return XaiHttpClient.listModels(account.accessToken());
+	}
+
 	void refresh() {
 		refreshLock.lock();
 		try {

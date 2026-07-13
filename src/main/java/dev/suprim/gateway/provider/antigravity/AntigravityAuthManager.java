@@ -109,6 +109,13 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 		return AntigravityHttpClient.listModels(getAccessToken(), projectId);
 	}
 
+	public List<Map<String, Object>> listModels(StoredAccount account) throws IOException {
+		if (account.accessToken() == null) {
+			return List.of();
+		}
+		return AntigravityHttpClient.listModels(account.accessToken(), account.projectId());
+	}
+
 	void refresh() {
 		refreshLock.lock();
 		try {
