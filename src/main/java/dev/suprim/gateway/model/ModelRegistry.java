@@ -38,7 +38,8 @@ public class ModelRegistry {
 						               Collectors.toMap(
 								               StoredAccount::provider,
 								               a -> a,
-								               (first, second) -> first
+								               (first, second) ->
+										               "api_key".equals(second.authType()) ? second : first
 						               )
 				               )
 				               .values()
