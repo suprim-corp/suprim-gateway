@@ -26,7 +26,8 @@ public class OpenAiRelayHandler {
 	public record StreamResult(
 			int promptTokens,
 			int completionTokens,
-			Long firstTokenMs
+			Long firstTokenMs,
+			boolean hasToolUse
 	) {}
 
 	public StreamResult relayStream(
@@ -43,17 +44,24 @@ public class OpenAiRelayHandler {
 		PrintWriter writer = httpRes.getWriter();
 
 		boolean responsesFormat = format == Format.RESPONSES;
+		boolean anthropicFormat = format == Format.ANTHROPIC;
 		String responseId = responsesFormat
 				? "resp_" + UUID.randomUUID()
 				                .toString()
 				                .replace("-", "")
 				                .substring(0, 24)
 				: null;
+		String msgId = anthropicFormat
+				? "msg_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20)
+				: null;
 
 		if (responsesFormat) {
 			writer.write(streamConverter.toResponsesCreated(responseId, model));
 			writer.write(streamConverter.toResponsesOutputItemAdded(responseId));
 			writer.write(streamConverter.toResponsesContentPartAdded());
+			writer.flush();
+		} else if (anthropicFormat) {
+			writer.write(streamConverter.toAnthropicPreamble(msgId, model, inputTokens));
 			writer.flush();
 		}
 
@@ -73,7 +81,7 @@ public class OpenAiRelayHandler {
 				}
 				String data = line.substring(6).trim();
 				if ("[DONE]".equals(data)) {
-					if (!responsesFormat) {
+					if (!responsesFormat && !anthropicFormat) {
 						writer.write(line + "\n\n");
 						writer.flush();
 					}
@@ -97,12 +105,25 @@ public class OpenAiRelayHandler {
 					if (toolCall != null) {
 						toolCalls.add(toolCall);
 					}
+				} else if (anthropicFormat) {
+					String delta = extractContentDelta(data);
+					if (delta != null && !delta.isEmpty()) {
+						contentBuilder.append(delta);
+						writer.write(streamConverter.toAnthropicDelta(delta));
+						writer.flush();
+					}
+					ToolCallChunk toolCall = extractToolCall(data);
+					if (toolCall != null) {
+						toolCalls.add(toolCall);
+					}
 				} else {
 					writer.write(line + "\n\n");
 					writer.flush();
 				}
 			}
 		}
+
+		boolean hasToolUse = !toolCalls.isEmpty();
 
 		if (responsesFormat) {
 			int outTokens = completionTokens != null ? completionTokens : 0;
@@ -138,12 +159,29 @@ public class OpenAiRelayHandler {
 					)
 			);
 			writer.flush();
+		} else if (anthropicFormat) {
+			int outTokens = completionTokens != null ? completionTokens : 0;
+
+			int toolIndex = 1;
+			for (ToolCallChunk tc : toolCalls) {
+				KiroEvent toolEvent = KiroEvent.toolUse(
+						tc.name(),
+						tc.arguments(),
+						tc.id()
+				);
+				writer.write(streamConverter.toAnthropicToolUse(toolEvent, toolIndex));
+				toolIndex++;
+			}
+
+			writer.write(streamConverter.toAnthropicFinale(outTokens, hasToolUse));
+			writer.flush();
 		}
 
 		return new StreamResult(
 				promptTokens != null ? promptTokens : inputTokens,
 				completionTokens != null ? completionTokens : 0,
-				firstTokenMs
+				firstTokenMs,
+				hasToolUse
 		);
 	}
 
@@ -168,6 +206,13 @@ public class OpenAiRelayHandler {
 					responseId, model, content, promptTokens, completionTokens
 			);
 			httpRes.getWriter().write(MAPPER.writeValueAsString(responsesBody));
+		} else if (format == Format.ANTHROPIC) {
+			String content = extractFullContent(body);
+			String msgId = "msg_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+			Object anthropicBody = streamConverter.toAnthropicNonStreaming(
+					msgId, model, content, promptTokens, completionTokens
+			);
+			httpRes.getWriter().write(MAPPER.writeValueAsString(anthropicBody));
 		} else {
 			httpRes.getWriter().write(body);
 		}
