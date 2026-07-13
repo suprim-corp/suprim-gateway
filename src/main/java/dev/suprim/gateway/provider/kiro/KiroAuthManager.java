@@ -86,10 +86,11 @@ public class KiroAuthManager implements ProviderAuthManager {
 			}
 			loadAccountName();
 			log.info(
-					"[Kiro] Initialized from credential store: type={}, region={}, apiRegion={}",
+					"[Kiro] Initialized from credential store: type={}, region={}, apiRegion={}, profileArn={}",
 					authType,
 					config.region(),
-					config.apiRegion()
+					config.apiRegion(),
+					profileArn
 			);
 			return;
 		}
