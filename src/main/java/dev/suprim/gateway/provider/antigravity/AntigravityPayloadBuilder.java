@@ -16,6 +16,8 @@ import java.util.Set;
 
 import lombok.extern.slf4j.Slf4j;
 
+import static java.util.Objects.nonNull;
+
 @Slf4j
 class AntigravityPayloadBuilder {
 
@@ -73,47 +75,86 @@ class AntigravityPayloadBuilder {
 				if (!text.isEmpty()) {
 					parts.addObject().put("text", text);
 				}
-				for (Message.ToolCall tc : msg.toolCalls()) {
-					if (tc.function() == null) {
-						continue;
+				boolean allHaveSignatures = msg.toolCalls().stream()
+				                               .filter(
+						                               tc -> nonNull(tc.function())
+				                               )
+				                               .allMatch(tc ->
+						                               nonNull(tc.id()) &&
+						                               thoughtSignatures.containsKey(
+								                               tc.id()
+						                               )
+				                               );
+				if (allHaveSignatures) {
+					for (Message.ToolCall tc : msg.toolCalls()) {
+						if (tc.function() == null) {
+							continue;
+						}
+						ObjectNode fcPart = parts.addObject();
+						ObjectNode fcNode = fcPart.putObject("functionCall");
+						fcNode.put("name", tc.function().name());
+						String args = tc.function().arguments();
+						if (args != null && !args.isEmpty()) {
+							fcNode.set("args", MAPPER.readTree(args));
+						} else {
+							fcNode.putObject("args");
+						}
+						fcPart.put(
+								"thoughtSignature",
+								thoughtSignatures.get(tc.id())
+						);
 					}
-					ObjectNode fcPart = parts.addObject();
-					ObjectNode fcNode = fcPart.putObject("functionCall");
-					fcNode.put("name", tc.function().name());
-					String args = tc.function().arguments();
-					if (args != null && !args.isEmpty()) {
-						fcNode.set("args", MAPPER.readTree(args));
-					} else {
-						fcNode.putObject("args");
+				} else {
+					StringBuilder summary = new StringBuilder();
+					if (!text.isEmpty()) {
+						summary.append(text).append("\n");
 					}
-					String sig = tc.id() !=
-					             null ? thoughtSignatures.get(tc.id()) : null;
-					if (sig != null) {
-						fcPart.put("thoughtSignature", sig);
+					for (Message.ToolCall tc : msg.toolCalls()) {
+						if (tc.function() == null) continue;
+						summary.append("[Called ")
+						       .append(tc.function().name())
+						       .append("]\n");
 					}
+					parts.removeAll();
+					parts.addObject().put("text", summary.toString().trim());
 				}
 				continue;
 			}
 
 			if ("tool".equals(role) && msg.toolCallId() != null) {
+				String sig = thoughtSignatures.get(msg.toolCallId());
 				ObjectNode entry = contents.addObject();
 				entry.put("role", "user");
 				ArrayNode parts = entry.putArray("parts");
-				ObjectNode frNode = parts.addObject().putObject(
-						"functionResponse");
-				frNode.put(
-						"name",
-						msg.name() != null ? msg.name() : msg.toolCallId()
-				);
-				String content = Optional.ofNullable(msg.content())
-				                         .map(Object::toString)
-				                         .orElse("{}");
-				try {
-					frNode.set("response", MAPPER.readTree(content));
-				} catch (Exception e) {
-					ObjectNode wrapper = MAPPER.createObjectNode();
-					wrapper.put("result", content);
-					frNode.set("response", wrapper);
+				if (sig != null) {
+					ObjectNode frNode = parts.addObject().putObject(
+							"functionResponse");
+					frNode.put(
+							"name",
+							Optional.ofNullable(msg.name())
+							        .orElse(msg.toolCallId())
+					);
+					String content = Optional.ofNullable(msg.content())
+					                         .map(Object::toString)
+					                         .orElse("{}");
+					try {
+						frNode.set("response", MAPPER.readTree(content));
+					} catch (Exception e) {
+						ObjectNode wrapper = MAPPER.createObjectNode();
+						wrapper.put("result", content);
+						frNode.set("response", wrapper);
+					}
+				} else {
+					String content = Optional.ofNullable(msg.content())
+					                         .map(Object::toString)
+					                         .orElse("");
+					String toolName = Optional.ofNullable(msg.name())
+					                          .orElse(msg.toolCallId());
+					String summary = "[Result of " + toolName + "]: " +
+					                 (content.length() > 500 ?
+							                  content.substring(0, 500) +
+							                  "..." : content);
+					parts.addObject().put("text", summary);
 				}
 				continue;
 			}
