@@ -7,8 +7,7 @@ import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -19,11 +18,11 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 
+@Slf4j
 @Controller
 @RequiredArgsConstructor
 public class AuthController {
 
-	private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 	private final ObjectMapper mapper = new ObjectMapper();
 	private final KiroAuthManager authManager;
 	private final CredentialStore credentialStore;

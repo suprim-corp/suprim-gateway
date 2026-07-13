@@ -1,5 +1,6 @@
-package dev.suprim.gateway.provider.kiro.sso;
+package dev.suprim.gateway.admin;
 
+import dev.suprim.gateway.provider.kiro.sso.KiroSsoFacade;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
