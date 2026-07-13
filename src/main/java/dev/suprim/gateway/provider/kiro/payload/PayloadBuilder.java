@@ -135,7 +135,7 @@ public class PayloadBuilder {
 			conversationState.set("history", history);
 		}
 
-		if (auth.getProfileArn() != null) {
+		if (!auth.isApiKeyAuth() && auth.getProfileArn() != null) {
 			root.put("profileArn", auth.getProfileArn());
 		}
 
