@@ -15,35 +15,38 @@ function showModels(index) {
     dialog.showModal()
 
     fetch('/providers/' + index + '/usage')
-        .then(function (res) { return res.ok ? res.json() : null })
-        .then(function (data) {
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
             if (!data || !data.usageBreakdownList || !data.usageBreakdownList.length) return
-            var breakdown = data.usageBreakdownList[0]
-            var used = breakdown.currentUsage || 0
-            var limit = breakdown.usageLimit || 0
-            var remaining = Math.max(0, limit - used)
-            var pct = limit > 0 ? Math.round((remaining / limit) * 100) : 0
+            const breakdown = data.usageBreakdownList[0]
+            const used = breakdown.currentUsage || 0
+            const limit = breakdown.usageLimit || 0
+            const remaining = Math.max(0, limit - used)
+            const pct = limit > 0 ? Math.round((remaining / limit) * 100) : 0
+            const sub = data.subscriptionInfo
+            const planName = (sub && (sub.subscriptionTitle || sub.subscriptionName || sub.subscriptionType)) || ''
+            document.getElementById('usageLabel').textContent = planName ? planName + ' — Credits' : 'Credits'
             document.getElementById('usageText').textContent = remaining.toFixed(1) + ' / ' + limit.toFixed(1) + ' ' + (breakdown.unit || 'credits')
-            var bar = document.getElementById('usageBar')
+            const bar = document.getElementById('usageBar')
             bar.style.width = pct + '%'
             bar.className = 'h-full rounded-full transition-all ' +
                 (pct > 50 ? 'bg-green-400' : pct > 20 ? 'bg-yellow-400' : 'bg-red-400')
             usageBanner.classList.remove('hidden')
         })
-        .catch(function () {})
+        .catch(() => {})
 
     fetch('/providers/' + index + '/models')
-        .then(function (res) {
+        .then(res => {
             if (!res.ok) throw new Error('Failed to fetch models')
             return res.json()
         })
-        .then(function (models) {
+        .then(models => {
             loading.classList.add('hidden')
             if (models.length === 0) {
                 empty.classList.remove('hidden')
                 return
             }
-            models.forEach(function (m) {
+            models.forEach(m => {
                 const li = document.createElement('li')
                 li.className = 'flex items-center justify-between px-3 py-1.5 text-xs bg-zinc-950 border border-zinc-800 rounded'
                 const name = document.createElement('span')
@@ -67,14 +70,14 @@ function showModels(index) {
             })
             list.classList.remove('hidden')
         })
-        .catch(function (err) {
+        .catch(err => {
             loading.classList.add('hidden')
             error.textContent = err.message
             error.classList.remove('hidden')
         })
 }
 
-document.querySelectorAll('.inline-edit-name').forEach(function (span) {
+document.querySelectorAll('.inline-edit-name').forEach(span => {
     span.addEventListener('click', function () {
         const form = this.nextElementSibling
         const input = form.querySelector('input')
@@ -96,7 +99,7 @@ document.querySelectorAll('.inline-edit-name').forEach(function (span) {
             span.classList.remove('hidden')
         }
 
-        input.addEventListener('keydown', function (e) {
+        input.addEventListener('keydown', e => {
             if (e.key === 'Enter') {
                 e.preventDefault()
                 submit()
@@ -134,14 +137,14 @@ function showProviderForm(provider) {
 }
 
 function showChoices() {
-    forms.forEach(function (id) {
+    forms.forEach(id => {
         document.getElementById(id).classList.add('hidden')
     })
     document.getElementById('providerChoices').classList.remove('hidden')
     document.getElementById('dialogTitle').textContent = 'Add Account'
 }
 
-document.getElementById('addAccountDialog').addEventListener('close', function () {
+document.getElementById('addAccountDialog').addEventListener('close', () => {
     showChoices()
     document.getElementById('kiroFileList').innerHTML = ''
     document.getElementById('kiroFileList').classList.add('hidden')
@@ -188,8 +191,8 @@ function showKiroTab(tab) {
 }
 
 function startKiroSso() {
-    var startUrl = document.getElementById('kiroSsoStartUrl').value.trim()
-    var region = document.getElementById('kiroSsoRegion').value.trim() || 'us-east-1'
+    const startUrl = document.getElementById('kiroSsoStartUrl').value.trim()
+    const region = document.getElementById('kiroSsoRegion').value.trim() || 'us-east-1'
 
     if (!startUrl) {
         toast('Start URL is required', 'error')
@@ -199,10 +202,10 @@ function startKiroSso() {
     fetch('/auth/kiro/sso/start', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({startUrl: startUrl, region: region})
+        body: JSON.stringify({startUrl, region})
     })
-        .then(function (res) { return res.json() })
-        .then(function (data) {
+        .then(res => res.json())
+        .then(data => {
             if (data.error) {
                 toast(data.error, 'error')
                 return
@@ -210,26 +213,26 @@ function startKiroSso() {
             document.getElementById('kiroSsoForm').classList.add('hidden')
             document.getElementById('kiroSsoVerification').classList.remove('hidden')
             document.getElementById('kiroSsoUserCode').textContent = data.userCode
-            var link = document.getElementById('kiroSsoLink')
-            var uri = data.verificationUriComplete || data.verificationUri
+            const link = document.getElementById('kiroSsoLink')
+            const uri = data.verificationUriComplete || data.verificationUri
             link.href = uri
             link.textContent = uri
             document.getElementById('kiroSsoError').classList.add('hidden')
 
-            var interval = (data.interval || 5) * 1000
-            kiroSsoPollTimer = setInterval(function () {
+            const interval = (data.interval || 5) * 1000
+            kiroSsoPollTimer = setInterval(() => {
                 pollKiroSso(data.sessionId)
             }, interval)
         })
-        .catch(function (err) {
+        .catch(err => {
             toast('Failed to start SSO: ' + err.message, 'error')
         })
 }
 
 function pollKiroSso(sessionId) {
     fetch('/auth/kiro/sso/poll?session=' + encodeURIComponent(sessionId))
-        .then(function (res) { return res.json() })
-        .then(function (data) {
+        .then(res => res.json())
+        .then(data => {
             if (data.status === 'ok') {
                 clearInterval(kiroSsoPollTimer)
                 kiroSsoPollTimer = null
@@ -239,14 +242,12 @@ function pollKiroSso(sessionId) {
             } else if (data.status === 'expired' || data.status === 'error') {
                 clearInterval(kiroSsoPollTimer)
                 kiroSsoPollTimer = null
-                var errorEl = document.getElementById('kiroSsoError')
+                const errorEl = document.getElementById('kiroSsoError')
                 errorEl.textContent = data.message || 'Session expired'
                 errorEl.classList.remove('hidden')
             }
         })
-        .catch(function () {
-            // network error — keep polling
-        })
+        .catch(() => {})
 }
 
 function cancelKiroSso() {
@@ -273,10 +274,8 @@ function initXaiForm() {
         document.getElementById('xaiLocal').classList.add('hidden')
         document.getElementById('xaiRemote').classList.remove('hidden')
         fetch('/auth/xai/state', {method: 'POST'})
-            .then(function (r) {
-                return r.json()
-            })
-            .then(function (data) {
+            .then(r => r.json())
+            .then(data => {
                 const base = location.origin
                 document.getElementById('xaiCommand').textContent = 'curl -sL "' + base + '/auth/xai/agent?state=' + data.state + '" | bash'
             })
