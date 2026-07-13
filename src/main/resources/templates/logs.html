@@ -64,7 +64,20 @@
                                   class="text-[10px] font-medium" th:text="${log.status()}">200</span>
                         </td>
                         <td class="px-4 py-2.5 text-[10px] text-zinc-500 max-w-[120px] truncate" th:text="${log.accountId() ?: '—'}" th:title="${log.accountId()}">—</td>
-                        <td class="px-4 py-2.5 text-[10px]" th:text="${log.model()}">—</td>
+                        <td class="px-4 py-2.5 text-[10px]">
+                            <div class="flex items-center gap-1.5">
+                                <img th:if="${log.provider() == 'KIRO'}"
+                                     src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png"
+                                     class="size-3.5">
+                                <img th:if="${log.provider() == 'ANTIGRAVITY'}"
+                                     src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/antigravity-color.png"
+                                     class="size-3.5">
+                                <img th:if="${log.provider() == 'XAI'}"
+                                     src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/xai.png"
+                                     class="size-3.5">
+                                <span th:text="${log.model()}">—</span>
+                            </div>
+                        </td>
                         <td class="px-4 py-2.5 text-[10px] text-zinc-500"
                             th:text="${log.usage().promptTokens() != null ? #numbers.formatInteger(log.usage().promptTokens(), 1, 'COMMA') : '—'}">
                             —
