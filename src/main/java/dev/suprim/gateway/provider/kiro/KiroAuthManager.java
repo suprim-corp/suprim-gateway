@@ -25,11 +25,9 @@ import tools.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -80,6 +78,10 @@ public class KiroAuthManager implements ProviderAuthManager {
 
 		if (fromStore.isPresent()) {
 			applyCredentials(fromStore.get());
+			if (profileArn == null &&
+			    authType == KiroCredentials.AuthType.API_KEY) {
+				resolveProfileArn();
+			}
 			loadAccountName();
 			log.info(
 					"[Kiro] Initialized from credential store: type={}, region={}, apiRegion={}",
@@ -543,8 +545,66 @@ public class KiroAuthManager implements ProviderAuthManager {
 		return null;
 	}
 
+	private void resolveProfileArn() {
+		String arn = fetchProfileArn(accessToken, true);
+		if (arn != null) {
+			this.profileArn = arn;
+			log.info("[Kiro] Resolved profileArn: {}", arn);
+		}
+	}
+
+	public String resolveProfileArnForApiKey(String apiKey) {
+		return fetchProfileArn(apiKey, true);
+	}
+
+	private String fetchProfileArn(String token, boolean isApiKey) {
+		try {
+			String url = "https://codewhisperer.us-east-1.amazonaws.com/ListAvailableProfiles";
+			HttpRequest.Builder reqBuilder =
+					HttpRequest.newBuilder()
+					           .uri(URI.create(url))
+					           .header("Authorization", "Bearer " + token)
+					           .header("Content-Type", "application/json")
+					           .header("Accept", "application/json")
+					           .header(
+							           "User-Agent",
+							           "aws-sdk-js/1.0.0 ua/2.1 os/darwin lang/js md/nodejs#22.0.0 api/codewhispererruntime#1.0.0 m/N,E KiroIDE-0.7.45"
+					           )
+					           .header("x-amz-user-agent", "aws-sdk-js/1.0.0 KiroIDE-0.7.45")
+					           .header("x-amzn-codewhisperer-optout", "true")
+					           .POST(HttpRequest.BodyPublishers.ofString("{\"maxResults\":10}"));
+			if (isApiKey) {
+				reqBuilder.header("tokentype", "API_KEY");
+			}
+			HttpResponse<String> response = proxyChain.currentClient().send(
+					reqBuilder.build(), HttpResponse.BodyHandlers.ofString()
+			);
+			if (response.statusCode() == 200) {
+				JsonMapper mapper = new JsonMapper();
+				Map<String, Object> body = mapper.readValue(
+						response.body(), new TypeReference<>() {}
+				);
+				Object profiles = body.get("profiles");
+				if (profiles instanceof List<?> list && !list.isEmpty()) {
+					Object first = list.getFirst();
+					if (first instanceof Map<?, ?> profile) {
+						Object arn = profile.get("arn");
+						if (arn instanceof String a && !a.isBlank()) {
+							return a;
+						}
+					}
+				}
+			}
+		} catch (Exception e) {
+			log.warn("[Kiro] fetchProfileArn failed: {}", e.getMessage());
+		}
+		return null;
+	}
+
 	private static String regionFromProfileArn(String profileArn) {
-		if (profileArn == null || profileArn.isBlank()) return null;
+		if (profileArn == null || profileArn.isBlank()) {
+			return null;
+		}
 		String[] parts = profileArn.split(":", 6);
 		if (parts.length < 6 || !"arn".equals(parts[0]) ||
 		    !"codewhisperer".equals(parts[2])) {

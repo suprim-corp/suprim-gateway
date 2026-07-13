@@ -66,14 +66,17 @@ class ProvidersController {
 	) {
 		String trimmedKey = apiKey.trim();
 		String name = null;
+		String profileArn = null;
 		if ("KIRO".equals(provider)) {
 			name = kiroAuthManager.fetchEmailForApiKey(trimmedKey);
+			profileArn = kiroAuthManager.resolveProfileArnForApiKey(trimmedKey);
 		}
 		StoredAccount account = StoredAccount.builder()
 		                                     .provider(provider)
 		                                     .accessToken(trimmedKey)
 		                                     .authType("api_key")
 		                                     .name(name)
+		                                     .profileArn(profileArn)
 		                                     .build();
 		credentialStore.upsert(account);
 		return "redirect:/providers";
