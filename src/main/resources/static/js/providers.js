@@ -120,6 +120,8 @@ document.getElementById('addAccountDialog').addEventListener('close', function (
     showChoices()
     document.getElementById('kiroFileList').innerHTML = ''
     document.getElementById('kiroFileList').classList.add('hidden')
+    cancelKiroSso()
+    showKiroTab('sso')
 })
 
 document.getElementById('kiroFileInput').addEventListener('change', function () {
@@ -143,6 +145,94 @@ document.getElementById('kiroFileInput').addEventListener('change', function () 
         list.appendChild(row)
     }
 })
+
+// Kiro SSO
+let kiroSsoPollTimer = null
+
+function showKiroTab(tab) {
+    document.getElementById('kiroSsoTab').classList.toggle('hidden', tab !== 'sso')
+    document.getElementById('kiroImportTab').classList.toggle('hidden', tab !== 'import')
+    document.getElementById('kiroTabSso').classList.toggle('border-neon-purple', tab === 'sso')
+    document.getElementById('kiroTabSso').classList.toggle('text-zinc-100', tab === 'sso')
+    document.getElementById('kiroTabSso').classList.toggle('border-transparent', tab !== 'sso')
+    document.getElementById('kiroTabSso').classList.toggle('text-zinc-500', tab !== 'sso')
+    document.getElementById('kiroTabImport').classList.toggle('border-neon-purple', tab === 'import')
+    document.getElementById('kiroTabImport').classList.toggle('text-zinc-100', tab === 'import')
+    document.getElementById('kiroTabImport').classList.toggle('border-transparent', tab !== 'import')
+    document.getElementById('kiroTabImport').classList.toggle('text-zinc-500', tab !== 'import')
+}
+
+function startKiroSso() {
+    var startUrl = document.getElementById('kiroSsoStartUrl').value.trim()
+    var region = document.getElementById('kiroSsoRegion').value.trim() || 'us-east-1'
+
+    if (!startUrl) {
+        toast('Start URL is required', 'error')
+        return
+    }
+
+    fetch('/auth/kiro/sso/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({startUrl: startUrl, region: region})
+    })
+        .then(function (res) { return res.json() })
+        .then(function (data) {
+            if (data.error) {
+                toast(data.error, 'error')
+                return
+            }
+            document.getElementById('kiroSsoForm').classList.add('hidden')
+            document.getElementById('kiroSsoVerification').classList.remove('hidden')
+            document.getElementById('kiroSsoUserCode').textContent = data.userCode
+            var link = document.getElementById('kiroSsoLink')
+            var uri = data.verificationUriComplete || data.verificationUri
+            link.href = uri
+            link.textContent = uri
+            document.getElementById('kiroSsoError').classList.add('hidden')
+
+            var interval = (data.interval || 5) * 1000
+            kiroSsoPollTimer = setInterval(function () {
+                pollKiroSso(data.sessionId)
+            }, interval)
+        })
+        .catch(function (err) {
+            toast('Failed to start SSO: ' + err.message, 'error')
+        })
+}
+
+function pollKiroSso(sessionId) {
+    fetch('/auth/kiro/sso/poll?session=' + encodeURIComponent(sessionId))
+        .then(function (res) { return res.json() })
+        .then(function (data) {
+            if (data.status === 'ok') {
+                clearInterval(kiroSsoPollTimer)
+                kiroSsoPollTimer = null
+                toast('Kiro account connected', 'success')
+                document.getElementById('addAccountDialog').close()
+                location.reload()
+            } else if (data.status === 'expired' || data.status === 'error') {
+                clearInterval(kiroSsoPollTimer)
+                kiroSsoPollTimer = null
+                var errorEl = document.getElementById('kiroSsoError')
+                errorEl.textContent = data.message || 'Session expired'
+                errorEl.classList.remove('hidden')
+            }
+        })
+        .catch(function () {
+            // network error — keep polling
+        })
+}
+
+function cancelKiroSso() {
+    if (kiroSsoPollTimer) {
+        clearInterval(kiroSsoPollTimer)
+        kiroSsoPollTimer = null
+    }
+    document.getElementById('kiroSsoForm').classList.remove('hidden')
+    document.getElementById('kiroSsoVerification').classList.add('hidden')
+    document.getElementById('kiroSsoError').classList.add('hidden')
+}
 
 function initAntigravityForm() {
     const base = location.origin
