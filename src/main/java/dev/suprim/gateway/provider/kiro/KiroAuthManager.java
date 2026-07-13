@@ -111,6 +111,9 @@ public class KiroAuthManager implements ProviderAuthManager {
 	}
 
 	public String getApiHost() {
+		if (authType == KiroCredentials.AuthType.API_KEY) {
+			return "https://codewhisperer.us-east-1.amazonaws.com";
+		}
 		return "https://runtime." + config.apiRegion() + ".kiro.dev";
 	}
 
