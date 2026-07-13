@@ -6,5 +6,5 @@ import java.util.Map;
 
 public interface OAuthProviderAuthManager extends ProviderAuthManager {
 
-	List<Map<String, Object>> listModels() throws IOException;
+	List<Map<String, Object>> listModels(StoredAccount account) throws IOException;
 }

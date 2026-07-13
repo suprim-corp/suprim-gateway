@@ -86,13 +86,6 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 		persistToStore();
 	}
 
-	public List<Map<String, Object>> listModels() throws IOException {
-		if (!isConnected()) {
-			return List.of();
-		}
-		return XaiHttpClient.listModels(getAccessToken());
-	}
-
 	public List<Map<String, Object>> listModels(StoredAccount account) throws IOException {
 		if (account.accessToken() == null) {
 			return List.of();

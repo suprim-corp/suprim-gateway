@@ -2,11 +2,13 @@ package dev.suprim.gateway.model;
 
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
+import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.antigravity.AntigravityAuthManager;
 import dev.suprim.gateway.config.AppConfig;
 import dev.suprim.gateway.proxy.KiroHttpClient;
 import dev.suprim.gateway.provider.xai.XaiAuthManager;
 import jakarta.annotation.PostConstruct;
+import lombok.Builder;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +16,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
@@ -51,6 +54,7 @@ public class ModelRegistry {
 
 	private final KiroHttpClient client;
 	private final AppConfig config;
+	private final CredentialStore credentialStore;
 	private final AntigravityAuthManager antigravityAuthManager;
 	private final XaiAuthManager xaiAuthManager;
 	private final List<String> cachedModels = new CopyOnWriteArrayList<>(
@@ -114,81 +118,70 @@ public class ModelRegistry {
 		return new ArrayList<>(result);
 	}
 
-	public List<String> getAntigravityModels() {
-		if (!antigravityAuthManager.isConnected()) return List.of();
-		try {
-			return antigravityAuthManager.listModels().stream()
-			                             .map(m -> "ag/" + m.get("id"))
-			                             .toList();
-		} catch (Exception e) {
-			return List.of();
-		}
-	}
-
-	public List<Map<String, Object>> getAllModelsForApi() {
-		List<Map<String, Object>> result = new ArrayList<>();
+	public List<ModelForListingApi> getAllModelsForApi() {
+		List<ModelForListingApi> result = new ArrayList<>();
 		long now = System.currentTimeMillis() / 1000;
 
 		getAvailableModels().forEach(id ->
-				result.add(Map.of(
-						"id",
-						id,
-						"object",
-						"model",
-						"created",
-						now,
-						"owned_by",
-						"kiro"
-				))
-		);
-
-		getAntigravityModels().forEach(id ->
-				result.add(Map.of(
-						"id",
-						id,
-						"object",
-						"model",
-						"created",
-						now,
-						"owned_by",
-						"antigravity"
-				))
-		);
-
-		getXaiModels().forEach(id ->
 				result.add(
-						Map.of(
-								"id",
-								id,
-								"object",
-								"model",
-								"created",
-								now,
-								"owned_by",
-								"xai"
-						)
+						ModelForListingApi.builder()
+						                  .id(id)
+						                  .object("model")
+						                  .ownedBy(Provider.KIRO.name())
+						                  .created(now)
+						                  .build()
 				)
 		);
 
-		return result;
-	}
-
-	private List<String> getXaiModels() {
-		if (!xaiAuthManager.isConnected()) return List.of();
-		try {
-			return xaiAuthManager.listModels().stream()
-			                     .map(m -> (String) m.get("id"))
-			                     .toList();
-		} catch (Exception e) {
-			return List.of();
+		LinkedHashSet<String> seen = new LinkedHashSet<>();
+		for (StoredAccount account : credentialStore.load()) {
+			try {
+				switch (Provider.valueOf(account.provider())) {
+					case ANTIGRAVITY -> antigravityAuthManager
+							.listModels(account)
+							.forEach(m -> {
+								String id = "ag/" + m.get("id");
+								if (seen.add(id)) {
+									result.add(
+											ModelForListingApi
+													.builder()
+													.id(id)
+													.created(now)
+													.ownedBy(Provider.ANTIGRAVITY.name())
+													.object("model")
+													.build()
+									);
+								}
+							});
+					case XAI -> xaiAuthManager
+							.listModels(account)
+							.forEach(m -> {
+								String id = (String) m.get("id");
+								if (seen.add(id)) {
+									result.add(
+											ModelForListingApi
+													.builder()
+													.id(id)
+													.created(now)
+													.ownedBy(Provider.XAI.name())
+													.object("model")
+													.build()
+									);
+								}
+							});
+					default -> {}
+				}
+			} catch (Exception ignored) {}
 		}
+
+		return result;
 	}
 
 	public List<ModelInfo> getModelsForProvider(StoredAccount account) {
 		return switch (Provider.valueOf(account.provider())) {
 			case KIRO -> getAvailableModels().stream()
-			                                   .map(ModelInfo::of)
-			                                   .toList();
+			                                 .map(ModelInfo::of)
+			                                 .toList();
 			case ANTIGRAVITY -> safeListModels(
 					() -> antigravityAuthManager.listModels(account)
 					                            .stream()
@@ -249,4 +242,12 @@ public class ModelRegistry {
 		}
 		return ids;
 	}
+
+	@Builder
+	public record ModelForListingApi(
+			String id,
+			String object,
+			String ownedBy,
+			long created
+	) {}
 }
