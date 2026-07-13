@@ -16,14 +16,21 @@ public final class CredentialStoreReader {
 		List<StoredAccount> accounts = store.load();
 		if (accounts.isEmpty()) return Optional.empty();
 
-		StoredAccount acc = accounts.getFirst();
+		StoredAccount acc = accounts.stream()
+		                            .filter(a -> "KIRO".equals(a.provider()))
+		                            .filter(a -> "api_key".equals(a.authType()))
+		                            .findFirst()
+		                            .orElse(accounts.getFirst());
 
-		boolean hasIdAndSecret =
-				acc.clientId() != null && acc.clientSecret() != null;
-
-		KiroCredentials.AuthType authType = hasIdAndSecret
-				? KiroCredentials.AuthType.AWS_SSO_OIDC
-				: KiroCredentials.AuthType.KIRO_DESKTOP;
+		boolean isApiKey = "api_key".equals(acc.authType());
+		KiroCredentials.AuthType authType;
+		if (isApiKey) {
+			authType = KiroCredentials.AuthType.API_KEY;
+		} else if (acc.clientId() != null && acc.clientSecret() != null) {
+			authType = KiroCredentials.AuthType.AWS_SSO_OIDC;
+		} else {
+			authType = KiroCredentials.AuthType.KIRO_DESKTOP;
+		}
 
 		return Optional.of(
 				KiroCredentials.builder()

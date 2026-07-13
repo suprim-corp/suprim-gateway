@@ -131,7 +131,12 @@ public class KiroAuthManager implements ProviderAuthManager {
 	}
 
 	public void forceRefresh() throws Exception {
+		if (authType == KiroCredentials.AuthType.API_KEY) return;
 		refresh();
+	}
+
+	public boolean isApiKeyAuth() {
+		return authType == KiroCredentials.AuthType.API_KEY;
 	}
 
 	public ImportResult importAccount(ImportRequest req) throws Exception {
