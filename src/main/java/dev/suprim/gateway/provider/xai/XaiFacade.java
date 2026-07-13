@@ -11,6 +11,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -63,6 +64,46 @@ public class XaiFacade {
 					"stream_options",
 					MAPPER.valueToTree(Map.of("include_usage", true))
 			);
+		}
+
+		JsonNode messages = payloadNode.get("messages");
+		if (messages != null && messages.isArray()) {
+			for (int i = 0; i < messages.size(); i++) {
+				JsonNode msg = messages.get(i);
+				JsonNode content = msg.get("content");
+				String role;
+
+				if (msg.has("role")) {
+					role = msg.get("role").asString();
+				} else {
+					role = "?";
+				}
+
+				if (content == null || content.isNull()) {
+					log.debug("[xAI] msg[{}] role={} content=null", i, role);
+				} else if (content.isArray()) {
+					log.debug(
+							"[xAI] msg[{}] role={} content=array({})",
+							i,
+							role,
+							content.size()
+					);
+				} else if (content.isString()) {
+					log.debug(
+							"[xAI] msg[{}] role={} content=text(len={})",
+							i,
+							role,
+							content.asString().length()
+					);
+				} else {
+					log.debug(
+							"[xAI] msg[{}] role={} content={}",
+							i,
+							role,
+							content.getNodeType()
+					);
+				}
+			}
 		}
 
 		String payload = MAPPER.writeValueAsString(payloadNode);
