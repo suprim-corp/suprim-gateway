@@ -13,6 +13,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,6 +23,7 @@ import java.util.Map;
 
 @RequiredArgsConstructor
 @RestController
+@Slf4j
 class MessagesController {
 
 	private final ProviderDispatcher providerDispatcher;
@@ -54,17 +56,23 @@ class MessagesController {
 		Provider provider = ModelRouter.resolveProvider(request.model());
 		String actualModel = ModelRouter.stripPrefix(request.model());
 
-		InternalRequest openAiReq =
-				InternalRequest.builder()
-				               .model(actualModel)
-				               .messages(openAiMessages)
-				               .stream(request.stream())
-				               .tools(tools)
-				               .build();
+		Map<String, Object> extra = request.additionalProperties();
+		if (extra != null && extra.containsKey("thinking")) {
+			log.info(
+					"[35m[Messages] model={} thinking={}[0m",
+					actualModel,
+					extra.get("thinking")
+			);
+		}
 
 		providerDispatcher.resolve(provider)
 		                  .handle(
-				                  openAiReq,
+				                  InternalRequest.builder()
+				                                 .model(actualModel)
+				                                 .messages(openAiMessages)
+				                                 .stream(request.stream())
+				                                 .tools(tools)
+				                                 .build(),
 				                  actualModel,
 				                  request.stream(),
 				                  inputTokens,
