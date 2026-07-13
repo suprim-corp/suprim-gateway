@@ -111,6 +111,8 @@ public class KiroHttpClient {
 					headers.remove("x-amz-target");
 				}
 				headers.forEach(reqBuilder::header);
+				log.info("[Kiro] Request headers: {}", headers.keySet());
+				log.info("[Kiro] URL: {} | amzTarget: {}", url, amzTarget);
 
 				if ("POST".equals(method) && body != null) {
 					reqBuilder.POST(HttpRequest.BodyPublishers.ofString(body));

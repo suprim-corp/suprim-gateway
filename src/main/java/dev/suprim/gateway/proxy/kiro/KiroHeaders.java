@@ -33,19 +33,19 @@ class KiroHeaders {
 		);
 		headers.put(
 				"User-Agent",
-				"aws-sdk-js/1.0.27 os/darwin arch/arm64 lang/js md/nodejs#22.0.0 KiroIDE-0.7.45-" +
+				"aws-sdk-js/1.0.34 ua/2.1 os/darwin lang/js md/nodejs#22.0.0 api/codewhispererstreaming#1.0.34 m/E KiroIDE-0.7.45-" +
 				FINGERPRINT
 		);
 		headers.put(
 				"x-amz-user-agent",
-				"aws-sdk-js/1.0.27 KiroIDE-0.7.45-" + FINGERPRINT
+				"aws-sdk-js/1.0.34 KiroIDE-0.7.45-" + FINGERPRINT
 		);
 		headers.put("x-amzn-codewhisperer-optout", "true");
 		headers.put("x-amzn-kiro-agent-mode", "vibe");
 		headers.put("amz-sdk-invocation-id", UUID.randomUUID().toString());
 		headers.put("amz-sdk-request", "attempt=1; max=3");
 		if (authManager.isApiKeyAuth()) {
-			headers.put("tokentype", "API_KEY");
+			headers.put("Tokentype", "API_KEY");
 		}
 		return headers;
 	}
