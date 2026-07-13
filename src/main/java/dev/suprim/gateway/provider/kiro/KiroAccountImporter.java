@@ -83,7 +83,7 @@ public final class KiroAccountImporter {
 		credentialStore.upsert(account);
 
 		log.info(
-				"[Auth] Imported account: profileArn={}, clientId={}, type={}, isNew={}",
+				"[Kiro] Imported account: profileArn={}, clientId={}, type={}, isNew={}",
 				effectiveProfileArn,
 				req.clientId(),
 				type,
@@ -145,7 +145,7 @@ public final class KiroAccountImporter {
 			);
 			if (response.statusCode() != 200) {
 				log.warn(
-						"[Auth] ListAvailableProfiles failed: {}",
+						"[Kiro] ListAvailableProfiles failed: {}",
 						response.statusCode()
 				);
 				return null;
@@ -160,7 +160,7 @@ public final class KiroAccountImporter {
 				}
 			}
 		} catch (Exception e) {
-			log.warn("[Auth] Failed to fetch profileArn: {}", e.getMessage());
+			log.warn("[Kiro] Failed to fetch profileArn: {}", e.getMessage());
 		}
 		return null;
 	}

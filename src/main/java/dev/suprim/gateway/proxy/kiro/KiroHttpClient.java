@@ -41,6 +41,17 @@ public class KiroHttpClient {
 			boolean stream,
 			String accessToken
 	) throws Exception {
+		return request(method, url, body, stream, accessToken, null);
+	}
+
+	public KiroResponse request(
+			String method,
+			String url,
+			String body,
+			boolean stream,
+			String accessToken,
+			String amzTarget
+	) throws Exception {
 		int maxRetries = stream ? config.firstTokenMaxRetries() : 3;
 
 		proxyChain.resetAttempts();
@@ -59,7 +70,8 @@ public class KiroHttpClient {
 						body,
 						stream,
 						maxRetries,
-						accessToken
+						accessToken,
+						amzTarget
 				);
 			} catch (IOException e) {
 				if (!proxyChain.hasProxies()) {
@@ -81,7 +93,8 @@ public class KiroHttpClient {
 			String body,
 			boolean stream,
 			int maxRetries,
-			String accessToken
+			String accessToken,
+			String amzTarget
 	) throws Exception {
 		HttpResponse<InputStream> lastResponse = null;
 		Exception lastError = null;
@@ -90,8 +103,13 @@ public class KiroHttpClient {
 			try {
 				Map<String, String> headers = kiroHeaders.build(accessToken);
 
-				HttpRequest.Builder reqBuilder = HttpRequest.newBuilder().uri(
-						URI.create(url));
+				HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
+				                                            .uri(URI.create(url));
+				if (amzTarget != null) {
+					headers.put("x-amz-target", amzTarget);
+				} else {
+					headers.remove("x-amz-target");
+				}
 				headers.forEach(reqBuilder::header);
 
 				if ("POST".equals(method) && body != null) {

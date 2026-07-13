@@ -100,7 +100,7 @@ public class AuthController {
 			credentialStore.upsert(withMeta);
 			return "redirect:/providers";
 		} catch (Exception e) {
-			log.warn("[Auth] Import failed: {}", e.getMessage());
+			log.warn("[Kiro] Import failed: {}", e.getMessage());
 			redirectAttributes.addFlashAttribute("error", e.getMessage());
 			return "redirect:/providers";
 		}

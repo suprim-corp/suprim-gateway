@@ -82,7 +82,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 			applyCredentials(fromStore.get());
 			loadAccountName();
 			log.info(
-					"[Auth] Initialized from credential store: type={}, region={}, apiRegion={}",
+					"[Kiro] Initialized from credential store: type={}, region={}, apiRegion={}",
 					authType,
 					config.region(),
 					config.apiRegion()
@@ -103,22 +103,11 @@ public class KiroAuthManager implements ProviderAuthManager {
 		bootstrapStore();
 		loadAccountName();
 		log.info(
-				"[Auth] Initialized: type={}, region={}, apiRegion={}",
+				"[Kiro] Initialized: type={}, region={}, apiRegion={}",
 				authType,
 				config.region(),
 				config.apiRegion()
 		);
-	}
-
-	public String getApiHost() {
-		if (authType == KiroCredentials.AuthType.API_KEY) {
-			return "https://codewhisperer.us-east-1.amazonaws.com";
-		}
-		return "https://runtime." + config.apiRegion() + ".kiro.dev";
-	}
-
-	public String getQHost() {
-		return "https://q." + config.apiRegion() + ".amazonaws.com";
 	}
 
 	public String getAccessToken() throws Exception {
@@ -187,12 +176,12 @@ public class KiroAuthManager implements ProviderAuthManager {
 						"Most likely client registration expired — re-open Kiro IDE to re-authorize, then restart gateway.");
 			}
 
-			log.info("[Auth] Refreshing token via {}", authType);
+			log.info("[Kiro] Refreshing token via {}", authType);
 			try {
 				doRefresh();
 			} catch (Exception e) {
 				log.warn(
-						"[Auth] Refresh failed, reloading from Kiro DB: {}",
+						"[Kiro] Refresh failed, reloading from Kiro DB: {}",
 						e.getMessage()
 				);
 				Optional<KiroCredentials> reloaded = KiroSourceReader.read(
@@ -253,14 +242,14 @@ public class KiroAuthManager implements ProviderAuthManager {
 			refresh();
 		} catch (Exception e) {
 			log.warn(
-					"[Auth] Bootstrap refresh failed, not saving to store: {}",
+					"[Kiro] Bootstrap refresh failed, not saving to store: {}",
 					e.getMessage()
 			);
 			return;
 		}
 		saveToStore();
 		log.info(
-				"[Auth] Bootstrapped credential store from {}",
+				"[Kiro] Bootstrapped credential store from {}",
 				credSourceType
 		);
 	}
@@ -549,7 +538,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 				}
 			}
 		} catch (Exception e) {
-			log.warn("[Auth] fetchEmailForApiKey failed: {}", e.getMessage());
+			log.warn("[Kiro] fetchEmailForApiKey failed: {}", e.getMessage());
 		}
 		return null;
 	}

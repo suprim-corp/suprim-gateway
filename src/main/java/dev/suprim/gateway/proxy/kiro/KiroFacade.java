@@ -379,26 +379,48 @@ public class KiroFacade {
 		};
 	}
 
+	private static final List<KiroEndpoint> ENDPOINTS = List.of(
+			new KiroEndpoint(
+					"https://q.us-east-1.amazonaws.com/generateAssistantResponse",
+					"",
+					"Kiro IDE"
+			),
+			new KiroEndpoint(
+					"https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
+					"AmazonCodeWhispererStreamingService.GenerateAssistantResponse",
+					"CodeWhisperer"
+			),
+			new KiroEndpoint(
+					"https://q.us-east-1.amazonaws.com/generateAssistantResponse",
+					"AmazonQDeveloperStreamingService.SendMessage",
+					"AmazonQ"
+			)
+	);
+
+	private record KiroEndpoint(String url, String amzTarget, String name) {}
+
 	private KiroResponse callUpstream(
 			InternalRequest request,
 			boolean stream
 	) throws Exception {
 		String payload = payloadBuilder.buildOpenAiPayload(request, auth);
-		String url = auth.getApiHost() + "/generateAssistantResponse";
+		String accessToken = auth.getAccessToken();
 
-		KiroResponse response = kiroClient.request(
-				"POST",
-				url,
-				payload,
-				stream,
-				auth.getAccessToken()
-		);
-		if (response.status() == 403) {
-			log.warn("[Kiro] 403, refreshing token and retrying");
-			auth.forceRefresh();
-			response = kiroClient.request("POST", url, payload, stream, auth.getAccessToken());
+		for (KiroEndpoint ep : ENDPOINTS) {
+			String amzTarget = ep.amzTarget().isEmpty() ? null : ep.amzTarget();
+			KiroResponse response = kiroClient.request(
+					"POST", ep.url(), payload, stream, accessToken, amzTarget
+			);
+			if (response.status() == 200) {
+				return response;
+			}
+			if (response.status() == 403) {
+				log.warn("[Kiro] 403 from {}, trying next endpoint", ep.name());
+				continue;
+			}
+			return response;
 		}
-		return response;
+		throw new RuntimeException("All Kiro endpoints failed");
 	}
 
 	private void publishLog(
