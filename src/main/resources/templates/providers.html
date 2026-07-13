@@ -202,13 +202,17 @@
                 </button>
             </div>
 
-            <!-- Kiro form (tabs: SSO Login / Import File) -->
+            <!-- Kiro form (tabs: SSO Login / API Key / Import File) -->
             <div id="kiroForm" class="hidden space-y-3">
                 <!-- Tab switcher -->
                 <div class="flex border-b border-zinc-800">
                     <button onclick="showKiroTab('sso')" id="kiroTabSso"
                             class="px-3 py-2 text-xs font-medium border-b-2 border-neon-purple text-zinc-100 cursor-pointer transition-colors">
                         SSO Login
+                    </button>
+                    <button onclick="showKiroTab('apikey')" id="kiroTabApikey"
+                            class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-zinc-500 hover:text-zinc-300 cursor-pointer transition-colors">
+                        API Key
                     </button>
                     <button onclick="showKiroTab('import')" id="kiroTabImport"
                             class="px-3 py-2 text-xs font-medium border-b-2 border-transparent text-zinc-500 hover:text-zinc-300 cursor-pointer transition-colors">
@@ -279,6 +283,26 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- API Key tab -->
+                <form id="kiroApikeyTab" action="/providers/add-key" method="post" class="hidden space-y-3">
+                    <input type="hidden" name="provider" value="KIRO">
+                    <div>
+                        <label class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">Kiro CLI API Key</label>
+                        <input type="password" name="apiKey" required placeholder="kiro-..."
+                               class="w-full h-9 px-3 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-neon-purple">
+                    </div>
+                    <div class="flex gap-2 justify-end">
+                        <button type="button" onclick="showChoices()"
+                                class="h-8 px-3 text-xs text-zinc-400 hover:text-zinc-100 cursor-pointer transition-colors">
+                            Back
+                        </button>
+                        <button type="submit"
+                                class="h-8 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
+                            Add
+                        </button>
+                    </div>
+                </form>
 
                 <!-- Import File tab -->
                 <form id="kiroImportTab" action="/auth/import" method="post" enctype="multipart/form-data"

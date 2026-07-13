@@ -179,11 +179,16 @@ let kiroSsoPollTimer = null
 
 function showKiroTab(tab) {
     document.getElementById('kiroSsoTab').classList.toggle('hidden', tab !== 'sso')
+    document.getElementById('kiroApikeyTab').classList.toggle('hidden', tab !== 'apikey')
     document.getElementById('kiroImportTab').classList.toggle('hidden', tab !== 'import')
     document.getElementById('kiroTabSso').classList.toggle('border-neon-purple', tab === 'sso')
     document.getElementById('kiroTabSso').classList.toggle('text-zinc-100', tab === 'sso')
     document.getElementById('kiroTabSso').classList.toggle('border-transparent', tab !== 'sso')
     document.getElementById('kiroTabSso').classList.toggle('text-zinc-500', tab !== 'sso')
+    document.getElementById('kiroTabApikey').classList.toggle('border-neon-purple', tab === 'apikey')
+    document.getElementById('kiroTabApikey').classList.toggle('text-zinc-100', tab === 'apikey')
+    document.getElementById('kiroTabApikey').classList.toggle('border-transparent', tab !== 'apikey')
+    document.getElementById('kiroTabApikey').classList.toggle('text-zinc-500', tab !== 'apikey')
     document.getElementById('kiroTabImport').classList.toggle('border-neon-purple', tab === 'import')
     document.getElementById('kiroTabImport').classList.toggle('text-zinc-100', tab === 'import')
     document.getElementById('kiroTabImport').classList.toggle('border-transparent', tab !== 'import')

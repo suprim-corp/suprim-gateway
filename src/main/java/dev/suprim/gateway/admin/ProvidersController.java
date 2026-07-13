@@ -60,11 +60,20 @@ class ProvidersController {
 	}
 
 	@PostMapping("/providers/add-key")
-	String addKey(@RequestParam String provider, @RequestParam String apiKey) {
+	String addKey(
+			@RequestParam String provider,
+			@RequestParam String apiKey
+	) {
+		String trimmedKey = apiKey.trim();
+		String name = null;
+		if ("KIRO".equals(provider)) {
+			name = kiroAuthManager.fetchEmailForApiKey(trimmedKey);
+		}
 		StoredAccount account = StoredAccount.builder()
 		                                     .provider(provider)
-		                                     .accessToken(apiKey.trim())
+		                                     .accessToken(trimmedKey)
 		                                     .authType("api_key")
+		                                     .name(name)
 		                                     .build();
 		credentialStore.upsert(account);
 		return "redirect:/providers";

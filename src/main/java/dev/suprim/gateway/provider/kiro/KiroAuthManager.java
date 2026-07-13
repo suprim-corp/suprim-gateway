@@ -315,42 +315,40 @@ public class KiroAuthManager implements ProviderAuthManager {
 	@Cacheable("kiroModels")
 	public List<Map<String, Object>> listModels(StoredAccount account) throws Exception {
 
+		boolean isApiKey = "api_key".equals(account.authType());
 		String region = regionFromProfileArn(account.profileArn());
 		if (region == null) {
 			region = account.apiRegion() != null ? account.apiRegion()
 					: account.region() != null ? account.region()
 					  : config.apiRegion();
 		}
-		String baseUrl = "https://q." + region + ".amazonaws.com";
-		String url =
-				baseUrl + "/ListAvailableModels?origin=AI_EDITOR&maxResults=50"
-				+ "&profileArn=" + URLEncoder.encode(
-						account.profileArn(),
-						StandardCharsets.UTF_8
-				);
+		String baseUrl = "us-east-1".equals(region)
+				? "https://codewhisperer.us-east-1.amazonaws.com"
+				: "https://q." + region + ".amazonaws.com";
+		String url = baseUrl + "/ListAvailableModels?origin=AI_EDITOR&maxResults=50";
+		if (!isApiKey && account.profileArn() != null) {
+			url += "&profileArn=" + URLEncoder.encode(
+					account.profileArn(),
+					StandardCharsets.UTF_8
+			);
+		}
 
 		String token = account.accessToken();
-		HttpRequest request = HttpRequest.newBuilder()
+		HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
 		                                 .uri(URI.create(url))
 		                                 .GET()
-		                                 .header(
-				                                 "Authorization",
-				                                 "Bearer " + token
-		                                 )
+		                                 .header("Authorization", "Bearer " + token)
 		                                 .header("Accept", "application/json")
 		                                 .header(
 				                                 "User-Agent",
 				                                 "aws-sdk-js/1.0.0 ua/2.1 os/darwin lang/js md/nodejs#22.0.0 api/codewhispererruntime#1.0.0 m/N,E KiroIDE-0.7.45"
 		                                 )
-		                                 .header(
-				                                 "x-amz-user-agent",
-				                                 "aws-sdk-js/1.0.0 KiroIDE-0.7.45"
-		                                 )
-		                                 .header(
-				                                 "x-amzn-codewhisperer-optout",
-				                                 "true"
-		                                 )
-		                                 .build();
+		                                 .header("x-amz-user-agent", "aws-sdk-js/1.0.0 KiroIDE-0.7.45")
+		                                 .header("x-amzn-codewhisperer-optout", "true");
+		if (isApiKey) {
+			reqBuilder.header("tokentype", "API_KEY");
+		}
+		HttpRequest request = reqBuilder.build();
 
 		HttpResponse<String> response = proxyChain.currentClient().send(
 				request,
@@ -421,42 +419,35 @@ public class KiroAuthManager implements ProviderAuthManager {
 
 	public Map<String, Object> getUsageLimits(StoredAccount account) {
 		try {
+			boolean isApiKey = "api_key".equals(account.authType());
 			String region = regionFromProfileArn(account.profileArn());
 			if (region == null) {
 				region = account.region() !=
 				         null ? account.region() : config.region();
 			}
 			String url = String.format(Kiro.Q_HOST_TEMPLATE, region) +
-			             Kiro.USAGE_LIMITS_PATH
-			             + "&profileArn=" + URLEncoder.encode(
-					account.profileArn(),
-					StandardCharsets.UTF_8
-			);
-			HttpRequest request = HttpRequest.newBuilder()
+			             Kiro.USAGE_LIMITS_PATH;
+			if (!isApiKey && account.profileArn() != null) {
+				url += "&profileArn=" + URLEncoder.encode(
+						account.profileArn(),
+						StandardCharsets.UTF_8
+				);
+			}
+			HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
 			                                 .uri(URI.create(url))
-			                                 .header(
-					                                 "Authorization",
-					                                 "Bearer " +
-					                                 account.accessToken()
-			                                 )
-			                                 .header(
-					                                 "Accept",
-					                                 "application/json"
-			                                 )
+			                                 .header("Authorization", "Bearer " + account.accessToken())
+			                                 .header("Accept", "application/json")
 			                                 .header(
 					                                 "User-Agent",
 					                                 "aws-sdk-js/1.0.0 ua/2.1 os/darwin lang/js md/nodejs#22.0.0 api/codewhispererruntime#1.0.0 m/N,E KiroIDE-0.7.45"
 			                                 )
-			                                 .header(
-					                                 "x-amz-user-agent",
-					                                 "aws-sdk-js/1.0.0 KiroIDE-0.7.45"
-			                                 )
-			                                 .header(
-					                                 "x-amzn-codewhisperer-optout",
-					                                 "true"
-			                                 )
-			                                 .GET()
-			                                 .build();
+			                                 .header("x-amz-user-agent", "aws-sdk-js/1.0.0 KiroIDE-0.7.45")
+			                                 .header("x-amzn-codewhisperer-optout", "true")
+			                                 .GET();
+			if (isApiKey) {
+				reqBuilder.header("tokentype", "API_KEY");
+			}
+			HttpRequest request = reqBuilder.build();
 			HttpResponse<String> response = proxyChain.currentClient().send(
 					request,
 					HttpResponse.BodyHandlers.ofString()
@@ -472,6 +463,45 @@ public class KiroAuthManager implements ProviderAuthManager {
 			log.warn("[Usage] getUsageLimits failed: {}", e.getMessage());
 			return Map.of();
 		}
+	}
+
+	public String fetchEmailForApiKey(String apiKey) {
+		try {
+			String url = "https://codewhisperer.us-east-1.amazonaws.com"
+			             + Kiro.USAGE_LIMITS_PATH;
+			HttpRequest request = HttpRequest.newBuilder()
+			                                 .uri(URI.create(url))
+			                                 .header("Authorization", "Bearer " + apiKey)
+			                                 .header("tokentype", "API_KEY")
+			                                 .header("Accept", "application/json")
+			                                 .header(
+					                                 "User-Agent",
+					                                 "aws-sdk-js/1.0.0 ua/2.1 os/darwin lang/js md/nodejs#22.0.0 api/codewhispererruntime#1.0.0 m/N,E KiroIDE-0.7.45"
+			                                 )
+			                                 .header("x-amz-user-agent", "aws-sdk-js/1.0.0 KiroIDE-0.7.45")
+			                                 .header("x-amzn-codewhisperer-optout", "true")
+			                                 .GET()
+			                                 .build();
+			HttpResponse<String> response = proxyChain.currentClient().send(
+					request, HttpResponse.BodyHandlers.ofString()
+			);
+			if (response.statusCode() == 200) {
+				JsonMapper mapper = new JsonMapper();
+				Map<String, Object> body = mapper.readValue(
+						response.body(), new TypeReference<>() {}
+				);
+				Object userInfo = body.get("userInfo");
+				if (userInfo instanceof Map<?, ?> info) {
+					Object email = info.get("email");
+					if (email instanceof String e && !e.isBlank()) {
+						return e;
+					}
+				}
+			}
+		} catch (Exception e) {
+			log.warn("[Auth] fetchEmailForApiKey failed: {}", e.getMessage());
+		}
+		return null;
 	}
 
 	private static String regionFromProfileArn(String profileArn) {
