@@ -93,9 +93,13 @@ class AntigravityHttpClient {
 						double fraction = quotaInfo.get("remainingFraction").asDouble();
 						quotaPct = (int) Math.round(fraction * 100);
 					}
+					String displayName = value.has("displayName") ? value.get("displayName").asString() : null;
 					Map<String, Object> item = new java.util.LinkedHashMap<>();
 					item.put("id", modelId);
 					if (quotaPct >= 0) item.put("quota", quotaPct);
+					if (displayName != null) {
+						item.put("displayName", displayName);
+					}
 					models.add(item);
 				}
 			} else if (available.isArray()) {
@@ -111,9 +115,11 @@ class AntigravityHttpClient {
 							double fraction = quotaInfo.get("remainingFraction").asDouble();
 							quotaPct = (int) Math.round(fraction * 100);
 						}
+						String displayName = model.has("displayName") ? model.get("displayName").asString() : null;
 						Map<String, Object> item = new java.util.LinkedHashMap<>();
 						item.put("id", modelId);
 						if (quotaPct >= 0) item.put("quota", quotaPct);
+						if (displayName != null) item.put("displayName", displayName);
 						models.add(item);
 					}
 				}

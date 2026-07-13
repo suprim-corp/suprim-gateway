@@ -69,14 +69,18 @@ public class ModelRegistry {
 					case ANTIGRAVITY -> antigravityAuthManager
 							.listModels(account)
 							.forEach(m -> {
-								String id = "ag/" + m.get("id");
+								String modelId = (String) m.get("id");
+								String id = "ag/" + modelId;
 								if (seen.add(id)) {
+									String label = "Antigravity | " +
+											Optional.ofNullable((String) m.get("displayName")).orElse(modelId);
 									result.add(
 											ModelForListingApi
 													.builder()
 													.id(id)
 													.created(now)
 													.ownedBy(Provider.ANTIGRAVITY.name())
+													.displayName(label)
 													.object("model")
 													.build()
 									);
