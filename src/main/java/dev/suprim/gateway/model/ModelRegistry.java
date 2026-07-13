@@ -7,6 +7,8 @@ import dev.suprim.gateway.provider.antigravity.AntigravityAuthManager;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.config.AppConfig;
 import dev.suprim.gateway.provider.xai.XaiAuthManager;
+import tools.jackson.databind.PropertyNamingStrategies;
+import tools.jackson.databind.annotation.JsonNaming;
 import lombok.Builder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -167,6 +169,7 @@ public class ModelRegistry {
 	}
 
 	@Builder
+	@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 	public record ModelForListingApi(
 			String id,
 			String object,
