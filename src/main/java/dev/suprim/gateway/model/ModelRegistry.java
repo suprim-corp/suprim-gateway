@@ -148,6 +148,7 @@ public class ModelRegistry {
 		try {
 			return fetcher.fetch();
 		} catch (Exception e) {
+			log.warn("[Models] listModels failed: {}", e.getMessage());
 			return List.of();
 		}
 	}

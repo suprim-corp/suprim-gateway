@@ -316,27 +316,59 @@ public class KiroAuthManager implements ProviderAuthManager {
 	@Cacheable("kiroModels")
 	public List<Map<String, Object>> listModels(StoredAccount account) throws Exception {
 
-		String region = account.apiRegion() != null ? account.apiRegion() : config.apiRegion();
+		String region = regionFromProfileArn(account.profileArn());
+		if (region == null) {
+			region = account.apiRegion() != null ? account.apiRegion()
+			         : account.region() != null ? account.region()
+			         : config.apiRegion();
+		}
 		String baseUrl = "https://q." + region + ".amazonaws.com";
-		String url = baseUrl + "/ListAvailableModels?origin=AI_EDITOR&maxResults=50"
-		             + "&profileArn=" + URLEncoder.encode(account.profileArn(), StandardCharsets.UTF_8);
+		String url =
+				baseUrl + "/ListAvailableModels?origin=AI_EDITOR&maxResults=50"
+				+ "&profileArn=" + URLEncoder.encode(
+						account.profileArn(),
+						StandardCharsets.UTF_8
+				);
 
-		String token = getAccessToken();
+		String token = account.accessToken();
 		HttpRequest request = HttpRequest.newBuilder()
 		                                 .uri(URI.create(url))
 		                                 .GET()
-		                                 .header("Authorization", "Bearer " + token)
+		                                 .header(
+				                                 "Authorization",
+				                                 "Bearer " + token
+		                                 )
 		                                 .header("Accept", "application/json")
+		                                 .header(
+				                                 "User-Agent",
+				                                 "aws-sdk-js/1.0.0 ua/2.1 os/darwin lang/js md/nodejs#22.0.0 api/codewhispererruntime#1.0.0 m/N,E KiroIDE-0.7.45"
+		                                 )
+		                                 .header(
+				                                 "x-amz-user-agent",
+				                                 "aws-sdk-js/1.0.0 KiroIDE-0.7.45"
+		                                 )
+		                                 .header(
+				                                 "x-amzn-codewhisperer-optout",
+				                                 "true"
+		                                 )
 		                                 .build();
 
-		HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+		HttpResponse<String> response = httpClient.send(
+				request,
+				HttpResponse.BodyHandlers.ofString()
+		);
 		if (response.statusCode() != 200) {
-			String body = new String(response.body().readAllBytes());
-			throw new IOException("ListAvailableModels HTTP " + response.statusCode() + ": " + body);
+			throw new IOException(
+					"ListAvailableModels HTTP " + response.statusCode() +
+					": " + response.body());
 		}
-
-		ModelsResponse result = new JsonMapper().readValue(response.body(), ModelsResponse.class);
-		List<Map<String, Object>> raw = result.models() != null ? result.models() : List.of();
+		log.debug("[Models] ListAvailableModels region={} status={}", region, response.statusCode());
+		ModelsResponse result = new JsonMapper().readValue(
+				response.body(),
+				ModelsResponse.class
+		);
+		List<Map<String, Object>> raw = Optional.ofNullable(result.models())
+		                                        .orElse(List.of());
 
 		Set<String> disabled = config.disabledModelsSet();
 		LinkedHashSet<String> seen = new LinkedHashSet<>();
@@ -344,7 +376,8 @@ public class KiroAuthManager implements ProviderAuthManager {
 
 		for (Map<String, Object> m : raw) {
 			String id = (String) m.get("modelId");
-			if (id == null || disabled.contains(id) || HIDDEN_MODELS.contains(id)) {
+			if (id == null || disabled.contains(id) ||
+			    HIDDEN_MODELS.contains(id)) {
 				continue;
 			}
 			if (seen.add(id)) {
@@ -352,8 +385,10 @@ public class KiroAuthManager implements ProviderAuthManager {
 			}
 			Matcher mat = DOT_VERSION.matcher(id);
 			if (mat.matches()) {
-				String hyphenated = mat.group(1) + mat.group(2) + "-" + mat.group(3);
-				if (!disabled.contains(hyphenated) && seen.add(hyphenated)) {
+				String hyphenated =
+						mat.group(1) + mat.group(2) + "-" + mat.group(3);
+				if (!disabled.contains(hyphenated) &&
+				    seen.add(hyphenated)) {
 					models.add(Map.of("id", hyphenated));
 				}
 			}
@@ -363,4 +398,15 @@ public class KiroAuthManager implements ProviderAuthManager {
 	}
 
 	private record ModelsResponse(List<Map<String, Object>> models) {}
+
+	private static String regionFromProfileArn(String profileArn) {
+		if (profileArn == null || profileArn.isBlank()) return null;
+		String[] parts = profileArn.split(":", 6);
+		if (parts.length < 6 || !"arn".equals(parts[0]) ||
+		    !"codewhisperer".equals(parts[2])) {
+			return null;
+		}
+		String region = parts[3].trim();
+		return region.isEmpty() ? null : region;
+	}
 }
