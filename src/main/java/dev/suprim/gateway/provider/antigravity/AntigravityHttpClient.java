@@ -15,6 +15,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -76,9 +77,17 @@ class AntigravityHttpClient {
 		List<Map<String, Object>> models = new ArrayList<>();
 		try {
 			JsonNode root = new ObjectMapper().readTree(json);
-			JsonNode available = root.get("availableModels");
-			if (available == null) available = root.get("models");
-			if (available == null) return models;
+			JsonNode available;
+
+			if (root.get("availableModels") != null) {
+				available = root.get("availableModels");
+			} else {
+				available = root.get("models");
+			}
+
+			if (available == null) {
+				return models;
+			}
 
 			if (available.isObject()) {
 				for (Map.Entry<String, JsonNode> entry : available.properties()) {
@@ -94,7 +103,7 @@ class AntigravityHttpClient {
 						quotaPct = (int) Math.round(fraction * 100);
 					}
 					String displayName = value.has("displayName") ? value.get("displayName").asString() : null;
-					Map<String, Object> item = new java.util.LinkedHashMap<>();
+					Map<String, Object> item = new LinkedHashMap<>();
 					item.put("id", modelId);
 					if (quotaPct >= 0) item.put("quota", quotaPct);
 					if (displayName != null) {
