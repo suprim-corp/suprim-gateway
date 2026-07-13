@@ -107,9 +107,15 @@ public class ModelRegistry {
 			case KIRO -> safeListModels(
 					() -> kiroAuthManager.listModels(account)
 					                     .stream()
-					                     .map(m -> (String) m.get("id"))
-					                     .filter(Objects::nonNull)
-					                     .map(ModelInfo::of)
+					                     .map(m -> {
+						                     String id = (String) m.get("id");
+						                     Object cost = m.get("cost");
+						                     String unit = (String) m.get("unit");
+						                     if (cost instanceof Number c && unit != null && !unit.isEmpty()) {
+							                     return ModelInfo.of(id, c.doubleValue(), unit);
+						                     }
+						                     return ModelInfo.of(id);
+					                     })
 					                     .toList()
 			);
 			case ANTIGRAVITY -> safeListModels(

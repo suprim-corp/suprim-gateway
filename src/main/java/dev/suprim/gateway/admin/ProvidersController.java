@@ -2,6 +2,8 @@ package dev.suprim.gateway.admin;
 
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
+import dev.suprim.gateway.provider.Provider;
+import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.model.ModelInfo;
 import dev.suprim.gateway.model.ModelRegistry;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @RequiredArgsConstructor
 @Controller
@@ -22,6 +25,7 @@ class ProvidersController {
 
 	private final CredentialStore credentialStore;
 	private final ModelRegistry modelRegistry;
+	private final KiroAuthManager kiroAuthManager;
 
 	@GetMapping("/providers")
 	String providers(Model model) {
@@ -75,5 +79,19 @@ class ProvidersController {
 		}
 		StoredAccount account = accounts.get(index);
 		return modelRegistry.getModelsForProvider(account);
+	}
+
+	@GetMapping("/providers/{index}/usage")
+	@ResponseBody
+	Map<String, Object> usage(@PathVariable int index) {
+		List<StoredAccount> accounts = credentialStore.load();
+		if (index < 0 || index >= accounts.size()) {
+			return Map.of();
+		}
+		StoredAccount account = accounts.get(index);
+		if (!Provider.KIRO.name().equals(account.provider())) {
+			return Map.of();
+		}
+		return kiroAuthManager.getUsageLimits(account);
 	}
 }

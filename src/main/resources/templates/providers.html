@@ -131,6 +131,15 @@
                 </button>
             </div>
             <div id="modelsContent" class="overflow-y-auto max-h-[50vh]">
+                <div id="usageBanner" class="hidden mb-3 p-3 bg-zinc-950 border border-zinc-800 rounded-lg">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-zinc-400">Credits</span>
+                        <span id="usageText" class="font-medium text-zinc-100"></span>
+                    </div>
+                    <div class="mt-2 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                        <div id="usageBar" class="h-full rounded-full transition-all"></div>
+                    </div>
+                </div>
                 <div id="modelsLoading" class="text-center text-zinc-500 text-xs py-4">Loading...</div>
                 <ul id="modelsList" class="hidden space-y-1"></ul>
                 <div id="modelsError" class="hidden text-center text-red-400 text-xs py-4"></div>

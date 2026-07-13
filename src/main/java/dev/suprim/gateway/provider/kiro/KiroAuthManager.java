@@ -10,6 +10,7 @@ import dev.suprim.gateway.provider.kiro.reader.KiroSourceReader;
 import dev.suprim.gateway.provider.kiro.refresher.DesktopTokenRefresher;
 import dev.suprim.gateway.provider.kiro.refresher.RefreshResult;
 import dev.suprim.gateway.provider.kiro.refresher.SsoOidcTokenRefresher;
+import dev.suprim.gateway.instants.Kiro;
 import dev.suprim.gateway.config.AppConfig;
 import jakarta.annotation.PostConstruct;
 import lombok.Getter;
@@ -17,10 +18,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -319,8 +320,8 @@ public class KiroAuthManager implements ProviderAuthManager {
 		String region = regionFromProfileArn(account.profileArn());
 		if (region == null) {
 			region = account.apiRegion() != null ? account.apiRegion()
-			         : account.region() != null ? account.region()
-			         : config.apiRegion();
+					: account.region() != null ? account.region()
+					  : config.apiRegion();
 		}
 		String baseUrl = "https://q." + region + ".amazonaws.com";
 		String url =
@@ -362,7 +363,11 @@ public class KiroAuthManager implements ProviderAuthManager {
 					"ListAvailableModels HTTP " + response.statusCode() +
 					": " + response.body());
 		}
-		log.debug("[Models] ListAvailableModels region={} status={}", region, response.statusCode());
+		log.debug(
+				"[Models] ListAvailableModels region={} status={}",
+				region,
+				response.statusCode()
+		);
 		ModelsResponse result = new JsonMapper().readValue(
 				response.body(),
 				ModelsResponse.class
@@ -380,17 +385,34 @@ public class KiroAuthManager implements ProviderAuthManager {
 			    HIDDEN_MODELS.contains(id)) {
 				continue;
 			}
-			if (seen.add(id)) {
-				models.add(Map.of("id", id));
-			}
+			Object cost = m.get("rateMultiplier");
+			String unit = (String) m.get("rateUnit");
 			Matcher mat = DOT_VERSION.matcher(id);
 			if (mat.matches()) {
 				String hyphenated =
 						mat.group(1) + mat.group(2) + "-" + mat.group(3);
 				if (!disabled.contains(hyphenated) &&
 				    seen.add(hyphenated)) {
-					models.add(Map.of("id", hyphenated));
+					models.add(Map.of(
+							"id",
+							hyphenated,
+							"cost",
+							cost != null ? cost : 0,
+							"unit",
+							unit != null ? unit : ""
+					));
 				}
+			} else if (seen.add(id)) {
+				models.add(
+						Map.of(
+								"id",
+								id,
+								"cost",
+								cost != null ? cost : 0,
+								"unit",
+								unit != null ? unit : ""
+						)
+				);
 			}
 		}
 
@@ -398,6 +420,61 @@ public class KiroAuthManager implements ProviderAuthManager {
 	}
 
 	private record ModelsResponse(List<Map<String, Object>> models) {}
+
+	public Map<String, Object> getUsageLimits(StoredAccount account) {
+		try {
+			String region = regionFromProfileArn(account.profileArn());
+			if (region == null) {
+				region = account.region() !=
+				         null ? account.region() : config.region();
+			}
+			String url = String.format(Kiro.Q_HOST_TEMPLATE, region) +
+			             Kiro.USAGE_LIMITS_PATH
+			             + "&profileArn=" + URLEncoder.encode(
+					account.profileArn(),
+					StandardCharsets.UTF_8
+			);
+			HttpRequest request = HttpRequest.newBuilder()
+			                                 .uri(URI.create(url))
+			                                 .header(
+					                                 "Authorization",
+					                                 "Bearer " +
+					                                 account.accessToken()
+			                                 )
+			                                 .header(
+					                                 "Accept",
+					                                 "application/json"
+			                                 )
+			                                 .header(
+					                                 "User-Agent",
+					                                 "aws-sdk-js/1.0.0 ua/2.1 os/darwin lang/js md/nodejs#22.0.0 api/codewhispererruntime#1.0.0 m/N,E KiroIDE-0.7.45"
+			                                 )
+			                                 .header(
+					                                 "x-amz-user-agent",
+					                                 "aws-sdk-js/1.0.0 KiroIDE-0.7.45"
+			                                 )
+			                                 .header(
+					                                 "x-amzn-codewhisperer-optout",
+					                                 "true"
+			                                 )
+			                                 .GET()
+			                                 .build();
+			HttpResponse<String> response = httpClient.send(
+					request,
+					HttpResponse.BodyHandlers.ofString()
+			);
+			if (response.statusCode() != 200) {
+				return Map.of();
+			}
+			return new JsonMapper().readValue(
+					response.body(),
+					new TypeReference<>() {}
+			);
+		} catch (Exception e) {
+			log.warn("[Usage] getUsageLimits failed: {}", e.getMessage());
+			return Map.of();
+		}
+	}
 
 	private static String regionFromProfileArn(String profileArn) {
 		if (profileArn == null || profileArn.isBlank()) return null;

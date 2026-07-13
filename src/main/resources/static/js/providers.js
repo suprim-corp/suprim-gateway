@@ -4,13 +4,33 @@ function showModels(index) {
     const list = document.getElementById('modelsList')
     const error = document.getElementById('modelsError')
     const empty = document.getElementById('modelsEmpty')
+    const usageBanner = document.getElementById('usageBanner')
 
     loading.classList.remove('hidden')
     list.classList.add('hidden')
     error.classList.add('hidden')
     empty.classList.add('hidden')
+    usageBanner.classList.add('hidden')
     list.innerHTML = ''
     dialog.showModal()
+
+    fetch('/providers/' + index + '/usage')
+        .then(function (res) { return res.ok ? res.json() : null })
+        .then(function (data) {
+            if (!data || !data.usageBreakdownList || !data.usageBreakdownList.length) return
+            var breakdown = data.usageBreakdownList[0]
+            var used = breakdown.currentUsage || 0
+            var limit = breakdown.usageLimit || 0
+            var remaining = Math.max(0, limit - used)
+            var pct = limit > 0 ? Math.round((remaining / limit) * 100) : 0
+            document.getElementById('usageText').textContent = remaining.toFixed(1) + ' / ' + limit.toFixed(1) + ' ' + (breakdown.unit || 'credits')
+            var bar = document.getElementById('usageBar')
+            bar.style.width = pct + '%'
+            bar.className = 'h-full rounded-full transition-all ' +
+                (pct > 50 ? 'bg-green-400' : pct > 20 ? 'bg-yellow-400' : 'bg-red-400')
+            usageBanner.classList.remove('hidden')
+        })
+        .catch(function () {})
 
     fetch('/providers/' + index + '/models')
         .then(function (res) {
@@ -36,6 +56,11 @@ function showModels(index) {
                     badge.textContent = pct + '%'
                     badge.className = 'text-[10px] font-medium px-1.5 py-0.5 rounded ' +
                         (pct > 50 ? 'text-green-400 bg-green-400/10' : pct > 20 ? 'text-yellow-400 bg-yellow-400/10' : 'text-red-400 bg-red-400/10')
+                    li.appendChild(badge)
+                } else if (m.cost !== undefined && m.cost !== null) {
+                    const badge = document.createElement('span')
+                    badge.textContent = m.cost + ' ' + (m.unit || '').toLowerCase()
+                    badge.className = 'text-[10px] font-medium px-1.5 py-0.5 rounded text-blue-400 bg-blue-400/10'
                     li.appendChild(badge)
                 }
                 list.appendChild(li)
