@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.io.InputStream;
@@ -77,6 +78,17 @@ public class XaiFacade {
 					role = msg.get("role").asString();
 				} else {
 					role = "?";
+				}
+
+				if (content != null && content.isString() &&
+				    content.asString().isEmpty()) {
+					((ObjectNode) msg).remove("content");
+					content = null;
+				}
+
+				if (content != null && content.isArray()) {
+					convertAnthropicImages((ObjectNode) msg, content);
+					content = msg.get("content");
 				}
 
 				if (content == null || content.isNull()) {
@@ -268,5 +280,56 @@ public class XaiFacade {
 				               .clientIp(clientIp)
 				               .build()
 		);
+	}
+
+	private static void convertAnthropicImages(
+			ObjectNode msg,
+			JsonNode contentArray
+	) {
+		boolean hasAnthropicImage = false;
+		for (JsonNode block : contentArray) {
+			if (block.isObject() && block.has("type") &&
+			    "image".equals(block.get("type").asString()) &&
+			    block.has("source")) {
+				hasAnthropicImage = true;
+				break;
+			}
+		}
+		if (!hasAnthropicImage) return;
+
+		ArrayNode converted = MAPPER.createArrayNode();
+		for (JsonNode block : contentArray) {
+			if (!block.isObject()) {
+				converted.add(block);
+				continue;
+			}
+			String type = block.has("type") ? block.get("type").asString() : "";
+			if ("image".equals(type) && block.has("source")) {
+				JsonNode source = block.get("source");
+				String mediaType;
+
+				if (source.has("media_type")) {
+					mediaType = source.get("media_type").asString();
+				} else {
+					mediaType = "image/jpeg";
+				}
+
+				String data;
+
+				if (source.has("data")) {
+					data = source.get("data").asString();
+				} else {
+					data = "";
+				}
+
+				ObjectNode imageUrlBlock = converted.addObject();
+				imageUrlBlock.put("type", "image_url");
+				ObjectNode imageUrl = imageUrlBlock.putObject("image_url");
+				imageUrl.put("url", "data:" + mediaType + ";base64," + data);
+			} else {
+				converted.add(block);
+			}
+		}
+		msg.set("content", converted);
 	}
 }
