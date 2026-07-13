@@ -13,23 +13,38 @@ import dev.suprim.gateway.provider.kiro.refresher.SsoOidcTokenRefresher;
 import dev.suprim.gateway.config.AppConfig;
 import jakarta.annotation.PostConstruct;
 import lombok.Getter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.json.JsonMapper;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static java.util.Objects.nonNull;
 
+@Slf4j
 @Component
+@RequiredArgsConstructor
 public class KiroAuthManager implements ProviderAuthManager {
 
-	private static final Logger log = LoggerFactory.getLogger(KiroAuthManager.class);
 	private static final long REFRESH_COOLDOWN_MS = 60_000;
 
 	private final AppConfig config;
@@ -53,11 +68,6 @@ public class KiroAuthManager implements ProviderAuthManager {
 	private long lastRefreshFailure = 0;
 	private String credSourceType;
 	private String credSourcePath;
-
-	KiroAuthManager(AppConfig config, CredentialStore credentialStore) {
-		this.config = config;
-		this.credentialStore = credentialStore;
-	}
 
 	@PostConstruct
 	void init() {
@@ -293,4 +303,60 @@ public class KiroAuthManager implements ProviderAuthManager {
 		               .map(StoredAccount::name)
 		               .ifPresent(name -> this.accountName = name);
 	}
+
+	private static final Pattern DOT_VERSION = Pattern.compile(
+			"^(claude-(?:sonnet|opus|haiku)-)(\\d+)\\.(\\d+)$");
+
+	private static final Set<String> HIDDEN_MODELS = Set.of(
+			"auto",
+			"claude-3.7-sonnet"
+	);
+
+	public List<Map<String, Object>> listModels(StoredAccount account) throws Exception {
+		String region = account.apiRegion() != null ? account.apiRegion() : config.apiRegion();
+		String baseUrl = "https://q." + region + ".amazonaws.com";
+		String url = baseUrl + "/ListAvailableModels?origin=AI_EDITOR&maxResults=50"
+		             + "&profileArn=" + URLEncoder.encode(account.profileArn(), StandardCharsets.UTF_8);
+
+		String token = getAccessToken();
+		HttpRequest request = HttpRequest.newBuilder()
+		                                 .uri(URI.create(url))
+		                                 .GET()
+		                                 .header("Authorization", "Bearer " + token)
+		                                 .header("Accept", "application/json")
+		                                 .build();
+
+		HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+		if (response.statusCode() != 200) {
+			String body = new String(response.body().readAllBytes());
+			throw new IOException("ListAvailableModels HTTP " + response.statusCode() + ": " + body);
+		}
+
+		ModelsResponse result = new JsonMapper().readValue(response.body(), ModelsResponse.class);
+		List<Map<String, Object>> raw = result.models() != null ? result.models() : List.of();
+
+		Set<String> disabled = config.disabledModelsSet();
+		LinkedHashSet<String> seen = new LinkedHashSet<>();
+		List<Map<String, Object>> models = new ArrayList<>();
+
+		for (Map<String, Object> m : raw) {
+			String id = (String) m.get("modelId");
+			if (id == null || disabled.contains(id) || HIDDEN_MODELS.contains(id)) {
+				continue;
+			}
+			if (seen.add(id)) {
+				models.add(Map.of("id", id));
+			}
+			Matcher mat = DOT_VERSION.matcher(id);
+			if (mat.matches()) {
+				String hyphenated = mat.group(1) + mat.group(2) + "-" + mat.group(3);
+				if (!disabled.contains(hyphenated) && seen.add(hyphenated)) {
+					models.add(Map.of("id", hyphenated));
+				}
+			}
+		}
+		return models;
+	}
+
+	private record ModelsResponse(List<Map<String, Object>> models) {}
 }

@@ -1,4 +1,4 @@
-package dev.suprim.gateway.proxy;
+package dev.suprim.gateway.proxy.kiro;
 
 import lombok.Builder;
 

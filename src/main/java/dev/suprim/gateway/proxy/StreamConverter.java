@@ -1,6 +1,7 @@
 package dev.suprim.gateway.proxy;
 
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import dev.suprim.gateway.proxy.kiro.KiroEvent;
 import lombok.Builder;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;

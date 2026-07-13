@@ -1,4 +1,4 @@
-package dev.suprim.gateway.proxy;
+package dev.suprim.gateway.proxy.kiro;
 
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import org.springframework.stereotype.Component;
@@ -13,7 +13,7 @@ class KiroHeaders {
 	                                              .toString()
 	                                              .substring(0, 8);
 
-	Map<String, String> build(KiroAuthManager auth, String token) {
+	Map<String, String> build(String token) {
 		return Map.ofEntries(
 				Map.entry("Authorization", "Bearer " + token),
 				Map.entry("Content-Type", "application/x-amz-json-1.0"),

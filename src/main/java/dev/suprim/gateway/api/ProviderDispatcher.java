@@ -3,7 +3,7 @@ package dev.suprim.gateway.api;
 import dev.suprim.gateway.provider.antigravity.AntigravityFacade;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.xai.XaiFacade;
-import dev.suprim.gateway.proxy.KiroFacade;
+import dev.suprim.gateway.proxy.kiro.KiroFacade;
 
 import org.springframework.stereotype.Component;
 

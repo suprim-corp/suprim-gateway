@@ -1,10 +1,14 @@
-package dev.suprim.gateway.proxy;
+package dev.suprim.gateway.proxy.kiro;
 
 import dev.suprim.gateway.logging.RequestLogEvent;
 import dev.suprim.gateway.logging.RequestLogPublisher;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.provider.kiro.payload.PayloadBuilder;
-import dev.suprim.gateway.proxy.KiroHttpClient.KiroResponse;
+import dev.suprim.gateway.proxy.Format;
+import dev.suprim.gateway.proxy.InternalRequest;
+import dev.suprim.gateway.proxy.StreamConverter;
+import dev.suprim.gateway.proxy.StreamHandler;
+import dev.suprim.gateway.proxy.kiro.KiroHttpClient.KiroResponse;
 import dev.suprim.gateway.utils.ErrorResponse;
 import dev.suprim.gateway.utils.RequestContext;
 import dev.suprim.gateway.virtualkey.VirtualKeyService;
@@ -19,6 +23,8 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.util.List;
 import java.util.UUID;
+
+import static java.util.Objects.nonNull;
 
 @RequiredArgsConstructor
 @Component
@@ -271,20 +277,33 @@ public class KiroFacade {
 			String model,
 			String id
 	) throws Exception {
+		final boolean hasContent =
+				"content".equals(event.type()) && nonNull(event.content());
+		final boolean stopSign =
+				"tool_use".equals(event.type()) && event.toolStop();
+
 		return switch (format) {
 			case COMPLETION -> streamConverter.toOpenAiChunk(event, model, id);
 			case ANTHROPIC -> {
-				if ("content".equals(event.type()) && event.content() != null)
+				if (hasContent) {
 					yield streamConverter.toAnthropicDelta(event.content());
-				if ("tool_use".equals(event.type()) && event.toolStop())
+				}
+
+				if (stopSign) {
 					yield streamConverter.toAnthropicToolUse(event, 1);
+				}
+
 				yield null;
 			}
 			case RESPONSES -> {
-				if ("content".equals(event.type()) && event.content() != null)
+				if (hasContent) {
 					yield streamConverter.toResponsesTextDelta(event.content());
-				if ("tool_use".equals(event.type()) && event.toolStop())
+				}
+
+				if (stopSign) {
 					yield streamConverter.toResponsesToolCall(event, 1);
+				}
+
 				yield null;
 			}
 		};
@@ -300,8 +319,10 @@ public class KiroFacade {
 		return switch (format) {
 			case COMPLETION -> streamConverter.toOpenAiStopChunk(model, id) +
 			                   streamConverter.toOpenAiDone();
-			case ANTHROPIC ->
-					streamConverter.toAnthropicFinale(result.outputTokens(), result.hasToolUse());
+			case ANTHROPIC -> streamConverter.toAnthropicFinale(
+					result.outputTokens(),
+					result.hasToolUse()
+			);
 			case RESPONSES ->
 					streamConverter.toResponsesTextDone(result.content(), id)
 					+ streamConverter.toResponsesCompleted(
@@ -363,20 +384,21 @@ public class KiroFacade {
 			boolean stream
 	) throws Exception {
 		String payload = payloadBuilder.buildOpenAiPayload(request, auth);
-		log.debug(
-				"[Upstream] payload length: {}",
-				payload.length()
+		String url = auth.getApiHost() + "/generateAssistantResponse";
+
+		KiroResponse response = kiroClient.request(
+				"POST",
+				url,
+				payload,
+				stream,
+				auth.getAccessToken()
 		);
-
-		try {
-			java.nio.file.Files.writeString(
-					java.nio.file.Path.of("/tmp/kiro-last-payload.json"),
-					payload
-			);
-		} catch (Exception ignored) {}
-
-		String url = kiroClient.getGenerateUrl();
-		return kiroClient.request("POST", url, payload, stream);
+		if (response.status() == 403) {
+			log.warn("[Kiro] 403, refreshing token and retrying");
+			auth.forceRefresh();
+			response = kiroClient.request("POST", url, payload, stream, auth.getAccessToken());
+		}
+		return response;
 	}
 
 	private void publishLog(
@@ -396,15 +418,20 @@ public class KiroFacade {
 				               .requestedModel(req.model())
 				               .status(200)
 				               .promptTokens(req.inputTokens())
-				               .completionTokens(outputTokens >
-				                                 0 ? outputTokens : null)
+				               .completionTokens(
+						               outputTokens >
+						               0 ? outputTokens : null
+				               )
 				               .latencyMs(latency)
-				               .firstTokenMs(firstTokenMs !=
-				                             null ? firstTokenMs.intValue() : null)
+				               .firstTokenMs(
+						               firstTokenMs !=
+						               null ? firstTokenMs.intValue() : null
+				               )
 				               .streaming(streaming)
 				               .clientIp(req.clientIp())
 				               .credits(credits != null &&
-				                        credits > 0 ? credits : null)
+				                        credits > 0 ? credits : null
+				               )
 				               .build()
 		);
 	}

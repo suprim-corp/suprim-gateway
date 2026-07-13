@@ -1,11 +1,11 @@
-package dev.suprim.gateway.proxy;
+package dev.suprim.gateway.proxy.kiro;
 
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.config.AppConfig;
+import dev.suprim.gateway.proxy.ProxyChain;
 import lombok.Builder;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -15,15 +15,16 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Map;
+import java.util.Optional;
 
-@RequiredArgsConstructor
+import static java.util.Objects.isNull;
+
+@Slf4j
 @Component
+@RequiredArgsConstructor
 public class KiroHttpClient {
-
-	private static final Logger log = LoggerFactory.getLogger(KiroHttpClient.class);
 	private static final long BASE_RETRY_DELAY = 1000;
 
-	private final KiroAuthManager auth;
 	private final KiroHeaders kiroHeaders;
 	private final AppConfig config;
 	private final ProxyChain proxyChain;
@@ -37,7 +38,8 @@ public class KiroHttpClient {
 			String method,
 			String url,
 			String body,
-			boolean stream
+			boolean stream,
+			String accessToken
 	) throws Exception {
 		int maxRetries = stream ? config.firstTokenMaxRetries() : 3;
 
@@ -50,7 +52,15 @@ public class KiroHttpClient {
 			}
 
 			try {
-				return doRequest(client, method, url, body, stream, maxRetries);
+				return doRequest(
+						client,
+						method,
+						url,
+						body,
+						stream,
+						maxRetries,
+						accessToken
+				);
 			} catch (IOException e) {
 				if (!proxyChain.hasProxies()) {
 					throw e;
@@ -70,15 +80,15 @@ public class KiroHttpClient {
 			String url,
 			String body,
 			boolean stream,
-			int maxRetries
+			int maxRetries,
+			String accessToken
 	) throws Exception {
 		HttpResponse<InputStream> lastResponse = null;
 		Exception lastError = null;
 
 		for (int attempt = 0; attempt < maxRetries; attempt++) {
 			try {
-				String token = auth.getAccessToken();
-				Map<String, String> headers = kiroHeaders.build(auth, token);
+				Map<String, String> headers = kiroHeaders.build(accessToken);
 
 				HttpRequest.Builder reqBuilder = HttpRequest.newBuilder().uri(
 						URI.create(url));
@@ -107,13 +117,14 @@ public class KiroHttpClient {
 				}
 
 				if (status == 403) {
-					log.warn(
-							"[Kiro] 403, refreshing token (attempt {}/{})",
-							attempt + 1,
-							maxRetries
-					);
-					auth.forceRefresh();
-					continue;
+					String contentType = response.headers()
+					                             .firstValue("content-type")
+					                             .orElse("");
+					return KiroResponse.builder()
+					                   .status(403)
+					                   .body(response.body())
+					                   .contentType(contentType)
+					                   .build();
 				}
 
 				if (status == 429) {
@@ -174,27 +185,20 @@ public class KiroHttpClient {
 			}
 		}
 
-		if (lastResponse != null) {
-			String contentType = lastResponse.headers().firstValue(
-					"content-type").orElse("");
-			return KiroResponse.builder()
-			                   .status(lastResponse.statusCode())
-			                   .body(lastResponse.body())
-			                   .contentType(contentType)
-			                   .build();
+		if (isNull(lastResponse)) {
+			throw Optional.ofNullable(lastError)
+			              .orElse(
+					              new RuntimeException("All retries exhausted")
+			              );
 		}
-		throw lastError != null ? lastError : new RuntimeException(
-				"All retries exhausted");
-	}
-
-	public String getGenerateUrl() {
-		return auth.getApiHost() + "/generateAssistantResponse";
-	}
-
-	public String getListModelsUrl() {
-		String params = "origin=AI_EDITOR";
-		if (auth.getProfileArn() != null)
-			params += "&profileArn=" + auth.getProfileArn();
-		return auth.getQHost() + "/ListAvailableModels?" + params;
+		return KiroResponse.builder()
+		                   .status(lastResponse.statusCode())
+		                   .body(lastResponse.body())
+		                   .contentType(
+				                   lastResponse.headers()
+				                               .firstValue("content-type")
+				                               .orElse("")
+		                   )
+		                   .build();
 	}
 }

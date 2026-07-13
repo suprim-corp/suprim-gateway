@@ -4,7 +4,7 @@ import dev.suprim.gateway.logging.RequestLogEvent;
 import dev.suprim.gateway.logging.RequestLogPublisher;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
-import dev.suprim.gateway.proxy.KiroEvent;
+import dev.suprim.gateway.proxy.kiro.KiroEvent;
 import dev.suprim.gateway.proxy.StreamConverter;
 import dev.suprim.gateway.utils.ErrorResponse;
 import jakarta.servlet.http.HttpServletResponse;
@@ -21,14 +21,14 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 @Slf4j
 @RequiredArgsConstructor
 @Component
 public class AntigravityFacade {
 
-	private static final ObjectMapper MAPPER = new ObjectMapper();
+	private static final JsonMapper MAPPER = new JsonMapper();
 	private static final Map<String, String> THOUGHT_SIGNATURES = new ConcurrentHashMap<>();
 	private final AntigravityAuthManager authManager;
 	private final RequestLogPublisher logPublisher;
