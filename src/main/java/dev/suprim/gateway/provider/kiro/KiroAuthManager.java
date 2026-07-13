@@ -597,6 +597,16 @@ public class KiroAuthManager implements ProviderAuthManager {
 						}
 					}
 				}
+			} else {
+				log.warn(
+						"[Kiro] ListAvailableProfiles HTTP {}: {}",
+						response.statusCode(),
+						response.body()
+						        .substring(
+								        0,
+								        Math.min(200, response.body().length())
+						        )
+				);
 			}
 		} catch (Exception e) {
 			log.warn("[Kiro] fetchProfileArn failed: {}", e.getMessage());
