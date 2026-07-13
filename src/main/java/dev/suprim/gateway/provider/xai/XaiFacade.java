@@ -48,7 +48,14 @@ public class XaiFacade {
 		}
 
 		long startTime = System.currentTimeMillis();
-		String accessToken = authManager.getAccessToken();
+		String accessToken;
+		try {
+			accessToken = authManager.getAccessToken();
+		} catch (Exception e) {
+			log.error("[xAI] Auth failed: {}", e.getMessage());
+			ErrorResponse.openAi(httpRes, 401, e.getMessage(), "auth_error");
+			return;
+		}
 
 		ObjectNode payloadNode = MAPPER.valueToTree(request);
 		if (stream && !payloadNode.has("stream_options")) {

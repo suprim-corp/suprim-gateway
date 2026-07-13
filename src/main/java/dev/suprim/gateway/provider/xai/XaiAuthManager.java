@@ -109,6 +109,7 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 			log.info("[xAI] Token refreshed, expires at {}", expiresAt);
 		} catch (Exception e) {
 			log.error("[xAI] Token refresh failed: {}", e.getMessage());
+			disconnect();
 			throw new RuntimeException("xAI token refresh failed", e);
 		} finally {
 			refreshLock.unlock();
