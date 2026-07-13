@@ -19,14 +19,14 @@ function showModels(index) {
         .then(data => {
             if (!data || !data.usageBreakdownList || !data.usageBreakdownList.length) return
             const breakdown = data.usageBreakdownList[0]
-            const used = breakdown.currentUsage || 0
+            const used = breakdown.currentUsageWithPrecision ?? breakdown.currentUsage ?? 0
             const limit = breakdown.usageLimit || 0
             const remaining = Math.max(0, limit - used)
             const pct = limit > 0 ? Math.round((remaining / limit) * 100) : 0
             const sub = data.subscriptionInfo
             const planName = (sub && (sub.subscriptionTitle || sub.subscriptionName || sub.subscriptionType)) || ''
             document.getElementById('usageLabel').textContent = planName ? planName + ' — Credits' : 'Credits'
-            document.getElementById('usageText').textContent = remaining.toFixed(1) + ' / ' + limit.toFixed(1) + ' ' + (breakdown.unit || 'credits')
+            document.getElementById('usageText').textContent = used.toFixed(2) + ' / ' + limit.toFixed(0) + ' used'
             const bar = document.getElementById('usageBar')
             bar.style.width = pct + '%'
             bar.className = 'h-full rounded-full transition-all ' +
