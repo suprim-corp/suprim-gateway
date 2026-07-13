@@ -119,6 +119,9 @@ public class KiroAuthManager implements ProviderAuthManager {
 	}
 
 	public String getAccessToken() throws Exception {
+		if (authType == KiroCredentials.AuthType.API_KEY) {
+			return accessToken;
+		}
 		if (accessToken != null && expiresAt != null && Instant.now().isBefore(
 				expiresAt.minusSeconds(600))) {
 			return accessToken;
@@ -325,7 +328,8 @@ public class KiroAuthManager implements ProviderAuthManager {
 		String baseUrl = "us-east-1".equals(region)
 				? "https://codewhisperer.us-east-1.amazonaws.com"
 				: "https://q." + region + ".amazonaws.com";
-		String url = baseUrl + "/ListAvailableModels?origin=AI_EDITOR&maxResults=50";
+		String url =
+				baseUrl + "/ListAvailableModels?origin=AI_EDITOR&maxResults=50";
 		if (!isApiKey && account.profileArn() != null) {
 			url += "&profileArn=" + URLEncoder.encode(
 					account.profileArn(),
@@ -334,17 +338,30 @@ public class KiroAuthManager implements ProviderAuthManager {
 		}
 
 		String token = account.accessToken();
-		HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
-		                                 .uri(URI.create(url))
-		                                 .GET()
-		                                 .header("Authorization", "Bearer " + token)
-		                                 .header("Accept", "application/json")
-		                                 .header(
-				                                 "User-Agent",
-				                                 "aws-sdk-js/1.0.0 ua/2.1 os/darwin lang/js md/nodejs#22.0.0 api/codewhispererruntime#1.0.0 m/N,E KiroIDE-0.7.45"
-		                                 )
-		                                 .header("x-amz-user-agent", "aws-sdk-js/1.0.0 KiroIDE-0.7.45")
-		                                 .header("x-amzn-codewhisperer-optout", "true");
+		HttpRequest.Builder reqBuilder =
+				HttpRequest.newBuilder()
+				           .uri(URI.create(url))
+				           .GET()
+				           .header(
+						           "Authorization",
+						           "Bearer " + token
+				           )
+				           .header(
+						           "Accept",
+						           "application/json"
+				           )
+				           .header(
+						           "User-Agent",
+						           "aws-sdk-js/1.0.0 ua/2.1 os/darwin lang/js md/nodejs#22.0.0 api/codewhispererruntime#1.0.0 m/N,E KiroIDE-0.7.45"
+				           )
+				           .header(
+						           "x-amz-user-agent",
+						           "aws-sdk-js/1.0.0 KiroIDE-0.7.45"
+				           )
+				           .header(
+						           "x-amzn-codewhisperer-optout",
+						           "true"
+				           );
 		if (isApiKey) {
 			reqBuilder.header("tokentype", "API_KEY");
 		}
@@ -383,30 +400,29 @@ public class KiroAuthManager implements ProviderAuthManager {
 			}
 			Object cost = m.get("rateMultiplier");
 			String unit = (String) m.get("rateUnit");
+			String name = (String) m.get("modelName");
 			Matcher mat = DOT_VERSION.matcher(id);
 			if (mat.matches()) {
 				String hyphenated =
 						mat.group(1) + mat.group(2) + "-" + mat.group(3);
 				if (!disabled.contains(hyphenated) &&
 				    seen.add(hyphenated)) {
-					models.add(Map.of(
-							"id",
-							hyphenated,
-							"cost",
-							cost != null ? cost : 0,
-							"unit",
-							unit != null ? unit : ""
-					));
+					models.add(
+							Map.of(
+									"id", hyphenated,
+									"cost", cost != null ? cost : 0,
+									"unit", unit != null ? unit : "",
+									"name", name != null ? name : ""
+							)
+					);
 				}
 			} else if (seen.add(id)) {
 				models.add(
 						Map.of(
-								"id",
-								id,
-								"cost",
-								cost != null ? cost : 0,
-								"unit",
-								unit != null ? unit : ""
+								"id", id,
+								"cost", cost != null ? cost : 0,
+								"unit", unit != null ? unit : "",
+								"name", name != null ? name : ""
 						)
 				);
 			}
@@ -433,17 +449,31 @@ public class KiroAuthManager implements ProviderAuthManager {
 						StandardCharsets.UTF_8
 				);
 			}
-			HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
-			                                 .uri(URI.create(url))
-			                                 .header("Authorization", "Bearer " + account.accessToken())
-			                                 .header("Accept", "application/json")
-			                                 .header(
-					                                 "User-Agent",
-					                                 "aws-sdk-js/1.0.0 ua/2.1 os/darwin lang/js md/nodejs#22.0.0 api/codewhispererruntime#1.0.0 m/N,E KiroIDE-0.7.45"
-			                                 )
-			                                 .header("x-amz-user-agent", "aws-sdk-js/1.0.0 KiroIDE-0.7.45")
-			                                 .header("x-amzn-codewhisperer-optout", "true")
-			                                 .GET();
+			HttpRequest.Builder reqBuilder =
+					HttpRequest.newBuilder()
+					           .uri(URI.create(url))
+					           .header(
+							           "Authorization",
+							           "Bearer " +
+							           account.accessToken()
+					           )
+					           .header(
+							           "Accept",
+							           "application/json"
+					           )
+					           .header(
+							           "User-Agent",
+							           "aws-sdk-js/1.0.0 ua/2.1 os/darwin lang/js md/nodejs#22.0.0 api/codewhispererruntime#1.0.0 m/N,E KiroIDE-0.7.45"
+					           )
+					           .header(
+							           "x-amz-user-agent",
+							           "aws-sdk-js/1.0.0 KiroIDE-0.7.45"
+					           )
+					           .header(
+							           "x-amzn-codewhisperer-optout",
+							           "true"
+					           )
+					           .GET();
 			if (isApiKey) {
 				reqBuilder.header("tokentype", "API_KEY");
 			}
@@ -471,15 +501,27 @@ public class KiroAuthManager implements ProviderAuthManager {
 			             + Kiro.USAGE_LIMITS_PATH;
 			HttpRequest request = HttpRequest.newBuilder()
 			                                 .uri(URI.create(url))
-			                                 .header("Authorization", "Bearer " + apiKey)
+			                                 .header(
+					                                 "Authorization",
+					                                 "Bearer " + apiKey
+			                                 )
 			                                 .header("tokentype", "API_KEY")
-			                                 .header("Accept", "application/json")
+			                                 .header(
+					                                 "Accept",
+					                                 "application/json"
+			                                 )
 			                                 .header(
 					                                 "User-Agent",
 					                                 "aws-sdk-js/1.0.0 ua/2.1 os/darwin lang/js md/nodejs#22.0.0 api/codewhispererruntime#1.0.0 m/N,E KiroIDE-0.7.45"
 			                                 )
-			                                 .header("x-amz-user-agent", "aws-sdk-js/1.0.0 KiroIDE-0.7.45")
-			                                 .header("x-amzn-codewhisperer-optout", "true")
+			                                 .header(
+					                                 "x-amz-user-agent",
+					                                 "aws-sdk-js/1.0.0 KiroIDE-0.7.45"
+			                                 )
+			                                 .header(
+					                                 "x-amzn-codewhisperer-optout",
+					                                 "true"
+			                                 )
 			                                 .GET()
 			                                 .build();
 			HttpResponse<String> response = proxyChain.currentClient().send(

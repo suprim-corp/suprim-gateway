@@ -59,6 +59,7 @@ public class ModelRegistry {
 											                  .object("model")
 											                  .ownedBy(Provider.KIRO.name())
 											                  .created(now)
+											                  .displayName((String) m.get("name"))
 											                  .build()
 									);
 								}
@@ -170,6 +171,7 @@ public class ModelRegistry {
 			String id,
 			String object,
 			String ownedBy,
-			long created
+			long created,
+			String displayName
 	) {}
 }

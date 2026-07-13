@@ -15,7 +15,7 @@ public record KiroCredentials(
         String[] scopes,
         AuthType authType
 ) {
-    public enum AuthType { KIRO_DESKTOP, AWS_SSO_OIDC }
+    public enum AuthType { KIRO_DESKTOP, AWS_SSO_OIDC, API_KEY }
 
     public boolean isExpired() {
         return expiresAt != null && Instant.now().isAfter(expiresAt.minusSeconds(600));
