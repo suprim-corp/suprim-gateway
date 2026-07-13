@@ -15,6 +15,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -312,7 +313,9 @@ public class KiroAuthManager implements ProviderAuthManager {
 			"claude-3.7-sonnet"
 	);
 
+	@Cacheable("kiroModels")
 	public List<Map<String, Object>> listModels(StoredAccount account) throws Exception {
+
 		String region = account.apiRegion() != null ? account.apiRegion() : config.apiRegion();
 		String baseUrl = "https://q." + region + ".amazonaws.com";
 		String url = baseUrl + "/ListAvailableModels?origin=AI_EDITOR&maxResults=50"
@@ -355,6 +358,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 				}
 			}
 		}
+
 		return models;
 	}
 

@@ -8,6 +8,7 @@ import dev.suprim.gateway.instants.Xai;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
@@ -86,6 +87,7 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 		persistToStore();
 	}
 
+	@Cacheable("xaiModels")
 	public List<Map<String, Object>> listModels(StoredAccount account) throws IOException {
 		if (account.accessToken() == null) {
 			return List.of();
