@@ -12,6 +12,7 @@ import dev.suprim.gateway.provider.kiro.refresher.RefreshResult;
 import dev.suprim.gateway.provider.kiro.refresher.SsoOidcTokenRefresher;
 import dev.suprim.gateway.instants.Kiro;
 import dev.suprim.gateway.config.AppConfig;
+import dev.suprim.gateway.proxy.ProxyChain;
 import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -51,10 +52,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 
 	private final AppConfig config;
 	private final CredentialStore credentialStore;
-	private final HttpClient httpClient =
-			HttpClient.newBuilder()
-			          .connectTimeout(Duration.ofSeconds(10))
-			          .build();
+	private final ProxyChain proxyChain;
 	private final ReentrantLock refreshLock = new ReentrantLock();
 
 	private String accessToken;
@@ -135,7 +133,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 
 	public ImportResult importAccount(ImportRequest req) throws Exception {
 		ImportResult result = KiroAccountImporter.execute(
-				req, credentialStore, httpClient
+				req, credentialStore, proxyChain.currentClient()
 		);
 		List<StoredAccount> before = credentialStore.load();
 		boolean shouldApply = before.size() == 1 ||
@@ -209,7 +207,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 			result = DesktopTokenRefresher.refresh(
 					refreshToken,
 					config.region(),
-					httpClient
+					proxyChain.currentClient()
 			);
 		} else {
 			result = SsoOidcTokenRefresher.refresh(
@@ -218,7 +216,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 					clientSecret,
 					scopes,
 					config.region(),
-					httpClient
+					proxyChain.currentClient()
 			);
 		}
 		this.accessToken = result.accessToken();
@@ -354,7 +352,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 		                                 )
 		                                 .build();
 
-		HttpResponse<String> response = httpClient.send(
+		HttpResponse<String> response = proxyChain.currentClient().send(
 				request,
 				HttpResponse.BodyHandlers.ofString()
 		);
@@ -459,7 +457,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 			                                 )
 			                                 .GET()
 			                                 .build();
-			HttpResponse<String> response = httpClient.send(
+			HttpResponse<String> response = proxyChain.currentClient().send(
 					request,
 					HttpResponse.BodyHandlers.ofString()
 			);
