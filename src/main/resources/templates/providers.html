@@ -67,12 +67,17 @@
                     </td>
                     <!-- Status -->
                     <td class="px-4 py-3">
-                        <span th:if="${account.expiresAt() == null || account.expiresAt().isAfter(T(java.time.Instant).now())}"
+                        <span th:if="${account.accessToken() == null}"
+                              class="inline-flex items-center gap-1.5 text-red-400">
+                            <span class="size-1.5 rounded-full bg-red-400"></span>
+                            Disconnected
+                        </span>
+                        <span th:if="${account.accessToken() != null && (account.expiresAt() == null || account.expiresAt().isAfter(T(java.time.Instant).now()))}"
                               class="inline-flex items-center gap-1.5 text-neon-green">
                             <span class="size-1.5 rounded-full bg-green-400"></span>
                             Connected
                         </span>
-                        <span th:if="${account.expiresAt() != null && !account.expiresAt().isAfter(T(java.time.Instant).now())}"
+                        <span th:if="${account.accessToken() != null && account.expiresAt() != null && !account.expiresAt().isAfter(T(java.time.Instant).now())}"
                               class="inline-flex items-center gap-1.5 text-red-400">
                             <span class="size-1.5 rounded-full bg-red-400"></span>
                             Expired
@@ -86,7 +91,12 @@
                         </button>
                     </td>
                     <!-- Actions -->
-                    <td class="px-4 py-3 text-right">
+                    <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
+                        <a th:if="${account.accessToken() == null && account.provider() == 'XAI'}"
+                           href="/auth/xai"
+                           class="text-xs text-neon-purple hover:text-purple-300 transition-colors cursor-pointer">
+                            Reconnect
+                        </a>
                         <form th:action="@{/providers/{idx}/delete(idx=${iter.index})}" method="post" class="inline"
                               onsubmit="return confirm('Delete this account?')">
                             <button type="submit"

@@ -83,6 +83,7 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 		this.refreshToken = null;
 		this.expiresAt = null;
 		this.email = null;
+		persistToStore();
 	}
 
 	public List<Map<String, Object>> listModels() throws IOException {
