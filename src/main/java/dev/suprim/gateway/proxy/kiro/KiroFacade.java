@@ -381,14 +381,14 @@ public class KiroFacade {
 
 	private static final List<KiroEndpoint> ENDPOINTS = List.of(
 			new KiroEndpoint(
-					"https://q.us-east-1.amazonaws.com/generateAssistantResponse",
-					"",
-					"Kiro IDE"
-			),
-			new KiroEndpoint(
 					"https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
 					"AmazonCodeWhispererStreamingService.GenerateAssistantResponse",
 					"CodeWhisperer"
+			),
+			new KiroEndpoint(
+					"https://q.us-east-1.amazonaws.com/generateAssistantResponse",
+					"",
+					"Kiro IDE"
 			),
 			new KiroEndpoint(
 					"https://q.us-east-1.amazonaws.com/generateAssistantResponse",
