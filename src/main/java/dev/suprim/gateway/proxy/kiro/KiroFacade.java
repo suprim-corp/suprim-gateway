@@ -405,6 +405,7 @@ public class KiroFacade {
 	) throws Exception {
 		String payload = payloadBuilder.buildOpenAiPayload(request, auth);
 		String accessToken = auth.getAccessToken();
+		log.debug("[Kiro] Streaming payload (first 500): {}", payload.substring(0, Math.min(500, payload.length())));
 
 		for (KiroEndpoint ep : ENDPOINTS) {
 			String amzTarget = ep.amzTarget().isEmpty() ? null : ep.amzTarget();
