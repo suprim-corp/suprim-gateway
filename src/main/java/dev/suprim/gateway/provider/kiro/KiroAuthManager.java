@@ -39,6 +39,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
 @Slf4j
@@ -69,7 +70,9 @@ public class KiroAuthManager implements ProviderAuthManager {
 
 	@PostConstruct
 	void init() {
-		this.profileArn = config.profileArn();
+		String configArn = config.profileArn();
+		boolean blankArn = isNull(configArn) || configArn.isBlank();
+		this.profileArn = blankArn ? null : configArn;
 
 		// credential store có sẵn → dùng luôn, không cần đọc Kiro DB
 		Optional<KiroCredentials> fromStore = CredentialStoreReader.read(
@@ -78,8 +81,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 
 		if (fromStore.isPresent()) {
 			applyCredentials(fromStore.get());
-			if (profileArn == null &&
-			    authType == KiroCredentials.AuthType.API_KEY) {
+			if (blankArn && authType == KiroCredentials.AuthType.API_KEY) {
 				resolveProfileArn();
 			}
 			loadAccountName();
