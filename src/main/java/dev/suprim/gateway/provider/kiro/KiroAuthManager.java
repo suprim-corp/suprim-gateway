@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
 
+import static java.util.Objects.nonNull;
+
 @Component
 public class KiroAuthManager implements ProviderAuthManager {
 
@@ -32,13 +34,10 @@ public class KiroAuthManager implements ProviderAuthManager {
 
 	private final AppConfig config;
 	private final CredentialStore credentialStore;
-	private final HttpClient httpClient = HttpClient.newBuilder()
-	                                                .connectTimeout(
-			                                                Duration.ofSeconds(
-					                                                10
-			                                                )
-	                                                )
-	                                                .build();
+	private final HttpClient httpClient =
+			HttpClient.newBuilder()
+			          .connectTimeout(Duration.ofSeconds(10))
+			          .build();
 	private final ReentrantLock refreshLock = new ReentrantLock();
 
 	private String accessToken;
@@ -46,6 +45,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 	private Instant expiresAt;
 	@Getter
 	private String profileArn;
+	private String accountName;
 	private String clientId;
 	private String clientSecret;
 	private String[] scopes;
@@ -70,6 +70,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 
 		if (fromStore.isPresent()) {
 			applyCredentials(fromStore.get());
+			loadAccountName();
 			log.info(
 					"[Auth] Initialized from credential store: type={}, region={}, apiRegion={}",
 					authType,
@@ -90,6 +91,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 		}
 		KiroSourceReader.read(config).ifPresent(this::applyCredentials);
 		bootstrapStore();
+		loadAccountName();
 		log.info(
 				"[Auth] Initialized: type={}, region={}, apiRegion={}",
 				authType,
@@ -137,6 +139,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 			this.clientSecret = acc.clientSecret();
 			this.authType = KiroCredentials.AuthType.valueOf(acc.authType());
 			if (acc.profileArn() != null) this.profileArn = acc.profileArn();
+			loadAccountName();
 		}
 		return result;
 	}
@@ -248,7 +251,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 
 	@Override
 	public String getDisplayName() {
-		return profileArn;
+		return accountName != null ? accountName : profileArn;
 	}
 
 	@Override
@@ -278,5 +281,16 @@ public class KiroAuthManager implements ProviderAuthManager {
 				             .apiRegion(config.apiRegion())
 				             .build();
 		credentialStore.upsert(account);
+	}
+
+	private void loadAccountName() {
+		credentialStore.load()
+		               .stream()
+		               .filter(a -> nonNull(profileArn) &&
+		                            profileArn.equals(a.profileArn())
+		               )
+		               .findFirst()
+		               .map(StoredAccount::name)
+		               .ifPresent(name -> this.accountName = name);
 	}
 }

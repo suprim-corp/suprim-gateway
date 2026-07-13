@@ -120,6 +120,7 @@ public class KiroFacade {
 		logPublisher.publish(
 				RequestLogEvent.builder()
 				               .virtualKeyId(req.keyId())
+				               .accountId(auth.getDisplayName())
 				               .model(req.model())
 				               .requestedModel(req.model())
 				               .status(response.status())
@@ -390,6 +391,7 @@ public class KiroFacade {
 		logPublisher.publish(
 				RequestLogEvent.builder()
 				               .virtualKeyId(req.keyId())
+				               .accountId(auth.getDisplayName())
 				               .model(req.model())
 				               .requestedModel(req.model())
 				               .status(200)

@@ -17,6 +17,9 @@
                             Status
                         </th>
                         <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                            Account
+                        </th>
+                        <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
                             Model
                         </th>
                         <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
@@ -53,13 +56,14 @@
                     </thead>
                     <tbody class="divide-y divide-zinc-800/50">
                     <tr th:if="${logs.isEmpty()}">
-                        <td colspan="11" class="px-4 py-8 text-center text-xs text-zinc-500">No requests yet</td>
+                        <td colspan="13" class="px-4 py-8 text-center text-xs text-zinc-500">No requests yet</td>
                     </tr>
                     <tr th:each="log : ${logs}" class="hover:bg-zinc-800/20 transition-colors">
                         <td class="px-4 py-2.5">
                             <span th:class="${log.status() < 300 ? 'text-neon-green' : (log.status() < 500 ? 'text-neon-yellow' : 'text-red-400')}"
                                   class="text-[10px] font-medium" th:text="${log.status()}">200</span>
                         </td>
+                        <td class="px-4 py-2.5 text-[10px] text-zinc-500 max-w-[120px] truncate" th:text="${log.accountId() ?: '—'}" th:title="${log.accountId()}">—</td>
                         <td class="px-4 py-2.5 text-[10px]" th:text="${log.model()}">—</td>
                         <td class="px-4 py-2.5 text-[10px] text-zinc-500"
                             th:text="${log.usage().promptTokens() != null ? #numbers.formatInteger(log.usage().promptTokens(), 1, 'COMMA') : '—'}">

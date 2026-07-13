@@ -131,6 +131,7 @@ public class AntigravityFacade {
 		int latency = (int) (System.currentTimeMillis() - startTime);
 		logPublisher.publish(RequestLogEvent.builder()
 		                                    .virtualKeyId(keyId)
+		                                    .accountId(authManager.getDisplayName())
 		                                    .model(model)
 		                                    .requestedModel(model)
 		                                    .status(response.status())
@@ -332,6 +333,7 @@ public class AntigravityFacade {
 		logPublisher.publish(
 				RequestLogEvent.builder()
 				               .virtualKeyId(keyId)
+				               .accountId(authManager.getDisplayName())
 				               .model(model)
 				               .requestedModel(model)
 				               .status(200)
@@ -407,6 +409,7 @@ public class AntigravityFacade {
 		logPublisher.publish(
 				RequestLogEvent.builder()
 				               .virtualKeyId(keyId)
+				               .accountId(authManager.getDisplayName())
 				               .model(model)
 				               .requestedModel(model)
 				               .status(200)

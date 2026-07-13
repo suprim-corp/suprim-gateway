@@ -187,6 +187,7 @@ public class XaiFacade {
 		int latency = (int) (System.currentTimeMillis() - startTime);
 		logPublisher.publish(RequestLogEvent.builder()
 		                                    .virtualKeyId(keyId)
+		                                    .accountId(authManager.getDisplayName())
 		                                    .model(model)
 		                                    .requestedModel(model)
 		                                    .status(response.status())
@@ -221,6 +222,7 @@ public class XaiFacade {
 		int latency = (int) (System.currentTimeMillis() - startTime);
 		logPublisher.publish(RequestLogEvent.builder()
 		                                    .virtualKeyId(keyId)
+		                                    .accountId(authManager.getDisplayName())
 		                                    .model(model)
 		                                    .requestedModel(model)
 		                                    .status(200)
@@ -270,6 +272,7 @@ public class XaiFacade {
 		logPublisher.publish(
 				RequestLogEvent.builder()
 				               .virtualKeyId(keyId)
+				               .accountId(authManager.getDisplayName())
 				               .model(model)
 				               .requestedModel(model)
 				               .status(200)
