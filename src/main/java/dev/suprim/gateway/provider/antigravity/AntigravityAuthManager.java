@@ -42,12 +42,6 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 				Provider.ANTIGRAVITY.name()
 		);
 		account.ifPresent(this::applyCredentials);
-		if (account.isPresent()) {
-			log.info(
-					LogTag.ANTIGRAVITY + "Loaded credentials, projectId={}",
-					projectId
-			);
-		}
 	}
 
 	@Override

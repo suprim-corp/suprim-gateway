@@ -89,13 +89,6 @@ public class KiroAuthManager implements ProviderAuthManager {
 				resolveProfileArn();
 			}
 			loadAccountName();
-			log.info(
-					LogTag.KIRO + "Initialized from credential store: type={}, region={}, apiRegion={}, profileArn={}",
-					authType,
-					config.region(),
-					config.apiRegion(),
-					profileArn
-			);
 			return;
 		}
 
@@ -111,12 +104,6 @@ public class KiroAuthManager implements ProviderAuthManager {
 		KiroSourceReader.read(config).ifPresent(this::applyCredentials);
 		bootstrapStore();
 		loadAccountName();
-		log.info(
-				LogTag.KIRO + "Initialized: type={}, region={}, apiRegion={}",
-				authType,
-				config.region(),
-				config.apiRegion()
-		);
 	}
 
 	public String getAccessToken() throws Exception {

@@ -43,9 +43,6 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 				Provider.XAI.name()
 		);
 		account.ifPresent(this::applyCredentials);
-		if (account.isPresent()) {
-			log.info(LogTag.XAI + "Loaded credentials, email={}", email);
-		}
 	}
 
 	@Override
