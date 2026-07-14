@@ -97,6 +97,11 @@
                            class="text-xs text-neon-purple hover:text-purple-300 transition-colors cursor-pointer">
                             Reconnect
                         </a>
+                        <a th:if="${account.accessToken() == null && account.provider() == 'CODEX'}"
+                           href="/auth/codex"
+                           class="text-xs text-neon-purple hover:text-purple-300 transition-colors cursor-pointer">
+                            Reconnect
+                        </a>
                         <form th:action="@{/providers/{idx}/delete(idx=${iter.index})}" method="post" class="inline"
                               onsubmit="return confirm('Delete this account?')">
                             <button type="submit"
@@ -188,7 +193,7 @@
                          class="size-8" alt="Codex">
                     <div>
                         <div class="text-xs font-medium text-zinc-100">Codex</div>
-                        <div class="text-[10px] text-zinc-500">Add API key</div>
+                        <div class="text-[10px] text-zinc-500">Connect via OpenAI OAuth</div>
                     </div>
                 </button>
                 <button onclick="showProviderForm('xai')"
@@ -355,25 +360,20 @@
                 </div>
             </div>
 
-            <!-- Codex API key form -->
-            <form id="codexForm" action="/providers/add-key" method="post" class="hidden space-y-3">
-                <input type="hidden" name="provider" value="CODEX">
-                <div>
-                    <label class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">API Key</label>
-                    <input type="password" name="apiKey" required placeholder="sk-..."
-                           class="w-full h-9 px-3 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-neon-purple">
-                </div>
-                <div class="flex gap-2 justify-end">
+            <!-- Codex OAuth form -->
+            <div id="codexForm" class="hidden space-y-3">
+                <p class="text-xs text-zinc-400">Connect your ChatGPT account via OAuth to use Codex models.</p>
+                <div class="flex gap-2 justify-end mt-3">
                     <button type="button" onclick="showChoices()"
                             class="h-8 px-3 text-xs text-zinc-400 hover:text-zinc-100 cursor-pointer transition-colors">
                         Back
                     </button>
-                    <button type="submit"
-                            class="h-8 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
-                        Add
-                    </button>
+                    <a href="/auth/codex"
+                       class="inline-flex items-center h-8 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
+                        Connect with OpenAI
+                    </a>
                 </div>
-            </form>
+            </div>
 
             <!-- xAI OAuth form -->
             <div id="xaiForm" class="hidden space-y-3">

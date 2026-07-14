@@ -4,6 +4,7 @@ import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.antigravity.AntigravityAuthManager;
+import dev.suprim.gateway.provider.codex.CodexAuthManager;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.config.AppConfig;
 import dev.suprim.gateway.provider.xai.XaiAuthManager;
@@ -27,6 +28,7 @@ public class ModelRegistry {
 	private final KiroAuthManager kiroAuthManager;
 	private final AntigravityAuthManager antigravityAuthManager;
 	private final XaiAuthManager xaiAuthManager;
+	private final CodexAuthManager codexAuthManager;
 
 	public List<ModelForListingApi> getAllModelsForApi() {
 		List<ModelForListingApi> result = new ArrayList<>();
@@ -61,7 +63,8 @@ public class ModelRegistry {
 											                  .object("model")
 											                  .ownedBy(Provider.KIRO.name())
 											                  .created(now)
-											                  .displayName((String) m.get("name"))
+											                  .displayName((String) m.get(
+													                  "name"))
 											                  .build()
 									);
 								}
@@ -73,7 +76,9 @@ public class ModelRegistry {
 								String id = "ag/" + modelId;
 								if (seen.add(id)) {
 									String label = "Antigravity | " +
-											Optional.ofNullable((String) m.get("displayName")).orElse(modelId);
+									               Optional.ofNullable((String) m.get(
+											                       "displayName"))
+									                       .orElse(modelId);
 									result.add(
 											ModelForListingApi
 													.builder()
@@ -102,6 +107,24 @@ public class ModelRegistry {
 									);
 								}
 							});
+					case CODEX -> codexAuthManager
+							.listModels(account)
+							.forEach(m -> {
+								String id = (String) m.get("id");
+								if (seen.add(id)) {
+									result.add(
+											ModelForListingApi
+													.builder()
+													.id(id)
+													.created(now)
+													.ownedBy(Provider.CODEX.name())
+													.displayName(
+															"Codex | " + id)
+													.object("model")
+													.build()
+									);
+								}
+							});
 					default -> {}
 				}
 			} catch (Exception ignored) {}
@@ -119,8 +142,14 @@ public class ModelRegistry {
 						                     String id = (String) m.get("id");
 						                     Object cost = m.get("cost");
 						                     String unit = (String) m.get("unit");
-						                     if (cost instanceof Number c && unit != null && !unit.isEmpty()) {
-							                     return ModelInfo.of(id, c.doubleValue(), unit);
+						                     if (cost instanceof Number c &&
+						                         unit != null &&
+						                         !unit.isEmpty()) {
+							                     return ModelInfo.of(
+									                     id,
+									                     c.doubleValue(),
+									                     unit
+							                     );
 						                     }
 						                     return ModelInfo.of(id);
 					                     })
@@ -153,6 +182,15 @@ public class ModelRegistry {
 							                    (String) m.get("id")
 					                    ))
 					                    .toList()
+			);
+			case CODEX -> safeListModels(
+					() -> codexAuthManager.listModels(account)
+					                      .stream()
+					                      .map(m -> ModelInfo.of(
+									                      (String) m.get("id")
+							                      )
+					                      )
+					                      .toList()
 			);
 			default -> List.of();
 		};

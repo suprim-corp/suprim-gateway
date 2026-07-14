@@ -49,7 +49,7 @@ public class AccountRotator {
 				case KIRO -> LogTag.KIRO;
 				case XAI, GROK -> LogTag.XAI;
 				case ANTIGRAVITY -> LogTag.ANTIGRAVITY;
-				case CODEX -> "[Codex] ";
+				case CODEX -> LogTag.CODEX;
 			};
 			String names = accounts.stream()
 			                       .map(acc -> "\033[36m" + Optional.ofNullable(acc.name())

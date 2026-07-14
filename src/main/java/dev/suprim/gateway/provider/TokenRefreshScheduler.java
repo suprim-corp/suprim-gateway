@@ -3,6 +3,8 @@ package dev.suprim.gateway.provider;
 import dev.suprim.gateway.instants.Antigravity;
 import dev.suprim.gateway.provider.antigravity.GoogleTokenRefresher;
 import dev.suprim.gateway.provider.antigravity.GoogleTokenResponse;
+import dev.suprim.gateway.provider.codex.CodexTokenRefresher;
+import dev.suprim.gateway.provider.codex.CodexTokenResponse;
 import dev.suprim.gateway.provider.kiro.refresher.DesktopTokenRefresher;
 import dev.suprim.gateway.provider.kiro.refresher.RefreshResult;
 import dev.suprim.gateway.provider.kiro.refresher.SsoOidcTokenRefresher;
@@ -65,6 +67,12 @@ public class TokenRefreshScheduler {
 				}
 				case XAI -> {
 					XaiTokenResponse r = XaiTokenRefresher.refresh(refreshToken);
+					newAccess = r.accessToken();
+					newRefresh = r.refreshToken() != null ? r.refreshToken() : refreshToken;
+					newExpires = Instant.now().plusSeconds(r.expiresIn());
+				}
+				case CODEX -> {
+					CodexTokenResponse r = CodexTokenRefresher.refresh(refreshToken);
 					newAccess = r.accessToken();
 					newRefresh = r.refreshToken() != null ? r.refreshToken() : refreshToken;
 					newExpires = Instant.now().plusSeconds(r.expiresIn());

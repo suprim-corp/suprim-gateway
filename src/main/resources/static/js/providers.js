@@ -17,7 +17,29 @@ function showModels(index) {
     fetch('/providers/' + index + '/usage')
         .then(res => res.ok ? res.json() : null)
         .then(data => {
-            if (!data || !data.usageBreakdownList || !data.usageBreakdownList.length) return
+            if (!data) return
+
+            // Codex format: {plan, session, weekly, limitReached, resetCredits}
+            if (data.session || data.weekly) {
+                const session = data.session || {}
+                const weekly = data.weekly || {}
+                const usedPct = session.usedPercent ?? weekly.usedPercent ?? 0
+                const remaining = Math.max(0, 100 - usedPct)
+                const planMap = {free: 'Free', go: 'Go', plus: 'Plus', pro: 'Pro', business: 'Business', enterprise: 'Enterprise'}
+                const planLabel = planMap[data.plan] || data.plan || 'Codex'
+                const limitTag = data.limitReached ? ' — LIMIT REACHED' : ''
+                document.getElementById('usageLabel').textContent = 'ChatGPT ' + planLabel + limitTag
+                document.getElementById('usageText').textContent = usedPct + '% used'
+                const bar = document.getElementById('usageBar')
+                bar.style.width = remaining + '%'
+                bar.className = 'h-full rounded-full transition-all ' +
+                    (remaining > 50 ? 'bg-green-400' : remaining > 20 ? 'bg-yellow-400' : 'bg-red-400')
+                usageBanner.classList.remove('hidden')
+                return
+            }
+
+            // Kiro format: {usageBreakdownList, subscriptionInfo}
+            if (!data.usageBreakdownList || !data.usageBreakdownList.length) return
             const breakdown = data.usageBreakdownList[0]
             const used = breakdown.currentUsageWithPrecision ?? breakdown.currentUsage ?? 0
             const limit = breakdown.usageLimit || 0

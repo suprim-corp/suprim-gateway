@@ -3,6 +3,8 @@ package dev.suprim.gateway.admin;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.provider.Provider;
+import dev.suprim.gateway.provider.codex.CodexAuthManager;
+import dev.suprim.gateway.provider.codex.CodexHttpClient;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.model.ModelInfo;
 import dev.suprim.gateway.model.ModelRegistry;
@@ -26,6 +28,7 @@ class ProvidersController {
 	private final CredentialStore credentialStore;
 	private final ModelRegistry modelRegistry;
 	private final KiroAuthManager kiroAuthManager;
+	private final CodexAuthManager codexAuthManager;
 
 	@GetMapping("/providers")
 	String providers(Model model) {
@@ -110,9 +113,12 @@ class ProvidersController {
 			return Map.of();
 		}
 		StoredAccount account = accounts.get(index);
-		if (!Provider.KIRO.name().equals(account.provider())) {
-			return Map.of();
+		if (Provider.KIRO.name().equals(account.provider())) {
+			return kiroAuthManager.getUsageLimits(account);
 		}
-		return kiroAuthManager.getUsageLimits(account);
+		if (Provider.CODEX.name().equals(account.provider())) {
+			return CodexHttpClient.fetchUsage(codexAuthManager.getAccessToken(account));
+		}
+		return Map.of();
 	}
 }
