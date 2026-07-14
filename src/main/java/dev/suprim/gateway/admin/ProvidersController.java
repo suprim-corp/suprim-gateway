@@ -38,14 +38,23 @@ class ProvidersController {
 	}
 
 	@PostMapping("/providers/{index}/rename")
-	String rename(@PathVariable int index, @RequestParam String name) {
+	@ResponseBody
+	Map<String, String> rename(@PathVariable int index, @RequestParam String name) {
 		List<StoredAccount> accounts = credentialStore.load();
-		if (index >= 0 && index < accounts.size()) {
-			List<StoredAccount> updated = new ArrayList<>(accounts);
-			updated.set(index, accounts.get(index).withName(name.trim()));
-			credentialStore.save(updated);
+		if (index < 0 || index >= accounts.size()) {
+			return Map.of("error", "Invalid index");
 		}
-		return "redirect:/providers";
+		String trimmed = name.trim();
+		String provider = accounts.get(index).provider();
+		boolean duplicate = accounts.stream()
+				.anyMatch(acc -> trimmed.equals(acc.name()) && provider.equals(acc.provider()));
+		if (duplicate) {
+			return Map.of("error", "Name already exists for this provider");
+		}
+		List<StoredAccount> updated = new ArrayList<>(accounts);
+		updated.set(index, accounts.get(index).withName(trimmed));
+		credentialStore.save(updated);
+		return Map.of("ok", "true");
 	}
 
 	@PostMapping("/providers/{index}/delete")

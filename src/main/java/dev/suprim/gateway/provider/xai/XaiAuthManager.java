@@ -1,11 +1,13 @@
 package dev.suprim.gateway.provider.xai;
 
+import dev.suprim.gateway.logging.LogTag;
 import dev.suprim.gateway.provider.OAuthProviderAuthManager;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.instants.Xai;
 
+import lombok.Builder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
@@ -18,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 @Slf4j
@@ -27,6 +30,7 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 
 	private final CredentialStore credentialStore;
 	private final ReentrantLock refreshLock = new ReentrantLock();
+	private final ConcurrentHashMap<String, TokenState> tokenCache = new ConcurrentHashMap<>();
 
 	private String accessToken;
 	private String refreshToken;
@@ -35,10 +39,12 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 
 	@PostConstruct
 	public void init() {
-		Optional<StoredAccount> account = credentialStore.findByProvider(Provider.XAI.name());
+		Optional<StoredAccount> account = credentialStore.findByProvider(
+				Provider.XAI.name()
+		);
 		account.ifPresent(this::applyCredentials);
 		if (account.isPresent()) {
-			log.info("[xAI] Loaded credentials, email={}", email);
+			log.info(LogTag.XAI + "Loaded credentials, email={}", email);
 		}
 	}
 
@@ -60,7 +66,12 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 		if (!isConnected()) {
 			throw new IllegalStateException("xAI provider not connected");
 		}
-		if (expiresAt != null && Instant.now().isAfter(expiresAt.minusSeconds(300))) {
+
+		if (expiresAt == null) {
+			return accessToken;
+		}
+
+		if (Instant.now().isAfter(expiresAt.minusSeconds(300))) {
 			refresh();
 		}
 		return accessToken;
@@ -95,13 +106,31 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 		return XaiHttpClient.listModels(account.accessToken());
 	}
 
+	public String getAccessToken(StoredAccount account) {
+		String key =
+				account.name() != null ? account.name() : account.clientId();
+		TokenState state = tokenCache.computeIfAbsent(
+				key, k -> TokenState.builder()
+				                    .accessToken(account.accessToken())
+				                    .refreshToken(account.refreshToken())
+				                    .expiresAt(account.expiresAt())
+				                    .build()
+		);
+		if (state.isExpired()) {
+			state = refreshForAccount(account, state);
+			tokenCache.put(key, state);
+		}
+		return state.accessToken();
+	}
+
 	void refresh() {
 		refreshLock.lock();
 		try {
-			if (expiresAt != null && Instant.now().isBefore(expiresAt.minusSeconds(300))) {
+			if (expiresAt != null &&
+			    Instant.now().isBefore(expiresAt.minusSeconds(300))) {
 				return;
 			}
-			log.info("[xAI] Refreshing token");
+			log.info(LogTag.XAI + "Refreshing token");
 			XaiTokenResponse response = XaiTokenRefresher.refresh(refreshToken);
 			this.accessToken = response.accessToken();
 			if (response.refreshToken() != null) {
@@ -109,9 +138,9 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 			}
 			this.expiresAt = Instant.now().plusSeconds(response.expiresIn());
 			persistToStore();
-			log.info("[xAI] Token refreshed, expires at {}", expiresAt);
+			log.info(LogTag.XAI + "Token refreshed, expires at {}", expiresAt);
 		} catch (Exception e) {
-			log.error("[xAI] Token refresh failed: {}", e.getMessage());
+			log.error(LogTag.XAI + "Token refresh failed: {}", e.getMessage());
 			disconnect();
 			throw new RuntimeException("xAI token refresh failed", e);
 		} finally {
@@ -136,5 +165,62 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 		                                     .expiresAt(expiresAt)
 		                                     .build();
 		credentialStore.upsert(account);
+	}
+
+	private TokenState refreshForAccount(
+			StoredAccount account,
+			TokenState current
+	) {
+		String rfshToken = current.refreshToken();
+		if (rfshToken == null) {
+			throw new RuntimeException(
+					"No refresh token for xAI account: " + account.name()
+			);
+		}
+		try {
+			log.info(
+					LogTag.XAI + "Refreshing token for account: {}",
+					account.name()
+			);
+			XaiTokenResponse response = XaiTokenRefresher.refresh(rfshToken);
+			TokenState newState =
+					TokenState.builder()
+					          .accessToken(response.accessToken())
+					          .refreshToken(
+							          Optional.ofNullable(response.refreshToken())
+							                  .orElse(rfshToken)
+					          )
+					          .expiresAt(
+							          Instant.now()
+							                 .plusSeconds(response.expiresIn())
+					          )
+					          .build();
+			credentialStore.upsert(account.withTokens(
+					newState.accessToken(),
+					newState.refreshToken(),
+					newState.expiresAt()
+			));
+			return newState;
+		} catch (Exception e) {
+			log.error(
+					LogTag.XAI + "Token refresh failed for {}: {}",
+					account.name(),
+					e.getMessage()
+			);
+			throw new RuntimeException(
+					"xAI token refresh failed for " + account.name(),
+					e
+			);
+		}
+	}
+
+	@Builder
+	private record TokenState(
+			String accessToken, String refreshToken, Instant expiresAt
+	) {
+		boolean isExpired() {
+			return expiresAt == null ||
+			       Instant.now().isAfter(expiresAt.minusSeconds(300));
+		}
 	}
 }

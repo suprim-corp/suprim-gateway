@@ -1,5 +1,6 @@
 package dev.suprim.gateway.provider.kiro;
 
+import dev.suprim.gateway.logging.LogTag;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.provider.Provider;
@@ -14,6 +15,7 @@ import dev.suprim.gateway.instants.Kiro;
 import dev.suprim.gateway.config.AppConfig;
 import dev.suprim.gateway.proxy.ProxyChain;
 import jakarta.annotation.PostConstruct;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -53,6 +56,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 	private final CredentialStore credentialStore;
 	private final ProxyChain proxyChain;
 	private final ReentrantLock refreshLock = new ReentrantLock();
+	private final ConcurrentHashMap<String, AccountTokenState> accountTokenCache = new ConcurrentHashMap<>();
 
 	private String accessToken;
 	private String refreshToken;
@@ -86,7 +90,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 			}
 			loadAccountName();
 			log.info(
-					"[Kiro] Initialized from credential store: type={}, region={}, apiRegion={}, profileArn={}",
+					LogTag.KIRO + "Initialized from credential store: type={}, region={}, apiRegion={}, profileArn={}",
 					authType,
 					config.region(),
 					config.apiRegion(),
@@ -108,7 +112,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 		bootstrapStore();
 		loadAccountName();
 		log.info(
-				"[Kiro] Initialized: type={}, region={}, apiRegion={}",
+				LogTag.KIRO + "Initialized: type={}, region={}, apiRegion={}",
 				authType,
 				config.region(),
 				config.apiRegion()
@@ -127,8 +131,42 @@ public class KiroAuthManager implements ProviderAuthManager {
 		return accessToken;
 	}
 
+	public String getAccessToken(StoredAccount account) throws Exception {
+		boolean isApiKey = "API_KEY".equalsIgnoreCase(account.authType());
+		if (isApiKey) {
+			return account.accessToken();
+		}
+		String key = Optional.ofNullable(account.name())
+		                     .orElse(account.profileArn());
+		AccountTokenState state = accountTokenCache.computeIfAbsent(
+				key, k -> AccountTokenState.builder()
+				                           .accessToken(account.accessToken())
+				                           .refreshToken(account.refreshToken())
+				                           .expiresAt(account.expiresAt())
+				                           .build()
+		);
+		if (state.isExpired()) {
+			StoredAccount refreshed = refreshAccountToken(account);
+			if (refreshed != null) {
+				state = AccountTokenState.builder()
+				                         .accessToken(refreshed.accessToken())
+				                         .refreshToken(refreshed.refreshToken())
+				                         .expiresAt(refreshed.expiresAt())
+				                         .build();
+				accountTokenCache.put(key, state);
+			} else {
+				throw new RuntimeException(
+						"Kiro token refresh failed for " + account.name()
+				);
+			}
+		}
+		return state.accessToken();
+	}
+
 	public void forceRefresh() throws Exception {
-		if (authType == KiroCredentials.AuthType.API_KEY) return;
+		if (authType == KiroCredentials.AuthType.API_KEY) {
+			return;
+		}
 		refresh();
 	}
 
@@ -181,12 +219,12 @@ public class KiroAuthManager implements ProviderAuthManager {
 						"Most likely client registration expired — re-open Kiro IDE to re-authorize, then restart gateway.");
 			}
 
-			log.info("[Kiro] Refreshing token via {}", authType);
+			log.info(LogTag.KIRO + "Refreshing token via {}", authType);
 			try {
 				doRefresh();
 			} catch (Exception e) {
 				log.warn(
-						"[Kiro] Refresh failed, reloading from Kiro DB: {}",
+						LogTag.KIRO + "Refresh failed, reloading from Kiro DB: {}",
 						e.getMessage()
 				);
 				Optional<KiroCredentials> reloaded = KiroSourceReader.read(
@@ -247,14 +285,14 @@ public class KiroAuthManager implements ProviderAuthManager {
 			refresh();
 		} catch (Exception e) {
 			log.warn(
-					"[Kiro] Bootstrap refresh failed, not saving to store: {}",
+					LogTag.KIRO + "Bootstrap refresh failed, not saving to store: {}",
 					e.getMessage()
 			);
 			return;
 		}
 		saveToStore();
 		log.info(
-				"[Kiro] Bootstrapped credential store from {}",
+				LogTag.KIRO + "Bootstrapped credential store from {}",
 				credSourceType
 		);
 	}
@@ -378,7 +416,10 @@ public class KiroAuthManager implements ProviderAuthManager {
 			if (refreshed != null) {
 				credentialStore.upsert(refreshed);
 				HttpRequest retryReq = reqBuilder
-						.header("Authorization", "Bearer " + refreshed.accessToken())
+						.header(
+								"Authorization",
+								"Bearer " + refreshed.accessToken()
+						)
 						.build();
 				response = proxyChain.currentClient().send(
 						retryReq, HttpResponse.BodyHandlers.ofString()
@@ -555,7 +596,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 				}
 			}
 		} catch (Exception e) {
-			log.warn("[Kiro] fetchEmailForApiKey failed: {}", e.getMessage());
+			log.warn(LogTag.KIRO + "fetchEmailForApiKey failed: {}", e.getMessage());
 		}
 		return null;
 	}
@@ -564,7 +605,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 		String arn = fetchProfileArn(accessToken, true);
 		if (arn != null) {
 			this.profileArn = arn;
-			log.info("[Kiro] Resolved profileArn: {}", arn);
+			log.info(LogTag.KIRO + "Resolved profileArn: {}", arn);
 		}
 	}
 
@@ -585,9 +626,13 @@ public class KiroAuthManager implements ProviderAuthManager {
 							           "User-Agent",
 							           "aws-sdk-js/1.0.0 ua/2.1 os/darwin lang/js md/nodejs#22.0.0 api/codewhispererruntime#1.0.0 m/N,E KiroIDE-0.7.45"
 					           )
-					           .header("x-amz-user-agent", "aws-sdk-js/1.0.0 KiroIDE-0.7.45")
+					           .header(
+							           "x-amz-user-agent",
+							           "aws-sdk-js/1.0.0 KiroIDE-0.7.45"
+					           )
 					           .header("x-amzn-codewhisperer-optout", "true")
-					           .POST(HttpRequest.BodyPublishers.ofString("{\"maxResults\":10}"));
+					           .POST(HttpRequest.BodyPublishers.ofString(
+							           "{\"maxResults\":10}"));
 			if (isApiKey) {
 				reqBuilder.header("tokentype", "API_KEY");
 			}
@@ -611,7 +656,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 				}
 			} else {
 				log.warn(
-						"[Kiro] ListAvailableProfiles HTTP {}: {}",
+						LogTag.KIRO + "ListAvailableProfiles HTTP {}: {}",
 						response.statusCode(),
 						response.body()
 						        .substring(
@@ -621,7 +666,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 				);
 			}
 		} catch (Exception e) {
-			log.warn("[Kiro] fetchProfileArn failed: {}", e.getMessage());
+			log.warn(LogTag.KIRO + "fetchProfileArn failed: {}", e.getMessage());
 		}
 		return null;
 	}
@@ -632,7 +677,8 @@ public class KiroAuthManager implements ProviderAuthManager {
 		}
 		String[] parts = profileArn.split(":", 6);
 		if (parts.length < 6 || !"arn".equals(parts[0]) ||
-		    !"codewhisperer".equals(parts[2])) {
+		    !"codewhisperer".equals(parts[2])
+		) {
 			return null;
 		}
 		String region = parts[3].trim();
@@ -647,21 +693,47 @@ public class KiroAuthManager implements ProviderAuthManager {
 			String region = account.region();
 			RefreshResult r;
 			if ("KIRO_DESKTOP".equals(authType)) {
-				r = DesktopTokenRefresher.refresh(refreshToken, region, proxyChain.currentClient());
+				r = DesktopTokenRefresher.refresh(
+						refreshToken,
+						region,
+						proxyChain.currentClient()
+				);
 			} else {
 				r = SsoOidcTokenRefresher.refresh(
-						refreshToken, account.clientId(), account.clientSecret(),
-						account.scopes(), region, proxyChain.currentClient()
+						refreshToken,
+						account.clientId(),
+						account.clientSecret(),
+						account.scopes(),
+						region,
+						proxyChain.currentClient()
 				);
 			}
 			String newAccess = r.accessToken();
-			String newRefresh = r.refreshToken() != null ? r.refreshToken() : refreshToken;
+			String newRefresh = Optional.ofNullable(r.refreshToken())
+			                            .orElse(refreshToken);
 			Instant newExpires = r.expiresAt();
-			log.info("[Kiro] On-demand refresh succeeded for {}", account.name());
+			log.info(
+					LogTag.KIRO + "On-demand refresh succeeded for {}",
+					account.name()
+			);
 			return account.withTokens(newAccess, newRefresh, newExpires);
 		} catch (Exception e) {
-			log.warn("[Kiro] On-demand refresh failed for {}: {}", account.name(), e.getMessage());
+			log.warn(
+					LogTag.KIRO + "On-demand refresh failed for {}: {}",
+					account.name(),
+					e.getMessage()
+			);
 			return null;
+		}
+	}
+
+	@Builder
+	private record AccountTokenState(
+			String accessToken, String refreshToken, Instant expiresAt
+	) {
+		boolean isExpired() {
+			return expiresAt == null ||
+			       Instant.now().isAfter(expiresAt.minusSeconds(600));
 		}
 	}
 }

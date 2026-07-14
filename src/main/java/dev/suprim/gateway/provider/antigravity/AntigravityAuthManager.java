@@ -1,6 +1,7 @@
 package dev.suprim.gateway.provider.antigravity;
 
 import dev.suprim.gateway.instants.Antigravity;
+import dev.suprim.gateway.logging.LogTag;
 
 import dev.suprim.gateway.provider.OAuthProviderAuthManager;
 import dev.suprim.gateway.provider.Provider;
@@ -17,6 +18,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 @Slf4j
@@ -26,6 +28,7 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 
 	private final CredentialStore credentialStore;
 	private final ReentrantLock refreshLock = new ReentrantLock();
+	private final ConcurrentHashMap<String, TokenState> tokenCache = new ConcurrentHashMap<>();
 
 	private String accessToken;
 	private String refreshToken;
@@ -41,7 +44,7 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 		account.ifPresent(this::applyCredentials);
 		if (account.isPresent()) {
 			log.info(
-					"[Antigravity] Loaded credentials, projectId={}",
+					LogTag.ANTIGRAVITY + "Loaded credentials, projectId={}",
 					projectId
 			);
 		}
@@ -66,10 +69,15 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 		if (!isConnected()) {
 			throw new IllegalStateException("Antigravity provider not connected");
 		}
-		if (expiresAt != null && Instant.now().isAfter(expiresAt.minusSeconds(
-				300))) {
+
+		if (expiresAt == null) {
+			return accessToken;
+		}
+
+		if (Instant.now().isAfter(expiresAt.minusSeconds(300))) {
 			refresh();
 		}
+
 		return accessToken;
 	}
 
@@ -106,7 +114,31 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 		if (account.accessToken() == null) {
 			return List.of();
 		}
-		return AntigravityHttpClient.listModels(account.accessToken(), account.projectId());
+		return AntigravityHttpClient.listModels(
+				account.accessToken(),
+				account.projectId()
+		);
+	}
+
+	public String getAccessToken(StoredAccount account) {
+		String key =
+				account.name() != null ? account.name() : account.clientId();
+		TokenState state = tokenCache.computeIfAbsent(
+				key, k -> new TokenState(
+						account.accessToken(),
+						account.refreshToken(),
+						account.expiresAt()
+				)
+		);
+		if (state.isExpired()) {
+			state = refreshForAccount(account, state);
+			tokenCache.put(key, state);
+		}
+		return state.accessToken();
+	}
+
+	public String getProjectId(StoredAccount account) {
+		return account.projectId();
 	}
 
 	void refresh() {
@@ -116,7 +148,7 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 			    Instant.now().isBefore(expiresAt.minusSeconds(300))) {
 				return;
 			}
-			log.info("[Antigravity] Refreshing token");
+			log.info(LogTag.ANTIGRAVITY + "Refreshing token");
 			GoogleTokenResponse response = GoogleTokenRefresher.refresh(
 					refreshToken,
 					Antigravity.CLIENT_ID,
@@ -128,9 +160,9 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 			}
 			this.expiresAt = Instant.now().plusSeconds(response.expiresIn());
 			persistToStore();
-			log.info("[Antigravity] Token refreshed, expires at {}", expiresAt);
+			log.info(LogTag.ANTIGRAVITY + "Token refreshed, expires at {}", expiresAt);
 		} catch (Exception e) {
-			log.error("[Antigravity] Token refresh failed: {}", e.getMessage());
+			log.error(LogTag.ANTIGRAVITY + "Token refresh failed: {}", e.getMessage());
 			throw new RuntimeException("Antigravity token refresh failed", e);
 		} finally {
 			refreshLock.unlock();
@@ -158,5 +190,57 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 				             .projectId(projectId)
 				             .build();
 		credentialStore.upsert(account);
+	}
+
+	private TokenState refreshForAccount(
+			StoredAccount account,
+			TokenState current
+	) {
+		String refreshTok = current.refreshToken();
+		if (refreshTok == null) {
+			throw new RuntimeException(
+					"No refresh token for Antigravity account: " +
+					account.name());
+		}
+		try {
+			log.info(
+					LogTag.ANTIGRAVITY + "Refreshing token for account: {}",
+					account.name()
+			);
+			GoogleTokenResponse response = GoogleTokenRefresher.refresh(
+					refreshTok, Antigravity.CLIENT_ID, Antigravity.CLIENT_SECRET
+			);
+			TokenState newState = new TokenState(
+					response.accessToken(),
+					response.refreshToken() !=
+					null ? response.refreshToken() : refreshTok,
+					Instant.now().plusSeconds(response.expiresIn())
+			);
+			credentialStore.upsert(account.withTokens(
+					newState.accessToken(),
+					newState.refreshToken(),
+					newState.expiresAt()
+			));
+			return newState;
+		} catch (Exception e) {
+			log.error(
+					LogTag.ANTIGRAVITY + "Token refresh failed for {}: {}",
+					account.name(),
+					e.getMessage()
+			);
+			throw new RuntimeException(
+					"Antigravity token refresh failed for " + account.name(),
+					e
+			);
+		}
+	}
+
+	private record TokenState(
+			String accessToken, String refreshToken, Instant expiresAt
+	) {
+		boolean isExpired() {
+			return expiresAt == null ||
+			       Instant.now().isAfter(expiresAt.minusSeconds(300));
+		}
 	}
 }

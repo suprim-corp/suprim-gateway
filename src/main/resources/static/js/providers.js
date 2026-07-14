@@ -81,14 +81,35 @@ document.querySelectorAll('.inline-edit-name').forEach(span => {
     span.addEventListener('click', function () {
         const form = this.nextElementSibling
         const input = form.querySelector('input')
+        let submitted = false
         this.classList.add('hidden')
         form.classList.remove('hidden')
         input.focus()
         input.select()
 
         function submit() {
+            if (submitted) {
+                return
+            }
+            submitted = true
             if (input.value.trim()) {
-                form.submit()
+                const url = form.action
+                const body = new URLSearchParams({name: input.value.trim()})
+                fetch(url, {method: 'POST', body})
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.error) {
+                            toast(data.error, 'error')
+                            cancel()
+                        } else {
+                            span.textContent = input.value.trim()
+                            cancel()
+                        }
+                    })
+                    .catch(() => {
+                        toast('Rename failed', 'error')
+                        cancel()
+                    })
             } else {
                 cancel()
             }

@@ -1,7 +1,12 @@
 package dev.suprim.gateway.provider.antigravity;
 
+import dev.suprim.gateway.logging.LogTag;
 import dev.suprim.gateway.logging.RequestLogEvent;
 import dev.suprim.gateway.logging.RequestLogPublisher;
+import dev.suprim.gateway.provider.AccountRotator;
+import dev.suprim.gateway.provider.CredentialStore;
+import dev.suprim.gateway.provider.Provider;
+import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.kiro.KiroEvent;
@@ -33,6 +38,8 @@ public class AntigravityFacade {
 	private final AntigravityAuthManager authManager;
 	private final RequestLogPublisher logPublisher;
 	private final StreamConverter streamConverter;
+	private final AccountRotator accountRotator;
+	private final CredentialStore credentialStore;
 
 	public void handle(
 			InternalRequest request,
@@ -44,7 +51,10 @@ public class AntigravityFacade {
 			Format format,
 			HttpServletResponse httpRes
 	) throws Exception {
-		if (!authManager.isConnected()) {
+		List<StoredAccount> accounts = credentialStore.findAllByProvider(
+				Provider.ANTIGRAVITY.name()
+		);
+		if (accounts.isEmpty()) {
 			ErrorResponse.openAi(
 					httpRes,
 					401,
@@ -55,96 +65,115 @@ public class AntigravityFacade {
 		}
 
 		long startTime = System.currentTimeMillis();
-		String accessToken = authManager.getAccessToken();
-		String projectId = authManager.getProjectId();
-		String payload = AntigravityPayloadBuilder.build(
-				request,
-				model,
-				projectId,
-				THOUGHT_SIGNATURES
-		);
+		int maxAttempts = accounts.size();
 
-		log.debug(
-				"[Antigravity] Calling {} with payload length {}",
-				model,
-				payload.length()
-		);
+		for (int attempt = 0; attempt < maxAttempts; attempt++) {
+			StoredAccount account = accountRotator.next(Provider.ANTIGRAVITY.name());
+			String accessToken;
+			try {
+				accessToken = authManager.getAccessToken(account);
+			} catch (Exception e) {
+				log.error(
+						LogTag.ANTIGRAVITY + "Auth failed for {}: {}",
+						account.name(),
+						e.getMessage()
+				);
+				continue;
+			}
+			String projectId = authManager.getProjectId(account);
 
-		AntigravityHttpClient.AntigravityResponse response = AntigravityHttpClient.call(
-				model,
-				payload,
-				accessToken
-		);
-
-		if (response.status() != 200) {
-			handleError(
-					response,
-					model,
-					inputTokens,
-					keyId,
-					clientIp,
-					startTime,
-					httpRes
+			log.info(
+					LogTag.ANTIGRAVITY + "Using account: {} (attempt {}/{})",
+					account.name(), attempt + 1, maxAttempts
 			);
+
+			String payload = AntigravityPayloadBuilder.build(
+					request, model, projectId, THOUGHT_SIGNATURES
+			);
+
+			AntigravityHttpClient.AntigravityResponse response = AntigravityHttpClient.call(
+					model, payload, accessToken
+			);
+
+			if (response.status() == 429 || response.status() == 503) {
+				log.warn(
+						LogTag.ANTIGRAVITY + "Account {} got {}, trying next",
+						account.name(), response.status()
+				);
+				try (InputStream is = response.body()) {
+					is.readAllBytes();
+				}
+				continue;
+			}
+
+			if (response.status() != 200) {
+				handleError(
+						response, account.name(), model, inputTokens,
+						keyId, clientIp, startTime, httpRes
+				);
+				return;
+			}
+
+			if (stream) {
+				handleStream(
+						response, account.name(), model, inputTokens,
+						keyId, clientIp, startTime, format, httpRes
+				);
+			} else {
+				handleNonStream(
+						response, account.name(), model, inputTokens,
+						keyId, clientIp, startTime, format, httpRes
+				);
+			}
 			return;
 		}
 
-		if (stream) {
-			handleStream(
-					response,
-					model,
-					inputTokens,
-					keyId,
-					clientIp,
-					startTime,
-					format,
-					httpRes
-			);
-		} else {
-			handleNonStream(
-					response,
-					model,
-					inputTokens,
-					keyId,
-					clientIp,
-					startTime,
-					format,
-					httpRes
-			);
-		}
+		ErrorResponse.openAi(
+				httpRes,
+				429,
+				"All accounts rate-limited",
+				"rate_limit_exhausted"
+		);
 	}
 
 	private void handleError(
 			AntigravityHttpClient.AntigravityResponse response,
-			String model, int inputTokens, String keyId, String clientIp,
-			long startTime, HttpServletResponse httpRes
+			String accountName,
+			String model,
+			int inputTokens,
+			String keyId,
+			String clientIp,
+			long startTime,
+			HttpServletResponse httpRes
 	) throws Exception {
 		String body;
 		try (InputStream is = response.body()) {
 			body = new String(is.readAllBytes());
 		}
 		log.error(
-				"[Antigravity] Upstream {} body: {}", response.status(),
+				LogTag.ANTIGRAVITY + "Upstream {} body: {}", response.status(),
 				body.length() > 500 ? body.substring(0, 500) : body
 		);
 
 		int latency = (int) (System.currentTimeMillis() - startTime);
-		logPublisher.publish(RequestLogEvent.builder()
-		                                    .virtualKeyId(keyId)
-		                                    .accountId(authManager.getDisplayName())
-		                                    .model(model)
-		                                    .requestedModel(model)
-		                                    .status(response.status())
-		                                    .promptTokens(inputTokens)
-		                                    .latencyMs(latency)
-		                                    .streaming(false)
-		                                    .clientIp(clientIp)
-		                                    .errorMessage(body.length() >
-		                                                  200 ? body.substring(
-				                                    0,
-				                                    200
-		                                    ) : body)
-		                                    .build());
+		logPublisher.publish(
+				RequestLogEvent.builder()
+				               .virtualKeyId(keyId)
+				               .accountId(accountName)
+				               .model(model)
+				               .requestedModel(model)
+				               .status(response.status())
+				               .promptTokens(inputTokens)
+				               .latencyMs(latency)
+				               .streaming(false)
+				               .clientIp(clientIp)
+				               .errorMessage(body.length() >
+				                             200 ? body.substring(
+						               0,
+						               200
+				               ) : body)
+				               .build()
+		);
 
 		ErrorResponse.openAi(
 				httpRes,
@@ -156,8 +185,14 @@ public class AntigravityFacade {
 
 	private void handleStream(
 			AntigravityHttpClient.AntigravityResponse response,
-			String model, int inputTokens, String keyId, String clientIp,
-			long startTime, Format format, HttpServletResponse httpRes
+			String accountName,
+			String model,
+			int inputTokens,
+			String keyId,
+			String clientIp,
+			long startTime,
+			Format format,
+			HttpServletResponse httpRes
 	) throws Exception {
 		httpRes.setCharacterEncoding("UTF-8");
 		httpRes.setContentType("text/event-stream; charset=utf-8");
@@ -183,7 +218,8 @@ public class AntigravityFacade {
 		} else if (format == Format.RESPONSES) {
 			writer.write(streamConverter.toResponsesCreated(id, model)
 			             + streamConverter.toResponsesOutputItemAdded(id)
-			             + streamConverter.toResponsesContentPartAdded());
+			             + streamConverter.toResponsesContentPartAdded()
+			);
 			writer.flush();
 		}
 
@@ -241,12 +277,22 @@ public class AntigravityFacade {
 						firstTokenMs = System.currentTimeMillis() - startTime;
 					}
 					toolIndex++;
-					String toolCallId = parsed.functionCall().id() != null
-							? parsed.functionCall().id()
-							: "call_" + UUID.randomUUID().toString().replace(
-							"-",
-							""
-					).substring(0, 20);
+
+					String toolCallId;
+
+					if (parsed.functionCall().id() != null) {
+						toolCallId = parsed.functionCall().id();
+					} else {
+						String randomId = UUID.randomUUID()
+						                      .toString()
+						                      .replace(
+								                      "-",
+								                      ""
+						                      )
+						                      .substring(0, 20);
+						toolCallId = "call_" + randomId;
+					}
+
 					if (parsed.thoughtSignature() != null) {
 						THOUGHT_SIGNATURES.put(
 								toolCallId,
@@ -323,7 +369,7 @@ public class AntigravityFacade {
 		writer.flush();
 
 		log.debug(
-				"[Antigravity] Stream done: textChunks={}, toolCalls={}, hasToolUse={}",
+				LogTag.ANTIGRAVITY + "Stream done: textChunks={}, toolCalls={}, hasToolUse={}",
 				outputTokens - toolIndex,
 				toolIndex,
 				hasToolUse
@@ -333,7 +379,7 @@ public class AntigravityFacade {
 		logPublisher.publish(
 				RequestLogEvent.builder()
 				               .virtualKeyId(keyId)
-				               .accountId(authManager.getDisplayName())
+				               .accountId(accountName)
 				               .model(model)
 				               .requestedModel(model)
 				               .status(200)
@@ -355,8 +401,14 @@ public class AntigravityFacade {
 
 	private void handleNonStream(
 			AntigravityHttpClient.AntigravityResponse response,
-			String model, int inputTokens, String keyId, String clientIp,
-			long startTime, Format format, HttpServletResponse httpRes
+			String accountName,
+			String model,
+			int inputTokens,
+			String keyId,
+			String clientIp,
+			long startTime,
+			Format format,
+			HttpServletResponse httpRes
 	) throws Exception {
 		StringBuilder content = new StringBuilder();
 
@@ -409,13 +461,15 @@ public class AntigravityFacade {
 		logPublisher.publish(
 				RequestLogEvent.builder()
 				               .virtualKeyId(keyId)
-				               .accountId(authManager.getDisplayName())
+				               .accountId(accountName)
 				               .model(model)
 				               .requestedModel(model)
 				               .status(200)
 				               .promptTokens(inputTokens)
-				               .completionTokens(outputTokens >
-				                                 0 ? outputTokens : null)
+				               .completionTokens(
+						               outputTokens >
+						               0 ? outputTokens : null
+				               )
 				               .latencyMs(latency)
 				               .streaming(false)
 				               .clientIp(clientIp)
@@ -425,10 +479,13 @@ public class AntigravityFacade {
 
 	private String generateId(Format format) {
 		return switch (format) {
-			case ANTHROPIC -> "msg_" + UUID.randomUUID().toString().replace(
-					"-",
-					""
-			).substring(0, 20);
+			case ANTHROPIC -> "msg_" + UUID.randomUUID()
+			                               .toString()
+			                               .replace(
+					                               "-",
+					                               ""
+			                               )
+			                               .substring(0, 20);
 			case RESPONSES -> "resp_" + UUID.randomUUID();
 			default -> "chatcmpl-" + UUID.randomUUID();
 		};

@@ -1,7 +1,12 @@
 package dev.suprim.gateway.provider.xai;
 
+import dev.suprim.gateway.logging.LogTag;
 import dev.suprim.gateway.logging.RequestLogEvent;
 import dev.suprim.gateway.logging.RequestLogPublisher;
+import dev.suprim.gateway.provider.AccountRotator;
+import dev.suprim.gateway.provider.CredentialStore;
+import dev.suprim.gateway.provider.Provider;
+import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.OpenAiRelayHandler;
@@ -17,6 +22,7 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.io.InputStream;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -28,6 +34,8 @@ public class XaiFacade {
 	private final XaiAuthManager authManager;
 	private final RequestLogPublisher logPublisher;
 	private final OpenAiRelayHandler relayHandler;
+	private final AccountRotator accountRotator;
+	private final CredentialStore credentialStore;
 
 	public void handle(
 			InternalRequest request,
@@ -39,7 +47,8 @@ public class XaiFacade {
 			Format format,
 			HttpServletResponse httpRes
 	) throws Exception {
-		if (!authManager.isConnected()) {
+		List<StoredAccount> accounts = credentialStore.findAllByProvider(Provider.XAI.name());
+		if (accounts.isEmpty()) {
 			ErrorResponse.openAi(
 					httpRes,
 					401,
@@ -50,14 +59,7 @@ public class XaiFacade {
 		}
 
 		long startTime = System.currentTimeMillis();
-		String accessToken;
-		try {
-			accessToken = authManager.getAccessToken();
-		} catch (Exception e) {
-			log.error("[xAI] Auth failed: {}", e.getMessage());
-			ErrorResponse.openAi(httpRes, 401, e.getMessage(), "auth_error");
-			return;
-		}
+		int maxAttempts = accounts.size();
 
 		ObjectNode payloadNode = MAPPER.valueToTree(request);
 		if (stream && !payloadNode.has("stream_options")) {
@@ -92,24 +94,24 @@ public class XaiFacade {
 				}
 
 				if (content == null || content.isNull()) {
-					log.debug("[xAI] msg[{}] role={} content=null", i, role);
+					log.debug(LogTag.XAI + "msg[{}] role={} content=null", i, role);
 				} else if (content.isArray()) {
 					log.debug(
-							"[xAI] msg[{}] role={} content=array({})",
+							LogTag.XAI + "msg[{}] role={} content=array({})",
 							i,
 							role,
 							content.size()
 					);
 				} else if (content.isString()) {
 					log.debug(
-							"[xAI] msg[{}] role={} content=text(len={})",
+							LogTag.XAI + "msg[{}] role={} content=text(len={})",
 							i,
 							role,
 							content.asString().length()
 					);
 				} else {
 					log.debug(
-							"[xAI] msg[{}] role={} content={}",
+							LogTag.XAI + "msg[{}] role={} content={}",
 							i,
 							role,
 							content.getNodeType()
@@ -120,59 +122,62 @@ public class XaiFacade {
 
 		String payload = MAPPER.writeValueAsString(payloadNode);
 
-		log.debug(
-				"[xAI] Calling {} with payload length {}",
-				model,
-				payload.length()
-		);
+		for (int attempt = 0; attempt < maxAttempts; attempt++) {
+			StoredAccount account = accountRotator.next(Provider.XAI.name());
+			String accessToken;
+			try {
+				accessToken = authManager.getAccessToken(account);
+			} catch (Exception e) {
+				log.error(LogTag.XAI + "Auth failed for {}: {}", account.name(), e.getMessage());
+				continue;
+			}
 
-		XaiHttpClient.XaiResponse response = XaiHttpClient.call(
-				payload,
-				accessToken
-		);
-		log.info("[xAI] Upstream responded with status {}", response.status());
+			log.info(LogTag.XAI + "Using account: {} (attempt {}/{})",
+					account.name(), attempt + 1, maxAttempts);
 
-		if (response.status() != 200) {
-			handleError(
-					response,
-					model,
-					inputTokens,
-					keyId,
-					clientIp,
-					startTime,
-					httpRes
+			XaiHttpClient.XaiResponse response = XaiHttpClient.call(
+					payload,
+					accessToken
 			);
+			log.info(LogTag.XAI + "Upstream responded with status {}", response.status());
+
+			if (response.status() == 429 || response.status() == 503) {
+				log.warn(LogTag.XAI + "Account {} got {}, trying next",
+						account.name(), response.status());
+				try (InputStream is = response.body()) {
+					is.readAllBytes();
+				}
+				continue;
+			}
+
+			if (response.status() != 200) {
+				handleError(
+						response, account.name(), model, inputTokens,
+						keyId, clientIp, startTime, httpRes
+				);
+				return;
+			}
+
+			if (stream) {
+				handleStream(
+						response, account.name(), model, inputTokens,
+						keyId, clientIp, startTime, format, httpRes
+				);
+			} else {
+				handleNonStream(
+						response, account.name(), model, inputTokens,
+						keyId, clientIp, startTime, format, httpRes
+				);
+			}
 			return;
 		}
 
-		if (stream) {
-			handleStream(
-					response,
-					model,
-					inputTokens,
-					keyId,
-					clientIp,
-					startTime,
-					format,
-					httpRes
-			);
-		} else {
-			handleNonStream(
-					response,
-					model,
-					inputTokens,
-					keyId,
-					clientIp,
-					startTime,
-					format,
-					httpRes
-			);
-		}
+		ErrorResponse.openAi(httpRes, 429, "All accounts rate-limited", "rate_limit_exhausted");
 	}
 
 	private void handleError(
 			XaiHttpClient.XaiResponse response,
-			String model, int inputTokens, String keyId, String clientIp,
+			String accountName, String model, int inputTokens, String keyId, String clientIp,
 			long startTime, HttpServletResponse httpRes
 	) throws Exception {
 		String body;
@@ -180,14 +185,14 @@ public class XaiFacade {
 			body = new String(is.readAllBytes());
 		}
 		log.error(
-				"[xAI] Upstream {} body: {}", response.status(),
+				LogTag.XAI + "Upstream {} body: {}", response.status(),
 				body.length() > 500 ? body.substring(0, 500) : body
 		);
 
 		int latency = (int) (System.currentTimeMillis() - startTime);
 		logPublisher.publish(RequestLogEvent.builder()
 		                                    .virtualKeyId(keyId)
-		                                    .accountId(authManager.getDisplayName())
+		                                    .accountId(accountName)
 		                                    .model(model)
 		                                    .requestedModel(model)
 		                                    .status(response.status())
@@ -212,7 +217,7 @@ public class XaiFacade {
 
 	private void handleStream(
 			XaiHttpClient.XaiResponse response,
-			String model, int inputTokens, String keyId, String clientIp,
+			String accountName, String model, int inputTokens, String keyId, String clientIp,
 			long startTime, Format format, HttpServletResponse httpRes
 	) throws Exception {
 		OpenAiRelayHandler.StreamResult result = relayHandler.relayStream(
@@ -222,7 +227,7 @@ public class XaiFacade {
 		int latency = (int) (System.currentTimeMillis() - startTime);
 		logPublisher.publish(RequestLogEvent.builder()
 		                                    .virtualKeyId(keyId)
-		                                    .accountId(authManager.getDisplayName())
+		                                    .accountId(accountName)
 		                                    .model(model)
 		                                    .requestedModel(model)
 		                                    .status(200)
@@ -240,7 +245,7 @@ public class XaiFacade {
 
 	private void handleNonStream(
 			XaiHttpClient.XaiResponse response,
-			String model, int inputTokens, String keyId, String clientIp,
+			String accountName, String model, int inputTokens, String keyId, String clientIp,
 			long startTime, Format format, HttpServletResponse httpRes
 	) throws Exception {
 		String body;
@@ -272,7 +277,7 @@ public class XaiFacade {
 		logPublisher.publish(
 				RequestLogEvent.builder()
 				               .virtualKeyId(keyId)
-				               .accountId(authManager.getDisplayName())
+				               .accountId(accountName)
 				               .model(model)
 				               .requestedModel(model)
 				               .status(200)

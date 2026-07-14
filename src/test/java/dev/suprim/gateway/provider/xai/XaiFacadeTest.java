@@ -1,6 +1,8 @@
 package dev.suprim.gateway.provider.xai;
 
+import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
+import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.logging.RequestLogPublisher;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.OpenAiRelayHandler;
@@ -26,15 +28,17 @@ class XaiFacadeTest {
 
 	private XaiFacade facade;
 	private XaiAuthManager authManager;
+	private CredentialStore store;
 
 	@BeforeEach
 	void setUp() {
 		Path storePath = tempDir.resolve("credentials.json");
-		CredentialStore store = new CredentialStore(storePath);
+		store = new CredentialStore(storePath);
 		authManager = new XaiAuthManager(store);
+		AccountRotator rotator = new AccountRotator(store);
 		ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
 		RequestLogPublisher logPublisher = new RequestLogPublisher(eventPublisher);
-		facade = new XaiFacade(authManager, logPublisher, new OpenAiRelayHandler(new StreamConverter()));
+		facade = new XaiFacade(authManager, logPublisher, new OpenAiRelayHandler(new StreamConverter()), rotator, store);
 	}
 
 	@Test

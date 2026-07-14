@@ -1,7 +1,6 @@
 package dev.suprim.gateway.provider;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -15,11 +14,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+@Slf4j
 @Component
 public class CredentialStore {
 
-	private static final Logger log = LoggerFactory.getLogger(
-			CredentialStore.class);
 	private static final Path DEFAULT_STORE_PATH = Path.of(
 			System.getenv("DATABASE_PATH") != null
 					? Path.of(System.getenv("DATABASE_PATH"))
@@ -41,17 +39,22 @@ public class CredentialStore {
 
 	public List<StoredAccount> load() {
 		List<StoredAccount> accounts = new ArrayList<>();
-		if (!Files.exists(storePath)) return accounts;
+		if (!Files.exists(storePath)) {
+			return accounts;
+		}
 		try {
 			JsonNode root = mapper.readTree(Files.readString(storePath));
 			JsonNode arr = root.get("accounts");
-			if (arr == null || !arr.isArray()) return accounts;
+			if (arr == null || !arr.isArray()) {
+				return accounts;
+			}
 
 			for (JsonNode node : arr) {
 				if (node.has("profileArn") || node.has("clientId") || node.has(
 						"authType")) {
 					log.warn(
-							"[CredStore] Legacy camelCase format detected, deleting file");
+							"[CredStore] Legacy camelCase format detected, deleting file"
+					);
 					Files.delete(storePath);
 					return List.of();
 				}
@@ -107,31 +110,41 @@ public class CredentialStore {
 			ArrayNode arr = root.putArray("accounts");
 			for (StoredAccount acc : accounts) {
 				ObjectNode node = arr.addObject();
-				if (acc.name() != null) node.put("name", acc.name());
+				if (acc.name() != null) {
+					node.put("name", acc.name());
+				}
 				node.put("profile_arn", acc.profileArn());
 				node.put("auth_type", acc.authType());
 				node.put("client_id", acc.clientId());
 				node.put("client_secret", acc.clientSecret());
 				node.put("access_token", acc.accessToken());
 				node.put("refresh_token", acc.refreshToken());
-				if (acc.expiresAt() != null) node.put(
-						"expires_at",
-						acc.expiresAt().toString()
-				);
+				if (acc.expiresAt() != null) {
+					node.put(
+							"expires_at",
+							acc.expiresAt().toString()
+					);
+				}
 				if (acc.scopes() != null) {
-					ArrayNode scopesArr = node.putArray("scopes");
-					for (String s : acc.scopes()) scopesArr.add(s);
+					ArrayNode scopes = node.putArray("scopes");
+					for (String s : acc.scopes()) {
+						scopes.add(s);
+					}
 				}
 				node.put("region", acc.region());
 				node.put("api_region", acc.apiRegion());
-				if (acc.provider() != null) node.put(
-						"provider",
-						acc.provider()
-				);
-				if (acc.projectId() != null) node.put(
-						"project_id",
-						acc.projectId()
-				);
+				if (acc.provider() != null) {
+					node.put(
+							"provider",
+							acc.provider()
+					);
+				}
+				if (acc.projectId() != null) {
+					node.put(
+							"project_id",
+							acc.projectId()
+					);
+				}
 			}
 			Files.writeString(
 					storePath,
@@ -155,7 +168,9 @@ public class CredentialStore {
 				updated.add(existing);
 			}
 		}
-		if (!replaced) updated.add(account);
+		if (!replaced) {
+			updated.add(account);
+		}
 		save(updated);
 	}
 
@@ -223,24 +238,34 @@ public class CredentialStore {
 			StoredAccount existing,
 			StoredAccount incoming
 	) {
-		if (incoming.provider() != null && existing.provider() != null) {
-			if (!existing.provider().equals(incoming.provider())) return false;
-			if (incoming.name() != null && existing.name() != null) {
+		if (existing.provider() != null && incoming.provider() != null) {
+			if (!existing.provider().equals(incoming.provider())) {
+				return false;
+			}
+			if (existing.name() != null && incoming.name() != null) {
 				return existing.name().equals(incoming.name());
 			}
-			return existing.clientId() != null
-			       && existing.clientId().equals(incoming.clientId());
+			return equalsNonNull(existing.clientId(), incoming.clientId());
 		}
-		if (incoming.profileArn() != null && existing.profileArn() != null) {
-			return existing.profileArn().equals(incoming.profileArn());
+
+		if (equalsNonNull(existing.profileArn(), incoming.profileArn())) {
+			return true;
 		}
-		if (incoming.clientId() != null && existing.clientId() != null) {
-			return existing.clientId().equals(incoming.clientId());
-		}
-		return false;
+		return equalsNonNull(existing.clientId(), incoming.clientId());
 	}
+
+	private static boolean equalsNonNull(String existingValue, String incomingValue) {
+		return existingValue != null && existingValue.equals(incomingValue);
+	}
+
 	public boolean exists() {
 		return Files.exists(storePath);
+	}
+
+	public List<StoredAccount> findAllByProvider(String provider) {
+		return load().stream()
+		             .filter(acc -> provider.equals(acc.provider()))
+		             .toList();
 	}
 
 	public Optional<StoredAccount> findByProvider(String provider) {

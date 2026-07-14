@@ -1,6 +1,6 @@
 package dev.suprim.gateway.proxy.kiro;
 
-import dev.suprim.gateway.provider.kiro.KiroAuthManager;
+import dev.suprim.gateway.logging.LogTag;
 import dev.suprim.gateway.config.AppConfig;
 import dev.suprim.gateway.proxy.ProxyChain;
 import lombok.Builder;
@@ -111,8 +111,6 @@ public class KiroHttpClient {
 					headers.remove("x-amz-target");
 				}
 				headers.forEach(reqBuilder::header);
-				log.info("[Kiro] Request headers: {}", headers.keySet());
-				log.info("[Kiro] URL: {} | amzTarget: {}", url, amzTarget);
 
 				if ("POST".equals(method) && body != null) {
 					reqBuilder.POST(HttpRequest.BodyPublishers.ofString(body));
@@ -150,7 +148,7 @@ public class KiroHttpClient {
 				if (status == 429) {
 					long delay = BASE_RETRY_DELAY * (1L << attempt);
 					log.warn(
-							"[Kiro] 429 rate limited, waiting {}ms (attempt {}/{})",
+							LogTag.KIRO + "429 rate limited, waiting {}ms (attempt {}/{})",
 							delay,
 							attempt + 1,
 							maxRetries
@@ -163,7 +161,7 @@ public class KiroHttpClient {
 				if (status >= 500) {
 					long delay = BASE_RETRY_DELAY * (1L << attempt);
 					log.warn(
-							"[Kiro] {} from upstream, waiting {}ms (attempt {}/{})",
+							LogTag.KIRO + "{} from upstream, waiting {}ms (attempt {}/{})",
 							status,
 							delay,
 							attempt + 1,
@@ -177,7 +175,7 @@ public class KiroHttpClient {
 				String contentType = response.headers().firstValue(
 						"content-type").orElse("");
 				log.error(
-						"[Kiro] Upstream returned {}: content-type={}",
+						LogTag.KIRO + "Upstream returned {}: content-type={}",
 						status,
 						contentType
 				);
@@ -195,7 +193,7 @@ public class KiroHttpClient {
 				lastError = e;
 				long delay = BASE_RETRY_DELAY * (1L << attempt);
 				log.error(
-						"[Kiro] Network error: {}, waiting {}ms (attempt {}/{})",
+						LogTag.KIRO + "Network error: {}, waiting {}ms (attempt {}/{})",
 						e.getMessage(),
 						delay,
 						attempt + 1,
