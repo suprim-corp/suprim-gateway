@@ -7,7 +7,6 @@ import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.ProviderAuthManager;
 
 import dev.suprim.gateway.provider.kiro.reader.CredentialStoreReader;
-import dev.suprim.gateway.provider.kiro.reader.KiroSourceReader;
 import dev.suprim.gateway.provider.kiro.refresher.DesktopTokenRefresher;
 import dev.suprim.gateway.provider.kiro.refresher.RefreshResult;
 import dev.suprim.gateway.provider.kiro.refresher.SsoOidcTokenRefresher;
@@ -69,7 +68,6 @@ public class KiroAuthManager implements ProviderAuthManager {
 	private String[] scopes;
 	private KiroCredentials.AuthType authType = KiroCredentials.AuthType.KIRO_DESKTOP;
 	private long lastRefreshFailure = 0;
-	private String credSourceType;
 
 	@PostConstruct
 	void init() {
@@ -77,7 +75,6 @@ public class KiroAuthManager implements ProviderAuthManager {
 		boolean blankArn = isNull(configArn) || configArn.isBlank();
 		this.profileArn = blankArn ? null : configArn;
 
-		// credential store có sẵn → dùng luôn, không cần đọc Kiro DB
 		Optional<KiroCredentials> fromStore = CredentialStoreReader.read(
 				credentialStore
 		);
@@ -88,19 +85,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 				resolveProfileArn();
 			}
 			loadAccountName();
-			return;
 		}
-
-		// fallback: đọc từ Kiro DB / JSON config, rồi bootstrap vào store
-		if (config.cliDbFile() != null && !config.cliDbFile().isBlank()) {
-			credSourceType = "sqlite";
-		} else if (config.credsFile() != null &&
-		           !config.credsFile().isBlank()) {
-			credSourceType = "json";
-		}
-		KiroSourceReader.read(config).ifPresent(this::applyCredentials);
-		bootstrapStore();
-		loadAccountName();
 	}
 
 	public String getAccessToken() throws Exception {
@@ -208,16 +193,10 @@ public class KiroAuthManager implements ProviderAuthManager {
 				doRefresh();
 			} catch (Exception e) {
 				log.warn(
-						LogTag.KIRO + "Refresh failed, reloading from Kiro DB: {}",
+						LogTag.KIRO + "Refresh failed: {}",
 						e.getMessage()
 				);
-				Optional<KiroCredentials> reloaded = KiroSourceReader.read(
-						config);
-				if (reloaded.isEmpty()) {
-					throw e;
-				}
-				applyCredentials(reloaded.get());
-				doRefresh();
+				throw e;
 			}
 			saveToStore();
 		} catch (Exception e) {
@@ -261,24 +240,6 @@ public class KiroAuthManager implements ProviderAuthManager {
 		this.expiresAt = creds.expiresAt();
 		this.scopes = creds.scopes();
 		this.authType = creds.authType();
-	}
-
-	private void bootstrapStore() {
-		if (refreshToken == null && accessToken == null) return;
-		try {
-			refresh();
-		} catch (Exception e) {
-			log.warn(
-					LogTag.KIRO + "Bootstrap refresh failed, not saving to store: {}",
-					e.getMessage()
-			);
-			return;
-		}
-		saveToStore();
-		log.info(
-				LogTag.KIRO + "Bootstrapped credential store from {}",
-				credSourceType
-		);
 	}
 
 	@Override
