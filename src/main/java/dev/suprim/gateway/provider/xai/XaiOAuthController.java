@@ -150,12 +150,18 @@ public class XaiOAuthController {
 		       +
 		       "if [ -z \"$DEVICE_CODE\" ]; then echo \"Error: $DEVICE_RESP\"; exit 1; fi\n"
 		       + "echo ''\n"
-		       + "echo \"Open: $VERIFY_URI\"\n"
-		       + "echo \"Code: $USER_CODE\"\n"
+		       + "printf '\\033[1;35m  xAI Device Authorization\\033[0m\\n'\n"
+		       + "echo ''\n"
+		       + "printf '  Open this URL and enter the code below:\\n'\n"
+		       + "echo ''\n"
+		       + "printf '  \\033[4;36m%s\\033[0m\\n' \"$VERIFY_URI\"\n"
+		       + "echo ''\n"
+		       + "printf '  Code: \\033[1;33m%s\\033[0m\\n' \"$USER_CODE\"\n"
+		       + "echo ''\n"
+		       + "printf '  \\033[2mWaiting for authorization...\\033[0m\\n'\n"
 		       + "echo ''\n"
 		       +
 		       "open \"$VERIFY_URI\" 2>/dev/null || xdg-open \"$VERIFY_URI\" 2>/dev/null\n"
-		       + "echo 'Waiting for authorization...'\n"
 		       + "while true; do\n"
 		       + "  sleep $INTERVAL\n"
 		       +
