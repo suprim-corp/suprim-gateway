@@ -9,14 +9,16 @@ import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
-import dev.suprim.gateway.proxy.OpenAiRelayHandler;
 import dev.suprim.gateway.proxy.ProxyChain;
+import dev.suprim.gateway.proxy.StreamConverter;
+import dev.suprim.gateway.proxy.kiro.KiroEvent;
 import dev.suprim.gateway.utils.ErrorResponse;
 
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -35,7 +37,6 @@ public class CodexFacade {
 	private static final JsonMapper MAPPER = new JsonMapper();
 	private final CodexAuthManager authManager;
 	private final RequestLogPublisher logPublisher;
-	private final OpenAiRelayHandler relayHandler;
 	private final AccountRotator accountRotator;
 	private final CredentialStore credentialStore;
 	private final ProxyChain proxyChain;
@@ -198,82 +199,184 @@ public class CodexFacade {
 			Format format,
 			HttpServletResponse httpRes
 	) throws Exception {
-		if (format == Format.COMPLETION) {
-			// Client wants OpenAI chat/completions format — use relay handler to convert
-			OpenAiRelayHandler.StreamResult result = relayHandler.relayStream(
-					response.body(),
-					format,
+		if (format == Format.RESPONSES) {
+			// Client wants Responses API format — pass-through as-is
+			passThrough(
+					response,
+					accountName,
 					model,
 					inputTokens,
+					keyId,
+					clientIp,
 					startTime,
 					httpRes
 			);
-			int latency = (int) (System.currentTimeMillis() - startTime);
-			logPublisher.publish(
-					RequestLogEvent.builder()
-					               .virtualKeyId(keyId)
-					               .accountId(accountName)
-					               .model(model)
-					               .requestedModel(model)
-					               .status(200)
-					               .promptTokens(result.promptTokens())
-					               .completionTokens(result.completionTokens())
-					               .latencyMs(latency)
-					               .firstTokenMs(
-							               Optional.ofNullable(
-									                       result.firstTokenMs())
-							                       .map(Long::intValue)
-							                       .orElse(null)
-					               )
-					               .streaming(true)
-					               .clientIp(clientIp)
-					               .build()
-			);
-		} else {
-			// Responses or Anthropic format — pass-through the SSE as-is
-			// (upstream already returns Responses API SSE)
-			httpRes.setCharacterEncoding("UTF-8");
-			httpRes.setContentType("text/event-stream; charset=utf-8");
-			httpRes.setHeader("Cache-Control", "no-cache");
-			PrintWriter writer = httpRes.getWriter();
+			return;
+		}
 
-			Long firstTokenMs = null;
-			try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-					response.body()))) {
-				String line;
-				while ((line = reader.readLine()) != null) {
-					if (firstTokenMs == null && (line.startsWith("event:") ||
-					                             line.startsWith("data:"))) {
-						firstTokenMs = System.currentTimeMillis() - startTime;
-					}
-					writer.write(line);
-					writer.write("\n");
-					if (line.isEmpty()) {
+		// COMPLETION or ANTHROPIC — parse Responses API SSE and convert
+		httpRes.setCharacterEncoding("UTF-8");
+		httpRes.setContentType("text/event-stream; charset=utf-8");
+		httpRes.setHeader("Cache-Control", "no-cache");
+		PrintWriter writer = httpRes.getWriter();
+
+		boolean anthropic = format == Format.ANTHROPIC;
+		String chunkId = "chatcmpl-" + java.util.UUID.randomUUID();
+		String msgId = anthropic
+				? "msg_" + java.util.UUID.randomUUID().toString().replace(
+				"-",
+				""
+		).substring(0, 20)
+				: null;
+
+		StreamConverter converter = new StreamConverter();
+		if (anthropic) {
+			writer.write(
+					converter.toAnthropicPreamble(
+							msgId,
+							model,
+							inputTokens
+					)
+			);
+			writer.flush();
+		}
+
+		Long firstTokenMs = null;
+		int outputTokens = 0;
+
+		try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+				response.body()))) {
+			String line;
+			while ((line = reader.readLine()) != null) {
+				if (!line.startsWith("data: ")) continue;
+				String data = line.substring(6).trim();
+				if (data.isEmpty() || "[DONE]".equals(data)) continue;
+
+				JsonNode node = MAPPER.readTree(data);
+				String type = node.has("type") ? node.get("type")
+				                                     .asString() : "";
+
+				if ("response.output_text.delta".equals(type)) {
+					String delta = node.has("delta") ? node.get("delta")
+					                                       .asString() : null;
+					if (delta != null && !delta.isEmpty()) {
+						if (firstTokenMs == null) {
+							firstTokenMs =
+									System.currentTimeMillis() - startTime;
+						}
+						if (anthropic) {
+							writer.write(converter.toAnthropicDelta(delta));
+						} else {
+							writer.write(
+									converter.toOpenAiChunk(
+											KiroEvent.content(delta),
+											model, chunkId
+									)
+							);
+						}
 						writer.flush();
+					}
+				} else if ("response.completed".equals(type)) {
+					JsonNode resp = node.get("response");
+					if (resp != null && resp.has("usage")) {
+						JsonNode usage = resp.get("usage");
+						outputTokens = usage.has("output_tokens")
+								? usage.get("output_tokens").asInt() : 0;
+						if (usage.has("input_tokens")) {
+							inputTokens = usage.get("input_tokens").asInt();
+						}
 					}
 				}
 			}
-			writer.flush();
-
-			int latency = (int) (System.currentTimeMillis() - startTime);
-			logPublisher.publish(
-					RequestLogEvent.builder()
-					               .virtualKeyId(keyId)
-					               .accountId(accountName)
-					               .model(model)
-					               .requestedModel(model)
-					               .status(200)
-					               .promptTokens(inputTokens)
-					               .latencyMs(latency)
-					               .firstTokenMs(
-							               Optional.ofNullable(
-									                       firstTokenMs)
-							                       .map(Long::intValue)
-							                       .orElse(null)
-					               )
-					               .streaming(true)
-					               .clientIp(clientIp)
-					               .build());
 		}
+
+		if (anthropic) {
+			writer.write(converter.toAnthropicFinale(outputTokens, false));
+		} else {
+			writer.write(converter.toOpenAiStopChunk(model, chunkId));
+			writer.write(converter.toOpenAiDone());
+		}
+		writer.flush();
+
+		int latency = (int) (System.currentTimeMillis() - startTime);
+		logPublisher.publish(
+				RequestLogEvent.builder()
+				               .virtualKeyId(keyId)
+				               .accountId(accountName)
+				               .model(model)
+				               .requestedModel(model)
+				               .status(200)
+				               .promptTokens(inputTokens)
+				               .completionTokens(outputTokens)
+				               .latencyMs(latency)
+				               .firstTokenMs(
+						               Optional.ofNullable(firstTokenMs)
+						                       .map(Long::intValue)
+						                       .orElse(null)
+				               )
+				               .streaming(true)
+				               .clientIp(clientIp)
+				               .build()
+		);
+	}
+
+	private void passThrough(
+			CodexHttpClient.CodexResponse response,
+			String accountName,
+			String model,
+			int inputTokens,
+			String keyId,
+			String clientIp,
+			long startTime,
+			HttpServletResponse httpRes
+	) throws Exception {
+		httpRes.setCharacterEncoding("UTF-8");
+		httpRes.setContentType("text/event-stream; charset=utf-8");
+		httpRes.setHeader("Cache-Control", "no-cache");
+		PrintWriter writer = httpRes.getWriter();
+
+		Long firstTokenMs = null;
+		try (
+				BufferedReader reader =
+						new BufferedReader(
+								new InputStreamReader(
+										response.body()
+								)
+						)
+		) {
+			String line;
+			while ((line = reader.readLine()) != null) {
+				if (firstTokenMs == null &&
+				    (line.startsWith("event:") || line.startsWith("data:"))) {
+					firstTokenMs = System.currentTimeMillis() - startTime;
+				}
+				writer.write(line);
+				writer.write("\n");
+				if (line.isEmpty()) {
+					writer.flush();
+				}
+			}
+		}
+		writer.flush();
+
+		int latency = (int) (System.currentTimeMillis() - startTime);
+		logPublisher.publish(
+				RequestLogEvent.builder()
+				               .virtualKeyId(keyId)
+				               .accountId(accountName)
+				               .model(model)
+				               .requestedModel(model)
+				               .status(200)
+				               .promptTokens(inputTokens)
+				               .latencyMs(latency)
+				               .firstTokenMs(
+						               Optional.ofNullable(firstTokenMs)
+						                       .map(Long::intValue)
+						                       .orElse(null)
+				               )
+				               .streaming(true)
+				               .clientIp(clientIp)
+				               .build()
+		);
 	}
 }

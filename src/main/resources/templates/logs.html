@@ -75,6 +75,9 @@
                                 <img th:if="${log.provider() == 'XAI'}"
                                      src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/xai.png"
                                      class="size-3.5">
+                                <img th:if="${log.provider() == 'CODEX'}"
+                                     src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/openai.png"
+                                     class="size-3.5">
                                 <span th:text="${log.model()}">—</span>
                             </div>
                         </td>
