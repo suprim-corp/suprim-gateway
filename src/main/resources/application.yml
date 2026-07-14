@@ -17,6 +17,10 @@ logging:
   pattern:
     console: "%clr(%d{HH:mm:ss.SSS}){faint} %clr(%5p){highlight} %clr([%X{requestId:-}]){cyan} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){blue} %clr(:){faint} %m%n"
 
+info:
+  app:
+    version: @project.version@
+
 suprim:
   admin-api-key: ${ADMIN_API_KEY:admin}
   creds-file: ${KIRO_CREDS_FILE:}

@@ -13,7 +13,7 @@
 
 	<groupId>dev.suprim</groupId>
 	<artifactId>suprim-gateway</artifactId>
-	<version>0.2.0</version>
+	<version>0.3.0</version>
 	<name>suprim-gateway</name>
 	<description>Proxy gateway for Kiro API with admin dashboard</description>
 
