@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connected — Suprim Gateway</title>
+    <link rel="icon" href="/favicon.ico" sizes="32x32">
+    <meta http-equiv="refresh" content="3;url=/providers">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'neon-purple': '#a78bfa',
+                        'neon-green': '#4ade80',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace; }
+    </style>
+</head>
+<body class="dark bg-zinc-950 text-zinc-100 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-sm space-y-6">
+        <div class="flex flex-col items-center gap-3">
+            <div class="size-12 bg-neon-green/20 border border-neon-green/30 rounded-full flex items-center justify-center">
+                <svg class="size-6 text-neon-green" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6L9 17l-5-5"/>
+                </svg>
+            </div>
+            <h1 class="text-lg font-semibold tracking-tight">Connected</h1>
+            <p class="text-[10px] text-zinc-500">Account linked successfully. You can close this tab.</p>
+        </div>
+    </div>
+</body>
+</html>
