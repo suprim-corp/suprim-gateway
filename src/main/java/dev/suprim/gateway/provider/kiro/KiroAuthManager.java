@@ -373,6 +373,18 @@ public class KiroAuthManager implements ProviderAuthManager {
 				request,
 				HttpResponse.BodyHandlers.ofString()
 		);
+		if (response.statusCode() == 403 && !isApiKey) {
+			StoredAccount refreshed = refreshAccountToken(account);
+			if (refreshed != null) {
+				credentialStore.upsert(refreshed);
+				HttpRequest retryReq = reqBuilder
+						.header("Authorization", "Bearer " + refreshed.accessToken())
+						.build();
+				response = proxyChain.currentClient().send(
+						retryReq, HttpResponse.BodyHandlers.ofString()
+				);
+			}
+		}
 		if (response.statusCode() != 200) {
 			throw new IOException(
 					"ListAvailableModels HTTP " + response.statusCode() +
@@ -625,5 +637,31 @@ public class KiroAuthManager implements ProviderAuthManager {
 		}
 		String region = parts[3].trim();
 		return region.isEmpty() ? null : region;
+	}
+
+	private StoredAccount refreshAccountToken(StoredAccount account) {
+		try {
+			String refreshToken = account.refreshToken();
+			if (refreshToken == null) return null;
+			String authType = account.authType();
+			String region = account.region();
+			RefreshResult r;
+			if ("KIRO_DESKTOP".equals(authType)) {
+				r = DesktopTokenRefresher.refresh(refreshToken, region, proxyChain.currentClient());
+			} else {
+				r = SsoOidcTokenRefresher.refresh(
+						refreshToken, account.clientId(), account.clientSecret(),
+						account.scopes(), region, proxyChain.currentClient()
+				);
+			}
+			String newAccess = r.accessToken();
+			String newRefresh = r.refreshToken() != null ? r.refreshToken() : refreshToken;
+			Instant newExpires = r.expiresAt();
+			log.info("[Kiro] On-demand refresh succeeded for {}", account.name());
+			return account.withTokens(newAccess, newRefresh, newExpires);
+		} catch (Exception e) {
+			log.warn("[Kiro] On-demand refresh failed for {}: {}", account.name(), e.getMessage());
+			return null;
+		}
 	}
 }
