@@ -3,12 +3,16 @@ package dev.suprim.gateway.proxy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class ProxyChain {
+public class ProxyChain implements Closeable {
 
 	private static final Logger log = LoggerFactory.getLogger(ProxyChain.class);
 
@@ -44,13 +48,20 @@ public class ProxyChain {
 		return currentClient;
 	}
 
+	public HttpResponse<String> send(HttpRequest request) throws IOException, InterruptedException {
+		if (rotator.isExhausted() || currentClient == null) {
+			throw new IOException("No available proxy client");
+		}
+		return currentClient.send(request, HttpResponse.BodyHandlers.ofString());
+	}
+
 	public void onFailure() {
 		ProxyEntry failed = rotator.current();
 		rotator.advance();
 
 		if (rotator.isExhausted()) {
 			log.error("[Proxy] All proxies exhausted, request will fail");
-			currentClient = null;
+			closeClient();
 			return;
 		}
 
@@ -60,11 +71,13 @@ public class ProxyChain {
 				failed.maskedUrl(),
 				next.maskedUrl()
 		);
+		closeClient();
 		currentClient = ProxyClientFactory.build(next);
 	}
 
 	public void resetAttempts() {
 		rotator.resetAttempts();
+		closeClient();
 		currentClient = ProxyClientFactory.build(rotator.current());
 	}
 
@@ -79,5 +92,17 @@ public class ProxyChain {
 		}
 		String scheme = entry.scheme() == ProxyEntry.Scheme.HTTP ? "HTTP" : "SOCKS5";
 		return scheme + "] [" + entry.host() + ":" + entry.port();
+	}
+
+	private void closeClient() {
+		if (currentClient != null) {
+			currentClient.close();
+			currentClient = null;
+		}
+	}
+
+	@Override
+	public void close() {
+		closeClient();
 	}
 }

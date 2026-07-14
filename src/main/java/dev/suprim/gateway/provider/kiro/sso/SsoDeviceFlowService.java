@@ -60,10 +60,7 @@ public final class SsoDeviceFlowService {
 		HttpResponse<String> response;
 
 		try {
-			response = proxyChain.currentClient().send(
-					request,
-					HttpResponse.BodyHandlers.ofString()
-			);
+			response = proxyChain.send(request);
 		} catch (Exception e) {
 			throw new RuntimeException(
 					"RegisterClient request failed: " + e.getMessage(),
@@ -111,10 +108,7 @@ public final class SsoDeviceFlowService {
 						                                 payload)))
 		                                 .build();
 
-		HttpResponse<String> response = proxyChain.currentClient().send(
-				request,
-				HttpResponse.BodyHandlers.ofString()
-		);
+		HttpResponse<String> response = proxyChain.send(request);
 		if (response.statusCode() != 200) {
 			throw new RuntimeException("StartDeviceAuthorization failed (" +
 			                           response.statusCode() + "): " +
@@ -173,10 +167,7 @@ public final class SsoDeviceFlowService {
 						                                 payload)))
 		                                 .build();
 
-		HttpResponse<String> response = proxyChain.currentClient().send(
-				request,
-				HttpResponse.BodyHandlers.ofString()
-		);
+		HttpResponse<String> response = proxyChain.send(request);
 
 		if (response.statusCode() == 400) {
 			JsonNode errorJson = MAPPER.readTree(response.body());
@@ -247,10 +238,7 @@ public final class SsoDeviceFlowService {
 			                                 )
 			                                 .GET()
 			                                 .build();
-			HttpResponse<String> response = proxyChain.currentClient().send(
-					request,
-					HttpResponse.BodyHandlers.ofString()
-			);
+			HttpResponse<String> response = proxyChain.send(request);
 			if (response.statusCode() == 200) {
 				JsonNode root = MAPPER.readTree(response.body());
 				JsonNode email = root.path("userInfo").path("email");

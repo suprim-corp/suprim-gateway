@@ -352,10 +352,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 		}
 		HttpRequest request = reqBuilder.build();
 
-		HttpResponse<String> response = proxyChain.currentClient().send(
-				request,
-				HttpResponse.BodyHandlers.ofString()
-		);
+		HttpResponse<String> response = proxyChain.send(request);
 		if (response.statusCode() == 403 && !isApiKey) {
 			StoredAccount refreshed = refreshAccountToken(account);
 			if (refreshed != null) {
@@ -366,9 +363,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 								"Bearer " + refreshed.accessToken()
 						)
 						.build();
-				response = proxyChain.currentClient().send(
-						retryReq, HttpResponse.BodyHandlers.ofString()
-				);
+				response = proxyChain.send(retryReq);
 			}
 		}
 		if (response.statusCode() != 200) {
@@ -478,10 +473,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 				reqBuilder.header("tokentype", "API_KEY");
 			}
 			HttpRequest request = reqBuilder.build();
-			HttpResponse<String> response = proxyChain.currentClient().send(
-					request,
-					HttpResponse.BodyHandlers.ofString()
-			);
+			HttpResponse<String> response = proxyChain.send(request);
 			if (response.statusCode() != 200) {
 				return Map.of();
 			}
@@ -524,9 +516,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 			                                 )
 			                                 .GET()
 			                                 .build();
-			HttpResponse<String> response = proxyChain.currentClient().send(
-					request, HttpResponse.BodyHandlers.ofString()
-			);
+			HttpResponse<String> response = proxyChain.send(request);
 			if (response.statusCode() == 200) {
 				JsonMapper mapper = new JsonMapper();
 				Map<String, Object> body = mapper.readValue(
@@ -581,9 +571,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 			if (isApiKey) {
 				reqBuilder.header("tokentype", "API_KEY");
 			}
-			HttpResponse<String> response = proxyChain.currentClient().send(
-					reqBuilder.build(), HttpResponse.BodyHandlers.ofString()
-			);
+			HttpResponse<String> response = proxyChain.send(reqBuilder.build());
 			if (response.statusCode() == 200) {
 				JsonMapper mapper = new JsonMapper();
 				Map<String, Object> body = mapper.readValue(
