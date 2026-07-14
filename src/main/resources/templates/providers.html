@@ -362,16 +362,40 @@
 
             <!-- Codex OAuth form -->
             <div id="codexForm" class="hidden space-y-3">
-                <p class="text-xs text-zinc-400">Connect your ChatGPT account via OAuth to use Codex models.</p>
-                <div class="flex gap-2 justify-end mt-3">
-                    <button type="button" onclick="showChoices()"
-                            class="h-8 px-3 text-xs text-zinc-400 hover:text-zinc-100 cursor-pointer transition-colors">
-                        Back
-                    </button>
-                    <a href="/auth/codex"
-                       class="inline-flex items-center h-8 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
-                        Connect with OpenAI
-                    </a>
+                <div id="codexLocal">
+                    <p class="text-xs text-zinc-400">Connect your ChatGPT account via OAuth to use Codex models.</p>
+                    <div class="flex gap-2 justify-end mt-3">
+                        <button type="button" onclick="showChoices()"
+                                class="h-8 px-3 text-xs text-zinc-400 hover:text-zinc-100 cursor-pointer transition-colors">
+                            Back
+                        </button>
+                        <a href="/auth/codex"
+                           class="inline-flex items-center h-8 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
+                            Connect with OpenAI
+                        </a>
+                    </div>
+                </div>
+                <div id="codexRemote" class="hidden">
+                    <p class="text-xs text-zinc-400 mb-2">OpenAI requires localhost callback. Run this on your local
+                        machine:</p>
+                    <div class="flex items-stretch gap-2">
+                        <pre class="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-[11px] text-zinc-300 overflow-x-auto whitespace-nowrap"><code id="codexCommand"></code></pre>
+                        <button onclick="navigator.clipboard.writeText(document.getElementById('codexCommand').textContent).then(function(){toast('Copied to clipboard','success')})"
+                                class="shrink-0 w-10 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded-lg cursor-pointer hover:bg-zinc-700 hover:border-neon-purple transition-colors">
+                            <svg class="size-4 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="text-[10px] text-zinc-500 mt-2">After login, token will be sent back to this gateway
+                        automatically.</p>
+                    <div class="flex gap-2 justify-end mt-3">
+                        <button type="button" onclick="showChoices()"
+                                class="h-8 px-3 text-xs text-zinc-400 hover:text-zinc-100 cursor-pointer transition-colors">
+                            Back
+                        </button>
+                    </div>
                 </div>
             </div>
 

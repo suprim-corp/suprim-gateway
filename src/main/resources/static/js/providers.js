@@ -180,6 +180,9 @@ function showProviderForm(provider) {
         case 'antigravity':
             initAntigravityForm()
             break
+        case 'codex':
+            initCodexForm()
+            break
     }
 }
 
@@ -315,6 +318,23 @@ function cancelKiroSso() {
 function initAntigravityForm() {
     const base = location.origin
     document.getElementById('agCommand').textContent = 'curl -sL "' + base + '/auth/antigravity/agent" | bash'
+}
+
+function initCodexForm() {
+    const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+    if (isLocal) {
+        document.getElementById('codexLocal').classList.remove('hidden')
+        document.getElementById('codexRemote').classList.add('hidden')
+    } else {
+        document.getElementById('codexLocal').classList.add('hidden')
+        document.getElementById('codexRemote').classList.remove('hidden')
+        fetch('/auth/codex/state', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                const base = location.origin
+                document.getElementById('codexCommand').textContent = 'curl -sL "' + base + '/auth/codex/agent?state=' + data.state + '" | bash'
+            })
+    }
 }
 
 function initXaiForm() {
