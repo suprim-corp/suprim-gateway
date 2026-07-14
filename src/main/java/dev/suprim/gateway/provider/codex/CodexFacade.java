@@ -10,6 +10,7 @@ import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.OpenAiRelayHandler;
+import dev.suprim.gateway.proxy.ProxyChain;
 import dev.suprim.gateway.utils.ErrorResponse;
 
 import jakarta.servlet.http.HttpServletResponse;
@@ -36,6 +37,7 @@ public class CodexFacade {
 	private final OpenAiRelayHandler relayHandler;
 	private final AccountRotator accountRotator;
 	private final CredentialStore credentialStore;
+	private final ProxyChain proxyChain;
 
 	public void handle(
 			InternalRequest request,
@@ -86,7 +88,8 @@ public class CodexFacade {
 
 			CodexHttpClient.CodexResponse response = CodexHttpClient.call(
 					payload,
-					accessToken
+					accessToken,
+					proxyChain
 			);
 			log.info(
 					LogTag.CODEX + "Upstream responded with status {}",

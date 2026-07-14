@@ -23,13 +23,17 @@ function showModels(index) {
             if (data.session || data.weekly) {
                 const session = data.session || {}
                 const weekly = data.weekly || {}
-                const usedPct = session.usedPercent ?? weekly.usedPercent ?? 0
+                const sessionPct = session.usedPercent ?? 0
+                const weeklyPct = weekly.usedPercent ?? 0
+                const usedPct = Math.max(sessionPct, weeklyPct)
                 const remaining = Math.max(0, 100 - usedPct)
                 const planMap = {free: 'Free', go: 'Go', plus: 'Plus', pro: 'Pro', business: 'Business', enterprise: 'Enterprise'}
                 const planLabel = planMap[data.plan] || data.plan || 'Codex'
                 const limitTag = data.limitReached ? ' — LIMIT REACHED' : ''
                 document.getElementById('usageLabel').textContent = 'ChatGPT ' + planLabel + limitTag
-                document.getElementById('usageText').textContent = usedPct + '% used'
+                let usageText = 'Session ' + sessionPct + '% · Weekly ' + weeklyPct + '%'
+                if (data.resetCredits > 0) usageText += ' · ' + data.resetCredits + ' reset credits'
+                document.getElementById('usageText').textContent = usageText
                 const bar = document.getElementById('usageBar')
                 bar.style.width = remaining + '%'
                 bar.className = 'h-full rounded-full transition-all ' +

@@ -1,6 +1,7 @@
 package dev.suprim.gateway.provider.codex;
 
 import dev.suprim.gateway.instants.Codex;
+import dev.suprim.gateway.proxy.ProxyChain;
 
 import lombok.Builder;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +28,7 @@ public class CodexHttpClient {
 	private static final int MAX_RETRIES = 3;
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 
-	private static final HttpClient HTTP_CLIENT =
+	private static final HttpClient DIRECT_CLIENT =
 			HttpClient.newBuilder()
 			          .connectTimeout(Duration.ofSeconds(15))
 			          .build();
@@ -35,7 +36,15 @@ public class CodexHttpClient {
 	@Builder
 	record CodexResponse(int status, InputStream body) {}
 
-	static List<Map<String, Object>> listModels(String accessToken) throws IOException {
+	private static HttpClient resolveClient(ProxyChain proxyChain) {
+		HttpClient proxied = proxyChain.currentClient();
+		return proxied != null ? proxied : DIRECT_CLIENT;
+	}
+
+	static List<Map<String, Object>> listModels(
+			String accessToken,
+			ProxyChain proxyChain
+	) throws IOException {
 		HttpRequest request =
 				HttpRequest.newBuilder()
 				           .uri(
@@ -44,19 +53,13 @@ public class CodexHttpClient {
 								           "/models?client_version=0.144.4"
 						           )
 				           )
-				           .header(
-						           "Authorization",
-						           "Bearer " + accessToken
-				           )
+				           .header("Authorization", "Bearer " + accessToken)
 				           .header("originator", "codex_cli_rs")
-				           .header(
-						           "User-Agent",
-						           "codex_cli_rs/0.136.0"
-				           )
+				           .header("User-Agent", "codex_cli_rs/0.136.0")
 				           .GET()
 				           .build();
 		try {
-			HttpResponse<String> response = HTTP_CLIENT.send(
+			HttpResponse<String> response = resolveClient(proxyChain).send(
 					request,
 					HttpResponse.BodyHandlers.ofString()
 			);
@@ -78,13 +81,10 @@ public class CodexHttpClient {
 				Optional.ofNullable(item.get("slug"))
 				        .map(JsonNode::asString)
 				        .filter(id -> !id.isEmpty())
-				        .ifPresent(id -> models.add(
-								        Map.of(
-										        "id",
-										        "codex/" + id
-								        )
-						        )
-				        );
+				        .ifPresent(id -> models.add(Map.of(
+						        "id",
+						        "codex/" + id
+				        )));
 			}
 			return models;
 		} catch (InterruptedException e) {
@@ -95,7 +95,8 @@ public class CodexHttpClient {
 
 	static CodexResponse call(
 			String payload,
-			String accessToken
+			String accessToken,
+			ProxyChain proxyChain
 	) throws IOException {
 		String url = Codex.API_BASE + "/responses";
 
@@ -118,7 +119,7 @@ public class CodexHttpClient {
 						           )
 						           .build();
 
-				HttpResponse<InputStream> response = HTTP_CLIENT.send(
+				HttpResponse<InputStream> response = resolveClient(proxyChain).send(
 						request,
 						HttpResponse.BodyHandlers.ofInputStream()
 				);
@@ -159,27 +160,34 @@ public class CodexHttpClient {
 		throw new IOException("All retries exhausted");
 	}
 
-	public static Map<String, Object> fetchUsage(String accessToken) {
+	public static Map<String, Object> fetchUsage(
+			String accessToken,
+			ProxyChain proxyChain
+	) {
 		try {
-			HttpRequest request = HttpRequest.newBuilder()
-			                                 .uri(URI.create(
-					                                 "https://chatgpt.com/backend-api/wham/usage"))
-			                                 .header(
-					                                 "Authorization",
-					                                 "Bearer " + accessToken
-			                                 )
-			                                 .header(
-					                                 "originator",
-					                                 "codex_cli_rs"
-			                                 )
-			                                 .header(
-					                                 "User-Agent",
-					                                 "codex_cli_rs/0.136.0"
-			                                 )
-			                                 .GET()
-			                                 .build();
+			HttpRequest request =
+					HttpRequest.newBuilder()
+					           .uri(
+							           URI.create(
+									           "https://chatgpt.com/backend-api/wham/usage"
+							           )
+					           )
+					           .header(
+							           "Authorization",
+							           "Bearer " + accessToken
+					           )
+					           .header(
+							           "originator",
+							           "codex_cli_rs"
+					           )
+					           .header(
+							           "User-Agent",
+							           "codex_cli_rs/0.136.0"
+					           )
+					           .GET()
+					           .build();
 
-			HttpResponse<String> response = HTTP_CLIENT.send(
+			HttpResponse<String> response = resolveClient(proxyChain).send(
 					request,
 					HttpResponse.BodyHandlers.ofString()
 			);

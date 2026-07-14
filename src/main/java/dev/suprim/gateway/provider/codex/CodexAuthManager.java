@@ -5,6 +5,7 @@ import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.OAuthProviderAuthManager;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
+import dev.suprim.gateway.proxy.ProxyChain;
 
 import jakarta.annotation.PostConstruct;
 import lombok.Builder;
@@ -26,6 +27,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class CodexAuthManager implements OAuthProviderAuthManager {
 
 	private final CredentialStore credentialStore;
+	private final ProxyChain proxyChain;
 	private final ReentrantLock refreshLock = new ReentrantLock();
 	private final ConcurrentHashMap<String, TokenState> tokenCache = new ConcurrentHashMap<>();
 
@@ -92,11 +94,15 @@ public class CodexAuthManager implements OAuthProviderAuthManager {
 		persistToStore();
 	}
 
+	public Map<String, Object> getUsageLimits(StoredAccount account) {
+		return CodexHttpClient.fetchUsage(getAccessToken(account), proxyChain);
+	}
+
 	public List<Map<String, Object>> listModels(StoredAccount account) throws IOException {
 		if (account.accessToken() == null) {
 			return List.of();
 		}
-		return CodexHttpClient.listModels(account.accessToken());
+		return CodexHttpClient.listModels(account.accessToken(), proxyChain);
 	}
 
 	public String getAccessToken(StoredAccount account) {
