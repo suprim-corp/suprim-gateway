@@ -8,14 +8,13 @@ import dev.suprim.gateway.provider.kiro.refresher.RefreshResult;
 import dev.suprim.gateway.provider.kiro.refresher.SsoOidcTokenRefresher;
 import dev.suprim.gateway.provider.xai.XaiTokenRefresher;
 import dev.suprim.gateway.provider.xai.XaiTokenResponse;
+import dev.suprim.gateway.proxy.ProxyChain;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.net.http.HttpClient;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -28,10 +27,8 @@ public class TokenRefreshScheduler {
 	private static final String RED = "\033[31m";
 	private static final String RESET = "\033[0m";
 
-	private static final HttpClient HTTP_CLIENT =
-			HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
-
 	private final CredentialStore credentialStore;
+	private final ProxyChain proxyChain;
 
 	@Scheduled(fixedDelay = 2_700_000)
 	void refreshAll() {
@@ -77,11 +74,11 @@ public class TokenRefreshScheduler {
 					String region = account.region();
 					RefreshResult r;
 					if ("KIRO_DESKTOP".equals(authType)) {
-						r = DesktopTokenRefresher.refresh(refreshToken, region, HTTP_CLIENT);
+						r = DesktopTokenRefresher.refresh(refreshToken, region, proxyChain.currentClient());
 					} else {
 						r = SsoOidcTokenRefresher.refresh(
 								refreshToken, account.clientId(), account.clientSecret(),
-								account.scopes(), region, HTTP_CLIENT
+								account.scopes(), region, proxyChain.currentClient()
 						);
 					}
 					newAccess = r.accessToken();
