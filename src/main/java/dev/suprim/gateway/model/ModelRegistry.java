@@ -96,12 +96,21 @@ public class ModelRegistry {
 							.forEach(m -> {
 								String id = (String) m.get("id");
 								if (seen.add(id)) {
+									String displayName =
+											Optional.ofNullable(
+													        (String) m.get("displayName")
+											        )
+											        .orElse(
+													        id.startsWith("grok/")
+															        ? id.substring(5) : id
+											        );
 									result.add(
 											ModelForListingApi
 													.builder()
 													.id(id)
 													.created(now)
 													.ownedBy(Provider.XAI.name())
+													.displayName(displayName)
 													.object("model")
 													.build()
 									);
@@ -112,8 +121,11 @@ public class ModelRegistry {
 							.forEach(m -> {
 								String id = (String) m.get("id");
 								if (seen.add(id)) {
-									String displayName = Optional.ofNullable((String) m.get("displayName"))
-											.orElse(id.startsWith("codex/") ? id.substring(6) : id);
+									String displayName = Optional.ofNullable((String) m.get(
+											                             "displayName"))
+									                             .orElse(id.startsWith(
+											                             "codex/") ? id.substring(
+											                             6) : id);
 									result.add(
 											ModelForListingApi
 													.builder()

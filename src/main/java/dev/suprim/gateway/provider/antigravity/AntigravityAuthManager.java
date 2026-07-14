@@ -9,6 +9,7 @@ import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
@@ -104,6 +105,7 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 		this.projectId = null;
 	}
 
+	@Cacheable("antigravityModels")
 	public List<Map<String, Object>> listModels(StoredAccount account) throws IOException {
 		if (account.accessToken() == null) {
 			return List.of();

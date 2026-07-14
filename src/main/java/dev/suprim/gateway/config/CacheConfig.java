@@ -15,7 +15,12 @@ public class CacheConfig {
 
 	@Bean
 	public CacheManager cacheManager() {
-		CaffeineCacheManager manager = new CaffeineCacheManager("kiroModels", "xaiModels");
+		CaffeineCacheManager manager = new CaffeineCacheManager(
+				"kiroModels",
+				"xaiModels",
+				"codexModels",
+				"antigravityModels"
+		);
 		manager.setCaffeine(
 				Caffeine.newBuilder()
 				        .expireAfterWrite(5, TimeUnit.MINUTES)

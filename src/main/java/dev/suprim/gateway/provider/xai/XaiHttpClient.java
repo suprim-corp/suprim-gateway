@@ -15,6 +15,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -61,7 +62,13 @@ class XaiHttpClient {
 			for (JsonNode item : data) {
 				String id = item.has("id") ? item.get("id").asString() : null;
 				if (id != null && !id.isEmpty()) {
-					models.add(Map.of("id", "grok/" + id));
+					Map<String, Object> model = new HashMap<>();
+					model.put("id", "grok/" + id);
+					String displayName = Xai.MODEL_NAMES.get(id);
+					if (displayName != null) {
+						model.put("displayName", displayName);
+					}
+					models.add(model);
 				}
 			}
 			return models;

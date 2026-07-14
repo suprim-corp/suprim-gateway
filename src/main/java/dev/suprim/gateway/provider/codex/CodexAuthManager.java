@@ -11,6 +11,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.Builder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -98,6 +99,7 @@ public class CodexAuthManager implements OAuthProviderAuthManager {
 		return CodexHttpClient.fetchUsage(getAccessToken(account), proxyChain);
 	}
 
+	@Cacheable("codexModels")
 	public List<Map<String, Object>> listModels(StoredAccount account) throws IOException {
 		if (account.accessToken() == null) {
 			return List.of();
