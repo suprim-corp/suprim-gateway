@@ -6,7 +6,7 @@ import dev.suprim.gateway.proxy.ProxyChain;
 import lombok.Builder;
 import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,7 +26,7 @@ public class CodexHttpClient {
 
 	private static final long BASE_RETRY_DELAY = 1000;
 	private static final int MAX_RETRIES = 3;
-	private static final ObjectMapper MAPPER = new ObjectMapper();
+	private static final JsonMapper MAPPER = new JsonMapper();
 
 	private static final HttpClient DIRECT_CLIENT =
 			HttpClient.newBuilder()

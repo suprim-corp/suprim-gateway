@@ -17,7 +17,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -31,7 +32,7 @@ import java.util.Optional;
 @Component
 public class CodexFacade {
 
-	private static final ObjectMapper MAPPER = new ObjectMapper();
+	private static final JsonMapper MAPPER = new JsonMapper();
 	private final CodexAuthManager authManager;
 	private final RequestLogPublisher logPublisher;
 	private final OpenAiRelayHandler relayHandler;
@@ -65,7 +66,15 @@ public class CodexFacade {
 		long startTime = System.currentTimeMillis();
 		int maxAttempts = accounts.size();
 
-		String payload = MAPPER.writeValueAsString(request);
+		ObjectNode payloadNode = MAPPER.valueToTree(request);
+		payloadNode.put("store", false);
+		payloadNode.put("stream", true);
+		if (payloadNode.has("messages") && !payloadNode.has("input")) {
+			payloadNode.set("input", payloadNode.get("messages"));
+			payloadNode.remove("messages");
+		}
+		payloadNode.remove("stream_options");
+		String payload = MAPPER.writeValueAsString(payloadNode);
 
 		for (int attempt = 0; attempt < maxAttempts; attempt++) {
 			StoredAccount account = accountRotator.next(Provider.CODEX.name());
