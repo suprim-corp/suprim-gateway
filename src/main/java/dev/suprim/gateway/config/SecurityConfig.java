@@ -51,6 +51,7 @@ class SecurityConfig {
                         .requestMatchers("/login", "/css/**", "/js/**", "/error").permitAll()
                         .requestMatchers("/auth/xai/agent", "/auth/xai/exchange", "/auth/xai/device-exchange").permitAll()
                         .requestMatchers("/auth/antigravity/agent", "/auth/antigravity/token-exchange").permitAll()
+                        .requestMatchers("/auth/codex/agent", "/auth/codex/exchange", "/auth/codex/device-exchange", "/auth/codex/state").permitAll()
                         .anyRequest().authenticated()
                 )
                 .formLogin(form -> form
