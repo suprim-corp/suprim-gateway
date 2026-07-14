@@ -112,14 +112,15 @@ public class ModelRegistry {
 							.forEach(m -> {
 								String id = (String) m.get("id");
 								if (seen.add(id)) {
+									String displayName = Optional.ofNullable((String) m.get("displayName"))
+											.orElse(id.startsWith("codex/") ? id.substring(6) : id);
 									result.add(
 											ModelForListingApi
 													.builder()
 													.id(id)
 													.created(now)
 													.ownedBy(Provider.CODEX.name())
-													.displayName(
-															"Codex | " + id)
+													.displayName(displayName)
 													.object("model")
 													.build()
 									);

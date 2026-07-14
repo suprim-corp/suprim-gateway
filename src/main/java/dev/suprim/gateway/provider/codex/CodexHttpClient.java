@@ -81,10 +81,18 @@ public class CodexHttpClient {
 				Optional.ofNullable(item.get("slug"))
 				        .map(JsonNode::asString)
 				        .filter(id -> !id.isEmpty())
-				        .ifPresent(id -> models.add(Map.of(
-						        "id",
-						        "codex/" + id
-				        )));
+				        .ifPresent(slug -> {
+					        Map<String, Object> model = new HashMap<>();
+					        model.put("id", "codex/" + slug);
+					        String displayName = Optional.ofNullable(item.get("name"))
+					                .or(() -> Optional.ofNullable(item.get("display_name")))
+					                .map(JsonNode::asString)
+					                .orElse(Codex.MODEL_NAMES.get(slug));
+					        if (displayName != null) {
+						        model.put("displayName", displayName);
+					        }
+					        models.add(model);
+				        });
 			}
 			return models;
 		} catch (InterruptedException e) {
