@@ -30,10 +30,10 @@ public class TokenRefreshScheduler {
 	private final CredentialStore credentialStore;
 	private final ProxyChain proxyChain;
 
-	@Scheduled(fixedDelay = 2_700_000)
+	@Scheduled(fixedDelay = 1_800_000)
 	void refreshAll() {
 		List<StoredAccount> accounts = credentialStore.load();
-		Instant threshold = Instant.now().plusSeconds(300);
+		Instant threshold = Instant.now().plusSeconds(1800);
 
 		for (StoredAccount account : accounts) {
 			if (account.refreshToken() == null) continue;
