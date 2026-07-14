@@ -70,7 +70,6 @@ public class KiroAuthManager implements ProviderAuthManager {
 	private KiroCredentials.AuthType authType = KiroCredentials.AuthType.KIRO_DESKTOP;
 	private long lastRefreshFailure = 0;
 	private String credSourceType;
-	private String credSourcePath;
 
 	@PostConstruct
 	void init() {
@@ -95,11 +94,9 @@ public class KiroAuthManager implements ProviderAuthManager {
 		// fallback: đọc từ Kiro DB / JSON config, rồi bootstrap vào store
 		if (config.cliDbFile() != null && !config.cliDbFile().isBlank()) {
 			credSourceType = "sqlite";
-			credSourcePath = config.cliDbFile();
 		} else if (config.credsFile() != null &&
 		           !config.credsFile().isBlank()) {
 			credSourceType = "json";
-			credSourcePath = config.credsFile();
 		}
 		KiroSourceReader.read(config).ifPresent(this::applyCredentials);
 		bootstrapStore();
