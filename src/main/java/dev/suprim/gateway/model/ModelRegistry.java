@@ -55,8 +55,9 @@ public class ModelRegistry {
 				switch (Provider.valueOf(account.provider())) {
 					case KIRO ->
 							kiroAuthManager.listModels(account).forEach(m -> {
-								String id = (String) m.get("id");
-								if (id != null && seen.add(id)) {
+								String modelId = (String) m.get("id");
+								String id = Provider.KIRO.getPrefix() + modelId;
+								if (modelId != null && seen.add(id)) {
 									result.add(
 											ModelForListingApi.builder()
 											                  .id(id)
@@ -73,7 +74,8 @@ public class ModelRegistry {
 							.listModels(account)
 							.forEach(m -> {
 								String modelId = (String) m.get("id");
-								String id = "ag/" + modelId;
+								String id = Provider.ANTIGRAVITY.getPrefix() +
+								            modelId;
 								if (seen.add(id)) {
 									String label = "Antigravity | " +
 									               Optional.ofNullable((String) m.get(
@@ -101,8 +103,10 @@ public class ModelRegistry {
 													        (String) m.get("displayName")
 											        )
 											        .orElse(
-													        id.startsWith("grok/")
-															        ? id.substring(5) : id
+													        id.startsWith(
+															        "grok/")
+															        ? id.substring(
+															        5) : id
 											        );
 									result.add(
 											ModelForListingApi
@@ -121,11 +125,15 @@ public class ModelRegistry {
 							.forEach(m -> {
 								String id = (String) m.get("id");
 								if (seen.add(id)) {
-									String displayName = Optional.ofNullable((String) m.get(
-											                             "displayName"))
-									                             .orElse(id.startsWith(
-											                             "codex/") ? id.substring(
-											                             6) : id);
+									String displayName =
+											Optional.ofNullable(
+													        (String) m.get("displayName")
+											        )
+											        .orElse(
+													        id.startsWith(
+															        Provider.CODEX.getPrefix()
+													        ) ? id.substring(6) : id
+											        );
 									result.add(
 											ModelForListingApi
 													.builder()
@@ -152,7 +160,9 @@ public class ModelRegistry {
 					() -> kiroAuthManager.listModels(account)
 					                     .stream()
 					                     .map(m -> {
-						                     String id = (String) m.get("id");
+						                     String id =
+								                     Provider.KIRO.getPrefix() +
+								                     m.get("id");
 						                     Object cost = m.get("cost");
 						                     String unit = (String) m.get("unit");
 						                     if (cost instanceof Number c &&
@@ -172,28 +182,30 @@ public class ModelRegistry {
 					() -> antigravityAuthManager.listModels(account)
 					                            .stream()
 					                            .map(m -> {
-						                            Object quota = m.get("quota");
-						                            if (quota instanceof Integer q) {
-							                            return ModelInfo.of(
-									                            "ag/" +
-									                            m.get("id"),
-									                            q
-							                            );
-						                            }
+								                            Object quota = m.get("quota");
+								                            if (quota instanceof Integer q) {
+									                            return ModelInfo.of(
+											                            Provider.ANTIGRAVITY.getPrefix() +
+											                            m.get("id"),
+											                            q
+									                            );
+								                            }
 
-						                            return ModelInfo.of(
-								                            "ag/" +
-								                            m.get("id")
-						                            );
-					                            })
+								                            return ModelInfo.of(
+										                            Provider.ANTIGRAVITY.getPrefix() +
+										                            m.get("id")
+								                            );
+							                            }
+					                            )
 					                            .toList()
 			);
 			case XAI -> safeListModels(
 					() -> xaiAuthManager.listModels(account)
 					                    .stream()
 					                    .map(m -> ModelInfo.of(
-							                    (String) m.get("id")
-					                    ))
+									                    (String) m.get("id")
+							                    )
+					                    )
 					                    .toList()
 			);
 			case CODEX -> safeListModels(

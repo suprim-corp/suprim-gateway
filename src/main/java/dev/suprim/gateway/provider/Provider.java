@@ -5,7 +5,7 @@ import lombok.Getter;
 @Getter
 public enum Provider {
 
-	KIRO(null),
+	KIRO("kiro/"),
 	ANTIGRAVITY("ag/"),
 	GROK("grok/"),
 	XAI("grok/"),
