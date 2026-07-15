@@ -15,7 +15,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import jakarta.annotation.PostConstruct;
+import org.springframework.scheduling.annotation.Scheduled;
+
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
@@ -30,7 +34,25 @@ public class ModelRegistry {
 	private final XaiAuthManager xaiAuthManager;
 	private final CodexAuthManager codexAuthManager;
 
+	private final AtomicReference<List<ModelForListingApi>> cachedModels = new AtomicReference<>(List.of());
+
+	@PostConstruct
+	void warmUp() {
+		refreshCache();
+	}
+
+	@Scheduled(fixedDelay = 300_000)
+	void refreshCache() {
+		List<ModelForListingApi> models = fetchAllModels();
+		cachedModels.set(models);
+		log.info("\033[36m[Models]\033[0m Cache refreshed: {} models", models.size());
+	}
+
 	public List<ModelForListingApi> getAllModelsForApi() {
+		return cachedModels.get();
+	}
+
+	private List<ModelForListingApi> fetchAllModels() {
 		List<ModelForListingApi> result = new ArrayList<>();
 		long now = System.currentTimeMillis() / 1000;
 
