@@ -16,6 +16,7 @@ public enum ModelPricing {
     KIRO_CLAUDE_OPUS_4("claude-opus-4", PricingTier.FLAT, 5, 25),
     KIRO_CLAUDE_OPUS_4_5("claude-opus-4.5", PricingTier.FLAT, 5, 25),
     KIRO_CLAUDE_HAIKU_4_5("claude-haiku-4.5", PricingTier.FLAT, 1, 5),
+    KIRO_CLAUDE_HAIKU_4_5_ALT("claude-haiku-4-5", PricingTier.FLAT, 1, 5),
     KIRO_CLAUDE_3_7_SONNET("claude-3.7-sonnet", PricingTier.FLAT, 3, 15),
     KIRO_GPT_5_6_SOL("gpt-5.6-sol", PricingTier.FLAT, 5, 30),
     KIRO_GPT_5_6_TERRA("gpt-5.6-terra", PricingTier.FLAT, 2.5, 15),
