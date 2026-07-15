@@ -9,7 +9,8 @@ public enum Provider {
 	ANTIGRAVITY("ag/"),
 	GROK("grok/"),
 	XAI("grok/"),
-	CODEX("codex/");
+	CODEX("codex/"),
+	DEEPSEEK("deepseek/");
 
 	private final String prefix;
 

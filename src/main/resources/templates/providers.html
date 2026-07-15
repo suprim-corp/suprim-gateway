@@ -61,6 +61,9 @@
                             <img th:if="${account.provider() == 'XAI'}"
                                  src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/xai.png"
                                  class="size-4" alt="xAI">
+                            <img th:if="${account.provider() == 'DEEPSEEK'}"
+                                 src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/deepseek-color.png"
+                                 class="size-4" alt="DeepSeek">
                             <span class="text-zinc-400"
                                   th:text="${account.provider() != null ? account.provider() : 'UNKNOWN'}"></span>
                         </div>
@@ -203,6 +206,15 @@
                     <div>
                         <div class="text-xs font-medium text-zinc-100">xAI</div>
                         <div class="text-[10px] text-zinc-500">Connect via xAI OAuth</div>
+                    </div>
+                </button>
+                <button onclick="showProviderForm('deepseek')"
+                        class="flex items-center gap-3 p-3 border border-zinc-800 rounded-lg hover:border-neon-purple hover:bg-purple-500/5 transition-colors cursor-pointer w-full text-left">
+                    <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/deepseek-color.png"
+                         class="size-8" alt="DeepSeek">
+                    <div>
+                        <div class="text-xs font-medium text-zinc-100">DeepSeek</div>
+                        <div class="text-[10px] text-zinc-500">Login with email and password</div>
                     </div>
                 </button>
             </div>
@@ -437,6 +449,31 @@
                     </div>
                 </div>
             </div>
+
+            <!-- DeepSeek form -->
+            <form id="deepseekForm" class="hidden space-y-3" action="/providers/add-deepseek" method="post">
+                <p class="text-xs text-zinc-400">Add your DeepSeek account (chat.deepseek.com) with email and password.</p>
+                <div>
+                    <label class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">Email</label>
+                    <input type="email" name="email" required placeholder="you@example.com"
+                           class="w-full h-9 px-3 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-neon-purple">
+                </div>
+                <div>
+                    <label class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">Password</label>
+                    <input type="password" name="password" required placeholder="Your DeepSeek password"
+                           class="w-full h-9 px-3 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-neon-purple">
+                </div>
+                <div class="flex gap-2 justify-end">
+                    <button type="button" onclick="showChoices()"
+                            class="h-8 px-3 text-xs text-zinc-400 hover:text-zinc-100 cursor-pointer transition-colors">
+                        Back
+                    </button>
+                    <button type="submit"
+                            class="h-8 px-4 bg-neon-purple text-zinc-950 font-medium rounded text-xs cursor-pointer hover:bg-purple-300 transition-colors">
+                        Add Account
+                    </button>
+                </div>
+            </form>
         </div>
     </dialog>
 

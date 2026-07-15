@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import dev.suprim.gateway.proxy.kiro.KiroEvent;
 import lombok.Builder;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -15,7 +15,7 @@ import java.util.UUID;
 @Component
 public class StreamConverter {
 
-	private final ObjectMapper mapper = new ObjectMapper();
+	private final JsonMapper mapper = new JsonMapper();
 
 	@Builder
 	@JsonPropertyOrder({"type", "id", "call_id", "name", "arguments"})
@@ -180,7 +180,7 @@ public class StreamConverter {
 		);
 	}
 
-	String toAnthropicEvent(String eventType, Object data) throws Exception {
+	public String toAnthropicEvent(String eventType, Object data) throws Exception {
 		return "event: " + eventType + "\ndata: " + mapper.writeValueAsString(
 				data) + "\n\n";
 	}

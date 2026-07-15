@@ -5,6 +5,7 @@ import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.antigravity.AntigravityAuthManager;
 import dev.suprim.gateway.provider.codex.CodexAuthManager;
+import dev.suprim.gateway.provider.deepseek.DeepSeekModels;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.config.AppConfig;
 import dev.suprim.gateway.provider.xai.XaiAuthManager;
@@ -42,7 +43,7 @@ public class ModelRegistry {
 	}
 
 	@Scheduled(fixedDelay = 300_000)
-	void refreshCache() {
+	public void refreshCache() {
 		List<ModelForListingApi> models = fetchAllModels();
 		cachedModels.set(models);
 		log.info("\033[36m[Models]\033[0m Cache refreshed: {} models", models.size());
@@ -168,9 +169,24 @@ public class ModelRegistry {
 									);
 								}
 							});
+					case DEEPSEEK -> DeepSeekModels.ALL.forEach(id -> {
+						if (seen.add(id)) {
+							result.add(
+									ModelForListingApi.builder()
+									                  .id(id)
+									                  .object("model")
+									                  .ownedBy(Provider.DEEPSEEK.name())
+									                  .created(now)
+									                  .displayName(DeepSeekModels.displayName(id))
+									                  .build()
+							);
+						}
+					});
 					default -> {}
 				}
-			} catch (Exception ignored) {}
+			} catch (Exception e) {
+				log.warn("[Models] Failed to load models for {}: {}", account.provider(), e.getMessage());
+			}
 		}
 
 		return result;

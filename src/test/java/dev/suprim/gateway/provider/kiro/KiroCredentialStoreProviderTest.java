@@ -21,12 +21,13 @@ class CredentialStoreProviderTest {
 
 	@Test
 	void providerEnum_hasExpectedValues() {
-		assertEquals(5, Provider.values().length);
+		assertEquals(6, Provider.values().length);
 		assertNotNull(Provider.valueOf("KIRO"));
 		assertNotNull(Provider.valueOf("ANTIGRAVITY"));
 		assertNotNull(Provider.valueOf("GROK"));
 		assertNotNull(Provider.valueOf("XAI"));
 		assertNotNull(Provider.valueOf("CODEX"));
+		assertNotNull(Provider.valueOf("DEEPSEEK"));
 	}
 
 	@Test

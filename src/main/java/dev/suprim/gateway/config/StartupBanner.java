@@ -52,7 +52,7 @@ public class StartupBanner {
     }
 
     private void logProviders() {
-        for (Provider provider : List.of(Provider.KIRO, Provider.ANTIGRAVITY, Provider.XAI, Provider.CODEX)) {
+        for (Provider provider : Provider.values()) {
             long count = credentialStore.findAllByProvider(provider.name()).size();
             String label = String.format("%-14s", provider.name());
             String value = count > 0

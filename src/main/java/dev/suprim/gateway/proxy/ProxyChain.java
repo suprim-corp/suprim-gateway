@@ -85,6 +85,10 @@ public class ProxyChain implements Closeable {
 		return rotator.size() > 0;
 	}
 
+	public ProxyEntry currentEntry() {
+		return rotator.current();
+	}
+
 	public String proxyTag() {
 		ProxyEntry entry = rotator.current();
 		if (entry == null) {

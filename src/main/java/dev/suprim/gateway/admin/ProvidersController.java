@@ -93,6 +93,22 @@ class ProvidersController {
 		return "redirect:/providers";
 	}
 
+	@PostMapping("/providers/add-deepseek")
+	String addDeepSeek(
+			@RequestParam String email,
+			@RequestParam String password
+	) {
+		StoredAccount account = StoredAccount.builder()
+		                                     .provider("DEEPSEEK")
+		                                     .name(email.trim())
+		                                     .accessToken(password)
+		                                     .authType("password")
+		                                     .build();
+		credentialStore.upsert(account);
+		modelRegistry.refreshCache();
+		return "redirect:/providers";
+	}
+
 	@GetMapping("/providers/count")
 	@ResponseBody
 	Map<String, Integer> count() {

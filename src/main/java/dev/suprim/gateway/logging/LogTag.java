@@ -11,6 +11,7 @@ public final class LogTag {
 	public static final String XAI = GRAY + "[xAI]" + RESET + " ";
 	public static final String ANTIGRAVITY = GREEN + "[Antigravity]" + RESET + " ";
 	public static final String CODEX = "\033[34m" + "[Codex]" + RESET + " ";
+	public static final String DEEPSEEK = "\033[36m" + "[DeepSeek]" + RESET + " ";
 
 	private LogTag() {}
 }
