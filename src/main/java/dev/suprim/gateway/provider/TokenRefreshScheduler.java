@@ -8,6 +8,7 @@ import dev.suprim.gateway.provider.codex.CodexTokenResponse;
 import dev.suprim.gateway.provider.kiro.refresher.DesktopTokenRefresher;
 import dev.suprim.gateway.provider.kiro.refresher.RefreshResult;
 import dev.suprim.gateway.provider.kiro.refresher.SsoOidcTokenRefresher;
+import dev.suprim.gateway.provider.xai.XaiAuthManager;
 import dev.suprim.gateway.provider.xai.XaiTokenRefresher;
 import dev.suprim.gateway.provider.xai.XaiTokenResponse;
 import dev.suprim.gateway.proxy.ProxyChain;
@@ -31,6 +32,7 @@ public class TokenRefreshScheduler {
 
 	private final CredentialStore credentialStore;
 	private final ProxyChain proxyChain;
+	private final XaiAuthManager xaiAuthManager;
 
 	@Scheduled(fixedDelay = 1_800_000)
 	void refreshAll() {
@@ -44,6 +46,9 @@ public class TokenRefreshScheduler {
 			StoredAccount refreshed = refreshAccount(account);
 			if (refreshed != null) {
 				credentialStore.upsert(refreshed);
+				if (Provider.XAI.name().equals(account.provider())) {
+					xaiAuthManager.evictTokenCache(account.name());
+				}
 				log.info("⟳ {}[{}]{} Refreshed: {}", GREEN, account.provider(), RESET, account.name());
 			}
 		}

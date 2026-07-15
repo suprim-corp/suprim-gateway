@@ -120,6 +120,10 @@ public class XaiAuthManager implements OAuthProviderAuthManager {
 		return state.accessToken();
 	}
 
+	public void evictTokenCache(String accountName) {
+		tokenCache.remove(accountName);
+	}
+
 	void refresh() {
 		refreshLock.lock();
 		try {
