@@ -199,6 +199,7 @@ document.getElementById('addAccountDialog').addEventListener('close', () => {
     document.getElementById('kiroFileList').innerHTML = ''
     document.getElementById('kiroFileList').classList.add('hidden')
     cancelKiroSso()
+    stopOAuthPoll()
     showKiroTab('sso')
 })
 
@@ -315,9 +316,38 @@ function cancelKiroSso() {
     document.getElementById('kiroSsoError').classList.add('hidden')
 }
 
+// OAuth polling — detect when a new account is added
+let oauthPollTimer = null
+let oauthBaseCount = null
+
+function startOAuthPoll() {
+    fetch('/providers/count').then(r => r.json()).then(d => {
+        oauthBaseCount = d.count
+        oauthPollTimer = setInterval(() => {
+            fetch('/providers/count').then(r => r.json()).then(d => {
+                if (d.count > oauthBaseCount) {
+                    stopOAuthPoll()
+                    toast('Account connected', 'success')
+                    document.getElementById('addAccountDialog').close()
+                    location.reload()
+                }
+            }).catch(() => {})
+        }, 500)
+    })
+}
+
+function stopOAuthPoll() {
+    if (oauthPollTimer) {
+        clearInterval(oauthPollTimer)
+        oauthPollTimer = null
+    }
+    oauthBaseCount = null
+}
+
 function initAntigravityForm() {
     const base = location.origin
     document.getElementById('agCommand').textContent = 'curl -sL "' + base + '/auth/antigravity/agent" | bash'
+    startOAuthPoll()
 }
 
 function initCodexForm() {
@@ -335,6 +365,7 @@ function initCodexForm() {
                 document.getElementById('codexCommand').textContent = 'curl -sL "' + base + '/auth/codex/agent?state=' + data.state + '" | bash'
             })
     }
+    startOAuthPoll()
 }
 
 function initXaiForm() {
@@ -352,4 +383,5 @@ function initXaiForm() {
                 document.getElementById('xaiCommand').textContent = 'curl -sL "' + base + '/auth/xai/agent?state=' + data.state + '" | bash'
             })
     }
+    startOAuthPoll()
 }

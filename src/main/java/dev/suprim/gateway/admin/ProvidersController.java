@@ -93,6 +93,12 @@ class ProvidersController {
 		return "redirect:/providers";
 	}
 
+	@GetMapping("/providers/count")
+	@ResponseBody
+	Map<String, Integer> count() {
+		return Map.of("count", credentialStore.load().size());
+	}
+
 	@GetMapping("/providers/{index}/models")
 	@ResponseBody
 	List<ModelInfo> models(@PathVariable int index) throws Exception {
