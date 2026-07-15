@@ -320,7 +320,8 @@ class DeepSeekFacadeTest {
 		assertEquals(200, httpRes.getStatus());
 		String body = httpRes.getContentAsString();
 		assertTrue(body.contains("visible"));
-		assertFalse(body.contains("think"));
+		assertTrue(body.contains("reasoning_content"));
+		assertTrue(body.contains("think"));
 	}
 
 	@Test

@@ -1,9 +1,11 @@
 package dev.suprim.gateway.proxy.sse;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 
 import java.util.List;
+import java.util.Map;
 
 public final class AnthropicSsePayloads {
 
@@ -49,11 +51,17 @@ public final class AnthropicSsePayloads {
 			@JsonProperty("output_tokens") int outputTokens
 	) {
 		public static Usage zero() {
-			return new Usage(0, 0);
+			return Usage.builder()
+			            .inputTokens(0)
+			            .outputTokens(0)
+			            .build();
 		}
 
 		public static Usage of(int outputTokens) {
-			return new Usage(0, outputTokens);
+			return Usage.builder()
+			            .inputTokens(0)
+			            .outputTokens(outputTokens)
+			            .build();
 		}
 	}
 
@@ -67,11 +75,13 @@ public final class AnthropicSsePayloads {
 			return ContentBlockStart.builder()
 			                        .type("content_block_start")
 			                        .index(index)
-			                        .contentBlock(new ThinkingBlock(
-					                        "thinking",
-					                        "",
-					                        ""
-			                        ))
+			                        .contentBlock(
+					                        ThinkingBlock.builder()
+					                                     .type("thinking")
+					                                     .thinking("")
+					                                     .signature("")
+					                                     .build()
+			                        )
 			                        .build();
 		}
 
@@ -79,16 +89,47 @@ public final class AnthropicSsePayloads {
 			return ContentBlockStart.builder()
 			                        .type("content_block_start")
 			                        .index(index)
-			                        .contentBlock(new TextBlock("text", ""))
+			                        .contentBlock(
+					                        TextBlock.builder()
+					                                 .type("text")
+					                                 .text("")
+					                                 .build()
+			                        )
+			                        .build();
+		}
+
+		public static ContentBlockStart toolUse(
+				int index,
+				String id,
+				String name
+		) {
+			return ContentBlockStart.builder()
+			                        .type("content_block_start")
+			                        .index(index)
+			                        .contentBlock(
+					                        ToolUseBlock.builder()
+					                                    .type("tool_use")
+					                                    .id(id)
+					                                    .name(name)
+					                                    .input(Map.of())
+					                                    .build()
+			                        )
 			                        .build();
 		}
 	}
 
+	@Builder
 	public record ThinkingBlock(
 			String type, String thinking, String signature
 	) {}
 
+	@Builder
 	public record TextBlock(String type, String text) {}
+
+	@Builder
+	public record ToolUseBlock(
+			String type, String id, String name, Map<String, Object> input
+	) {}
 
 	@Builder
 	public record ContentBlockDelta(
@@ -100,10 +141,12 @@ public final class AnthropicSsePayloads {
 			return ContentBlockDelta.builder()
 			                        .type("content_block_delta")
 			                        .index(index)
-			                        .delta(new ThinkingDelta(
-					                        "thinking_delta",
-					                        text
-			                        ))
+			                        .delta(
+					                        ThinkingDelta.builder()
+					                                     .type("thinking_delta")
+					                                     .thinking(text)
+					                                     .build()
+			                        )
 			                        .build();
 		}
 
@@ -111,19 +154,52 @@ public final class AnthropicSsePayloads {
 			return ContentBlockDelta.builder()
 			                        .type("content_block_delta")
 			                        .index(index)
-			                        .delta(new TextDelta("text_delta", text))
+			                        .delta(
+					                        TextDelta.builder()
+					                                 .type("text_delta")
+					                                 .text(text)
+					                                 .build()
+			                        )
+			                        .build();
+		}
+
+		public static ContentBlockDelta inputJson(
+				int index,
+				String partialJson
+		) {
+			return ContentBlockDelta.builder()
+			                        .type("content_block_delta")
+			                        .index(index)
+			                        .delta(
+					                        InputJsonDelta.builder()
+					                                      .type("input_json_delta")
+					                                      .partialJson(
+							                                      partialJson
+					                                      )
+					                                      .build()
+			                        )
 			                        .build();
 		}
 	}
 
+	@Builder
 	public record ThinkingDelta(String type, String thinking) {}
 
+	@Builder
 	public record TextDelta(String type, String text) {}
+
+	@Builder
+	public record InputJsonDelta(
+			String type, @JsonProperty("partial_json") String partialJson
+	) {}
 
 	@Builder
 	public record ContentBlockStop(String type, int index) {
 		public static ContentBlockStop of(int index) {
-			return new ContentBlockStop("content_block_stop", index);
+			return ContentBlockStop.builder()
+			                       .type("content_block_stop")
+			                       .index(index)
+			                       .build();
 		}
 	}
 
@@ -136,11 +212,81 @@ public final class AnthropicSsePayloads {
 		public static MessageDelta endTurn() {
 			return MessageDelta.builder()
 			                   .type("message_delta")
-			                   .delta(new DeltaBody("end_turn"))
+			                   .delta(
+					                   DeltaBody.builder()
+					                            .stopReason("end_turn")
+					                            .build()
+			                   )
 			                   .usage(Usage.of(0))
 			                   .build();
 		}
 	}
 
+	@Builder
 	public record DeltaBody(@JsonProperty("stop_reason") String stopReason) {}
+
+	// --- Non-streaming records ---
+
+	@Builder
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record AnthropicResponse(
+			String id,
+			String type,
+			String role,
+			List<Object> content,
+			String model,
+			@JsonProperty("stop_reason") String stopReason,
+			Usage usage
+	) {
+		public static AnthropicResponse of(
+				String id,
+				String model,
+				List<Object> content,
+				int inputTokens,
+				int outputTokens
+		) {
+			return AnthropicResponse.builder()
+			                        .id(id)
+			                        .type("message")
+			                        .role("assistant")
+			                        .content(content)
+			                        .model(model)
+			                        .stopReason("end_turn")
+			                        .usage(
+					                        Usage.builder()
+					                             .inputTokens(inputTokens)
+					                             .outputTokens(outputTokens)
+					                             .build()
+			                        )
+			                        .build();
+		}
+	}
+
+	@Builder
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record ThinkingContentBlock(
+			String type,
+			String thinking
+	) {
+		public static ThinkingContentBlock of(String thinking) {
+			return ThinkingContentBlock.builder()
+			                           .type("thinking")
+			                           .thinking(thinking)
+			                           .build();
+		}
+	}
+
+	@Builder
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record TextContentBlock(
+			String type,
+			String text
+	) {
+		public static TextContentBlock of(String text) {
+			return TextContentBlock.builder()
+			                       .type("text")
+			                       .text(text)
+			                       .build();
+		}
+	}
 }

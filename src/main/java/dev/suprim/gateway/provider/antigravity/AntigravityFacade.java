@@ -443,16 +443,17 @@ public class AntigravityFacade {
 		httpRes.setCharacterEncoding("UTF-8");
 		httpRes.setContentType("application/json; charset=utf-8");
 
-		Map<String, Object> responseBody = switch (format) {
+		Object responseBody = switch (format) {
 			case ANTHROPIC -> streamConverter.toAnthropicNonStreaming(
-					id, model, text, inputTokens, outputTokens
+					id, model, text, null, inputTokens, outputTokens
 			);
 			case COMPLETION -> streamConverter.toOpenAiNonStreaming(
 					List.of(KiroEvent.content(text)),
-					model
+					model,
+					null
 			);
 			case RESPONSES -> streamConverter.toResponsesNonStreaming(
-					id, model, text, inputTokens, outputTokens
+					id, model, text, null, inputTokens, outputTokens
 			);
 		};
 		MAPPER.writeValue(httpRes.getWriter(), responseBody);

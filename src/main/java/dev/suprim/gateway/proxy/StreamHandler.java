@@ -26,7 +26,7 @@ public class StreamHandler {
 	public StreamResult streamToWriter(
 			KiroResponse response,
 			PrintWriter writer,
-			EventWriter eventWriter,
+			StreamingEventWriter eventWriter,
 			long startTime
 	) throws Exception {
 		KiroEventParser parser = new KiroEventParser();
@@ -35,17 +35,16 @@ public class StreamHandler {
 		int[] outputTokens = {0};
 		long[] firstTokenMs = {-1};
 		double[] credits = {0};
+		boolean[] hasToolUse = {false};
 
 		byte[] buf = new byte[8192];
 		int read;
-		boolean[] hasToolUse = {false};
 		try (InputStream body = response.body()) {
 			while ((read = body.read(buf)) != -1) {
 				byte[] chunk = new byte[read];
 				System.arraycopy(buf, 0, chunk, 0, read);
 				List<KiroEvent> events = parser.feed(chunk);
 				for (KiroEvent event : events) {
-					if ("reasoning".equals(event.type())) continue;
 					if ("metering".equals(event.type())) {
 						credits[0] += event.credits();
 						continue;
@@ -53,8 +52,13 @@ public class StreamHandler {
 					if ("tool_use".equals(event.type())) {
 						hasToolUse[0] = true;
 					}
-					if ("content".equals(event.type()) &&
-					    event.content() != null) {
+					if ("reasoning".equals(event.type())) {
+						eventWriter.write(event);
+						writer.flush();
+					} else if (
+							"content".equals(event.type()) &&
+							event.content() != null
+					) {
 						filter.accept(
 								event.content(), filtered -> {
 									if (filtered.isEmpty()) return;
@@ -65,42 +69,35 @@ public class StreamHandler {
 									}
 									fullText.append(filtered);
 									outputTokens[0] += tokenEstimator.countTokens(
-											filtered);
+											filtered
+									);
 									try {
-										String sse = eventWriter.convert(
+										eventWriter.write(
 												KiroEvent.content(filtered));
-										if (sse != null) {
-											writer.write(sse);
-											writer.flush();
-										}
+										writer.flush();
 									} catch (Exception e) {
 										throw new RuntimeException(e);
 									}
 								}
 						);
 					} else {
-						String sse = eventWriter.convert(event);
-						if (sse != null) {
-							writer.write(sse);
-							writer.flush();
-						}
+						eventWriter.write(event);
+						writer.flush();
 					}
 				}
 			}
 		}
 		filter.flush(filtered -> {
-			if (filtered.isEmpty()) return;
-			fullText.append(filtered);
-			try {
-				String sse = eventWriter.convert(KiroEvent.content(filtered));
-				if (sse != null) {
-					writer.write(sse);
-					writer.flush();
+					if (filtered.isEmpty()) return;
+					fullText.append(filtered);
+					try {
+						eventWriter.write(KiroEvent.content(filtered));
+						writer.flush();
+					} catch (Exception e) {
+						throw new RuntimeException(e);
+					}
 				}
-			} catch (Exception e) {
-				throw new RuntimeException(e);
-			}
-		});
+		);
 		return new StreamResult(
 				fullText.toString(),
 				outputTokens[0],
@@ -111,16 +108,22 @@ public class StreamHandler {
 	}
 
 	@Builder
-	public record CollectResult(String content, double credits) {}
+	public record CollectResult(
+			String content, String reasoning, double credits
+	) {}
 
 	public CollectResult collectContent(KiroResponse response) throws Exception {
 		List<KiroEvent> events = KiroEventParser.parseStream(response.body());
 		StringBuilder content = new StringBuilder();
+		StringBuilder reasoning = new StringBuilder();
 		double credits = 0;
 		for (KiroEvent event : events) {
-			if ("reasoning".equals(event.type())) continue;
 			if ("metering".equals(event.type())) {
 				credits += event.credits();
+				continue;
+			}
+			if ("reasoning".equals(event.type()) && event.content() != null) {
+				reasoning.append(event.content());
 				continue;
 			}
 			if ("content".equals(event.type()) && event.content() != null) {
@@ -129,16 +132,12 @@ public class StreamHandler {
 		}
 		return CollectResult.builder()
 		                    .content(ThinkingExtractor.strip(content.toString()))
+		                    .reasoning(reasoning.isEmpty() ? null : reasoning.toString())
 		                    .credits(credits)
 		                    .build();
 	}
 
 	public int countTokens(String text) {
 		return tokenEstimator.countTokens(text);
-	}
-
-	@FunctionalInterface
-	public interface EventWriter {
-		String convert(KiroEvent event) throws Exception;
 	}
 }

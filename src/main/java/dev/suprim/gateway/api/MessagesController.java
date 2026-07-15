@@ -57,12 +57,17 @@ class MessagesController {
 		String actualModel = ModelRouter.stripPrefix(request.model());
 
 		Map<String, Object> extra = request.additionalProperties();
+		InternalRequest.Thinking thinking;
 		if (extra != null && extra.containsKey("thinking")) {
+			thinking = InternalRequest.Thinking.builder()
+					.type("enabled")
+					.build();
 			log.info(
-					"[35m[Messages] model={} thinking={}[0m",
-					actualModel,
-					extra.get("thinking")
+					"[Messages] model={} thinking=enabled",
+					actualModel
 			);
+		} else {
+			thinking = null;
 		}
 
 		providerDispatcher.resolve(provider)
@@ -72,6 +77,7 @@ class MessagesController {
 				                                 .messages(openAiMessages)
 				                                 .stream(request.stream())
 				                                 .tools(tools)
+				                                 .thinking(thinking)
 				                                 .build(),
 				                  actualModel,
 				                  request.stream(),

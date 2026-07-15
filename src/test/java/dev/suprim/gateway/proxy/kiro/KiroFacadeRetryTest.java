@@ -47,7 +47,7 @@ class KiroFacadeRetryTest {
 		VirtualKeyService keyService = mock(VirtualKeyService.class);
 
 		when(streamHandler.collectContent(any())).thenReturn(
-				new StreamHandler.CollectResult("hello", 0.0));
+				new StreamHandler.CollectResult("hello", null, 0.0));
 		when(streamHandler.countTokens(anyString())).thenReturn(5);
 		when(payloadBuilder.buildOpenAiPayload(any(), any())).thenReturn("{\"test\":true}");
 
@@ -55,7 +55,7 @@ class KiroFacadeRetryTest {
 		KiroFormatConverter formatConverter = new KiroFormatConverter(streamConverter);
 
 		facade = new KiroFacade(
-				authManager, streamHandler,
+				authManager, streamHandler, streamConverter,
 				logPublisher, keyService, upstreamDispatcher, formatConverter
 		);
 	}
@@ -88,7 +88,7 @@ class KiroFacadeRetryTest {
 
 		StreamHandler streamHandler2 = mock(StreamHandler.class);
 		when(streamHandler2.collectContent(any())).thenReturn(
-				new StreamHandler.CollectResult("hello", 0.0));
+				new StreamHandler.CollectResult("hello", null, 0.0));
 
 		InternalRequest request = InternalRequest.builder()
 		                                         .model("claude-sonnet-4-20250514")

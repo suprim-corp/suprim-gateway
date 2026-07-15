@@ -137,7 +137,8 @@ public class DeepSeekFacade {
 			httpRes.setCharacterEncoding("UTF-8");
 
 			StreamingEventWriter eventWriter = new StreamingEventWriter(
-					httpRes.getWriter(), converter, format, model
+					httpRes.getWriter(), converter, format, model,
+					format != Format.ANTHROPIC || request.thinkingEnabled()
 			);
 
 			DeepSeekAutoContinue.Result result = autoContinue.process(

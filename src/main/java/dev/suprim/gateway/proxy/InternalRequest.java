@@ -14,5 +14,18 @@ public record InternalRequest(
 		boolean stream,
 		List<Tool> tools,
 		Double temperature,
-		@JsonProperty("max_tokens") Integer maxTokens
-) {}
+		@JsonProperty("max_tokens") Integer maxTokens,
+		@JsonProperty("thinking") Thinking thinking
+) {
+
+	public boolean thinkingEnabled() {
+		return thinking != null;
+	}
+
+	@Builder
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record Thinking(
+			String type,
+			@JsonProperty("budget_tokens") Integer budgetTokens
+	) {}
+}

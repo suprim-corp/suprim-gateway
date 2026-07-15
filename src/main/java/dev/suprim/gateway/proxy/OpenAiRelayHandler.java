@@ -203,14 +203,14 @@ public class OpenAiRelayHandler {
 					""
 			).substring(0, 24);
 			Object responsesBody = streamConverter.toResponsesNonStreaming(
-					responseId, model, content, promptTokens, completionTokens
+					responseId, model, content, null, promptTokens, completionTokens
 			);
 			httpRes.getWriter().write(MAPPER.writeValueAsString(responsesBody));
 		} else if (format == Format.ANTHROPIC) {
 			String content = extractFullContent(body);
 			String msgId = "msg_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
 			Object anthropicBody = streamConverter.toAnthropicNonStreaming(
-					msgId, model, content, promptTokens, completionTokens
+					msgId, model, content, null, promptTokens, completionTokens
 			);
 			httpRes.getWriter().write(MAPPER.writeValueAsString(anthropicBody));
 		} else {

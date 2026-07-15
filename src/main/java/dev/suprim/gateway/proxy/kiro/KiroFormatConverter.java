@@ -115,16 +115,18 @@ public class KiroFormatConverter {
 			String id,
 			String model,
 			String content,
+			String reasoning,
 			int inputTokens,
 			int outputTokens
 	) {
 		return switch (format) {
 			case COMPLETION -> streamConverter.toOpenAiNonStreaming(
-					List.of(KiroEvent.content(content)), model);
+					List.of(KiroEvent.content(content)), model, reasoning);
 			case ANTHROPIC -> streamConverter.toAnthropicNonStreaming(
 					id,
 					model,
 					content,
+					reasoning,
 					inputTokens,
 					outputTokens
 			);
@@ -132,6 +134,7 @@ public class KiroFormatConverter {
 					id,
 					model,
 					content,
+					reasoning,
 					inputTokens,
 					outputTokens
 			);

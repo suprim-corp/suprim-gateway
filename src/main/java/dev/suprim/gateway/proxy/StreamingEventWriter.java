@@ -20,6 +20,7 @@ public class StreamingEventWriter {
 	private final Format format;
 	private final String model;
 	private final String id;
+	private final boolean thinkingEnabled;
 
 	private boolean messagePreambleSent = false;
 	private boolean thinkingBlockOpen = false;
@@ -33,11 +34,22 @@ public class StreamingEventWriter {
 			Format format,
 			String model
 	) {
+		this(writer, converter, format, model, true);
+	}
+
+	public StreamingEventWriter(
+			PrintWriter writer,
+			StreamConverter converter,
+			Format format,
+			String model,
+			boolean thinkingEnabled
+	) {
 		this.writer = writer;
 		this.converter = converter;
 		this.format = format;
 		this.model = model;
 		this.id = "chatcmpl-" + UUID.randomUUID();
+		this.thinkingEnabled = thinkingEnabled;
 	}
 
 	public boolean hasContent() {
@@ -57,6 +69,10 @@ public class StreamingEventWriter {
 	public void write(KiroEvent event) throws Exception {
 		if (!"content".equals(event.type()) &&
 		    !"reasoning".equals(event.type())) {
+			return;
+		}
+
+		if ("reasoning".equals(event.type()) && !thinkingEnabled) {
 			return;
 		}
 
@@ -189,7 +205,10 @@ public class StreamingEventWriter {
 	}
 
 	private void writeCompletion(KiroEvent event) throws Exception {
-		if ("content".equals(event.type())) {
+		if ("reasoning".equals(event.type())) {
+			String sse = converter.toOpenAiReasoningChunk(event, model, id);
+			writer.write(sse);
+		} else if ("content".equals(event.type())) {
 			hasContent = true;
 			String sse = converter.toOpenAiChunk(event, model, id);
 			if (sse != null) {

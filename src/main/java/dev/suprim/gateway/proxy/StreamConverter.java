@@ -2,14 +2,20 @@ package dev.suprim.gateway.proxy;
 
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import dev.suprim.gateway.proxy.kiro.KiroEvent;
+import dev.suprim.gateway.proxy.sse.AnthropicSsePayloads;
+import dev.suprim.gateway.proxy.sse.CompletionsSsePayloads.CompletionChunk;
+import dev.suprim.gateway.proxy.sse.CompletionsSsePayloads.CompletionDelta;
+import dev.suprim.gateway.proxy.sse.CompletionsSsePayloads.CompletionMessage;
+import dev.suprim.gateway.proxy.sse.CompletionsSsePayloads.CompletionResponse;
+import dev.suprim.gateway.proxy.sse.CompletionsSsePayloads.ToolCallDelta;
+import dev.suprim.gateway.proxy.sse.ResponsesSsePayloads;
 import lombok.Builder;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Component
@@ -42,55 +48,43 @@ public class StreamConverter {
 		}
 	}
 
+	public String toOpenAiReasoningChunk(
+			KiroEvent event,
+			String model,
+			String id
+	) throws Exception {
+		CompletionChunk chunk = CompletionChunk.of(
+				id,
+				model,
+				CompletionDelta.reasoning(event.content())
+		);
+		return "data: " + mapper.writeValueAsString(chunk) + "\n\n";
+	}
+
 	public String toOpenAiChunk(
 			KiroEvent event,
 			String model,
 			String id
 	) throws Exception {
 		if ("content".equals(event.type())) {
-			Map<String, Object> chunk = Map.of(
-					"id", id,
-					"object", "chat.completion.chunk",
-					"created", System.currentTimeMillis() / 1000,
-					"model", model,
-					"choices", List.of(Map.of(
-							"index", 0,
-							"delta", Map.of("content", event.content()),
-							"finish_reason", ""
-					))
+			CompletionChunk chunk = CompletionChunk.of(
+					id, model, CompletionDelta.content(event.content())
 			);
 			return "data: " + mapper.writeValueAsString(chunk) + "\n\n";
 		}
 
 		if ("tool_use".equals(event.type()) && event.toolStop()) {
-			String toolId = event.toolUseId() != null ? event.toolUseId() :
-					"call_" + UUID.randomUUID();
-			Map<String, Object> chunk = Map.of(
-					"id", id,
-					"object", "chat.completion.chunk",
-					"created", System.currentTimeMillis() / 1000,
-					"model", model,
-					"choices", List.of(Map.of(
-							"index", 0,
-							"delta", Map.of(
-									"tool_calls", List.of(Map.of(
-											"index",
-											0,
-											"id",
-											toolId,
-											"type",
-											"function",
-											"function",
-											Map.of(
-													"name",
-													event.toolName(),
-													"arguments",
-													event.toolInput()
-											)
-									))
-							),
-							"finish_reason", ""
-					))
+			String toolId = Optional.ofNullable(event.toolUseId())
+			                        .orElse("call_" + UUID.randomUUID());
+			CompletionChunk chunk = CompletionChunk.of(
+					id, model,
+					CompletionDelta.toolCall(
+							ToolCallDelta.of(
+									toolId,
+									event.toolName(),
+									event.toolInput()
+							)
+					)
 			);
 			return "data: " + mapper.writeValueAsString(chunk) + "\n\n";
 		}
@@ -103,84 +97,48 @@ public class StreamConverter {
 	}
 
 	public String toOpenAiStopChunk(String model, String id) throws Exception {
-		Map<String, Object> chunk = Map.of(
-				"id", id,
-				"object", "chat.completion.chunk",
-				"created", System.currentTimeMillis() / 1000,
-				"model", model,
-				"choices", List.of(Map.of(
-						"index", 0,
-						"delta", Map.of(),
-						"finish_reason", "stop"
-				))
-		);
+		CompletionChunk chunk = CompletionChunk.stop(id, model);
 		return "data: " + mapper.writeValueAsString(chunk) + "\n\n";
 	}
 
-	public Map<String, Object> toOpenAiNonStreaming(
+	public CompletionResponse toOpenAiNonStreaming(
 			List<KiroEvent> events,
-			String model
+			String model,
+			String reasoning
 	) {
 		StringBuilder contentBuilder = new StringBuilder();
-		List<Map<String, Object>> toolCalls = new ArrayList<>();
+		List<ToolCallDelta> toolCalls = new ArrayList<>();
 
 		for (KiroEvent event : events) {
 			if ("content".equals(event.type()) && event.content() != null) {
 				contentBuilder.append(event.content());
 			} else if ("tool_use".equals(event.type()) && event.toolStop()) {
-				String toolId = event.toolUseId() != null ? event.toolUseId() :
-						"call_" + UUID.randomUUID();
-				toolCalls.add(Map.of(
-						"id",
-						toolId,
-						"type",
-						"function",
-						"function",
-						Map.of(
-								"name",
+				String toolId = Optional.ofNullable(event.toolUseId())
+				                        .orElse("call_" + UUID.randomUUID());
+				toolCalls.add(
+						ToolCallDelta.of(
+								toolId,
 								event.toolName(),
-								"arguments",
 								event.toolInput()
 						)
-				));
+				);
 			}
 		}
 
-		HashMap<String, Object> message = new HashMap<>();
-		message.put("role", "assistant");
-		message.put("content", contentBuilder.toString());
-		if (!toolCalls.isEmpty()) message.put("tool_calls", toolCalls);
-
 		String finishReason = toolCalls.isEmpty() ? "stop" : "tool_calls";
-
-		return Map.of(
-				"id",
-				"chatcmpl-" + UUID.randomUUID(),
-				"object",
-				"chat.completion",
-				"created",
-				System.currentTimeMillis() / 1000,
-				"model",
-				model,
-				"choices",
-				List.of(Map.of(
-						"index", 0,
-						"message", message,
-						"finish_reason", finishReason
-				)),
-				"usage",
-				Map.of(
-						"prompt_tokens",
-						0,
-						"completion_tokens",
-						0,
-						"total_tokens",
-						0
-				)
+		CompletionMessage message = CompletionMessage.of(
+				contentBuilder.toString(),
+				reasoning,
+				toolCalls
 		);
+
+		return CompletionResponse.of(model, message, finishReason);
 	}
 
-	public String toAnthropicEvent(String eventType, Object data) throws Exception {
+	public String toAnthropicEvent(
+			String eventType,
+			Object data
+	) throws Exception {
 		return "event: " + eventType + "\ndata: " + mapper.writeValueAsString(
 				data) + "\n\n";
 	}
@@ -191,49 +149,19 @@ public class StreamConverter {
 			int inputTokens
 	) throws Exception {
 		return toAnthropicEvent(
-				"message_start", Map.of(
-						"type",
-						"message_start",
-						"message",
-						Map.of(
-								"id",
-								id,
-								"type",
-								"message",
-								"role",
-								"assistant",
-								"content",
-								List.of(),
-								"model",
-								model,
-								"usage",
-								Map.of(
-										"input_tokens",
-										inputTokens,
-										"output_tokens",
-										0
-								)
-						)
-				)
+				"message_start",
+				AnthropicSsePayloads.MessageStart.of(id, model)
 		)
 		       + toAnthropicEvent(
-				"content_block_start", Map.of(
-						"type",
-						"content_block_start",
-						"index",
-						0,
-						"content_block",
-						Map.of("type", "text", "text", "")
-				)
+				"content_block_start",
+				AnthropicSsePayloads.ContentBlockStart.text(0)
 		);
 	}
 
 	public String toAnthropicDelta(String text) throws Exception {
 		return toAnthropicEvent(
-				"content_block_delta", Map.of(
-						"type", "content_block_delta", "index", 0,
-						"delta", Map.of("type", "text_delta", "text", text)
-				)
+				"content_block_delta",
+				AnthropicSsePayloads.ContentBlockDelta.text(0, text)
 		);
 	}
 
@@ -248,37 +176,20 @@ public class StreamConverter {
 				               .substring(0, 20);
 		String input = event.toolInput() != null ? event.toolInput() : "{}";
 		return toAnthropicEvent(
-				"content_block_start", Map.of(
-						"type", "content_block_start",
-						"index", index,
-						"content_block", Map.of(
-								"type", "tool_use",
-								"id", toolId,
-								"name", event.toolName(),
-								"input", Map.of()
-						)
-				)
-		)
-		       + toAnthropicEvent(
-				"content_block_delta", Map.of(
-						"type",
-						"content_block_delta",
-						"index",
+				"content_block_start",
+				AnthropicSsePayloads.ContentBlockStart.toolUse(
 						index,
-						"delta",
-						Map.of(
-								"type",
-								"input_json_delta",
-								"partial_json",
-								input
-						)
+						toolId,
+						event.toolName()
 				)
 		)
 		       + toAnthropicEvent(
-				"content_block_stop", Map.of(
-						"type", "content_block_stop",
-						"index", index
-				)
+				"content_block_delta",
+				AnthropicSsePayloads.ContentBlockDelta.inputJson(index, input)
+		)
+		       + toAnthropicEvent(
+				"content_block_stop",
+				AnthropicSsePayloads.ContentBlockStop.of(index)
 		);
 	}
 
@@ -289,96 +200,54 @@ public class StreamConverter {
 		String stopReason = hasToolUse ? "tool_use" : "end_turn";
 		return toAnthropicEvent(
 				"content_block_stop",
-				Map.of("type", "content_block_stop", "index", 0)
+				AnthropicSsePayloads.ContentBlockStop.of(0)
 		)
 		       + toAnthropicEvent(
-				"message_delta", Map.of(
-						"type",
-						"message_delta",
-						"delta",
-						Map.of("stop_reason", stopReason),
-						"usage",
-						Map.of("output_tokens", outputTokens)
-				)
+				"message_delta",
+				AnthropicSsePayloads.MessageDelta.endTurn()
 		)
 		       + "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
 	}
 
-	public Map<String, Object> toAnthropicNonStreaming(
+	public AnthropicSsePayloads.AnthropicResponse toAnthropicNonStreaming(
 			String id,
 			String model,
 			String content,
+			String reasoning,
 			int inputTokens,
 			int outputTokens
 	) {
-		return Map.of(
-				"id",
-				id,
-				"type",
-				"message",
-				"role",
-				"assistant",
-				"content",
-				List.of(Map.of("type", "text", "text", content)),
-				"model",
-				model,
-				"stop_reason",
-				"end_turn",
-				"usage",
-				Map.of(
-						"input_tokens",
-						inputTokens,
-						"output_tokens",
-						outputTokens
-				)
+		List<Object> contentBlocks = new ArrayList<>();
+		if (reasoning != null) {
+			contentBlocks.add(
+					AnthropicSsePayloads.ThinkingContentBlock.of(
+							reasoning
+					)
+			);
+		}
+		contentBlocks.add(AnthropicSsePayloads.TextContentBlock.of(content));
+
+		return AnthropicSsePayloads.AnthropicResponse.of(
+				id, model, contentBlocks, inputTokens, outputTokens
 		);
 	}
 
-	public Map<String, Object> toResponsesNonStreaming(
+	public ResponsesSsePayloads.ResponsesResponse toResponsesNonStreaming(
 			String id,
 			String model,
 			String content,
+			String reasoning,
 			int inputTokens,
 			int outputTokens
 	) {
-		return Map.of(
-				"id",
-				id,
-				"object",
-				"response",
-				"created_at",
-				System.currentTimeMillis() / 1000,
-				"status",
-				"completed",
-				"model",
-				model,
-				"output",
-				List.of(
-						Map.of(
-								"type",
-								"message",
-								"role",
-								"assistant",
-								"content",
-								List.of(
-										Map.of(
-												"type",
-												"output_text",
-												"text",
-												content
-										)
-								)
-						)
-				),
-				"usage",
-				Map.of(
-						"input_tokens",
-						inputTokens,
-						"output_tokens",
-						outputTokens,
-						"total_tokens",
-						inputTokens + outputTokens
-				)
+		List<Object> output = new ArrayList<>();
+		if (reasoning != null) {
+			output.add(ResponsesSsePayloads.ReasoningOutputItem.of(reasoning));
+		}
+		output.add(ResponsesSsePayloads.MessageOutputItem.of(content));
+
+		return ResponsesSsePayloads.ResponsesResponse.of(
+				id, model, output, inputTokens, outputTokens
 		);
 	}
 
@@ -391,69 +260,24 @@ public class StreamConverter {
 			String model
 	) throws Exception {
 		return toResponsesSse(
-				Map.of(
-						"type",
-						"response.created",
-						"response",
-						Map.of(
-								"id",
-								responseId,
-								"object",
-								"response",
-								"status",
-								"in_progress",
-								"model",
-								model,
-								"output",
-								List.of()
-						)
+				ResponsesSsePayloads.ResponseCreated.of(
+						responseId,
+						model
 				)
 		);
 	}
 
 	public String toResponsesOutputItemAdded(String responseId) throws Exception {
 		String msgId = "msg_" + responseId.substring(5);
-		return toResponsesSse(
-				Map.of(
-						"type",
-						"response.output_item.added",
-						"output_index",
-						0,
-						"item",
-						Map.of(
-								"type",
-								"message",
-								"id",
-								msgId,
-								"role",
-								"assistant",
-								"content",
-								List.of()
-						)
-				)
-		);
+		return toResponsesSse(ResponsesSsePayloads.OutputItemAdded.message(msgId));
 	}
 
 	public String toResponsesContentPartAdded() throws Exception {
-		return toResponsesSse(
-				Map.of(
-						"type", "response.content_part.added",
-						"output_index", 0,
-						"content_index", 0,
-						"part", Map.of("type", "output_text", "text", "")
-				)
-		);
+		return toResponsesSse(ResponsesSsePayloads.ContentPartAdded.text());
 	}
 
 	public String toResponsesTextDelta(String delta) throws Exception {
-		return toResponsesSse(
-				Map.of(
-						"type", "response.output_text.delta",
-						"output_index", 0,
-						"content_index", 0,
-						"delta", delta
-				)
-		);
+		return toResponsesSse(ResponsesSsePayloads.OutputTextDelta.of(delta));
 	}
 
 	public String toResponsesTextDone(
@@ -461,52 +285,16 @@ public class StreamConverter {
 			String responseId
 	) throws Exception {
 		String msgId = "msg_" + responseId.substring(5);
-		return toResponsesSse(
-				Map.of(
-						"type",
-						"response.output_text.done",
-						"output_index",
-						0,
-						"content_index",
-						0,
-						"text",
+		return toResponsesSse(ResponsesSsePayloads.OutputTextDone.of(fullText))
+		       + toResponsesSse(
+				ResponsesSsePayloads.ContentPartDone.text(
 						fullText
 				)
 		)
 		       + toResponsesSse(
-				Map.of(
-						"type",
-						"response.content_part.done",
-						"output_index",
-						0,
-						"content_index",
-						0,
-						"part",
-						Map.of("type", "output_text", "text", fullText)
-				)
-		)
-		       + toResponsesSse(
-				Map.of(
-						"type",
-						"response.output_item.done",
-						"output_index",
-						0,
-						"item",
-						Map.of(
-								"type",
-								"message",
-								"id",
-								msgId,
-								"role",
-								"assistant",
-								"content",
-								List.of(Map.of(
-										"type",
-										"output_text",
-										"text",
-										fullText
-								))
-						)
+				ResponsesSsePayloads.OutputItemDone.message(
+						msgId,
+						fullText
 				)
 		);
 	}
@@ -515,13 +303,15 @@ public class StreamConverter {
 			KiroEvent event,
 			int outputIndex
 	) throws Exception {
-		String callId = event.toolUseId() !=
-		                null ? event.toolUseId() : UUID.randomUUID()
-		                                               .toString()
-		                                               .substring(0, 8);
+		String callId = Optional.ofNullable(event.toolUseId())
+		                        .orElse(
+										UUID.randomUUID()
+		                                    .toString()
+		                                    .substring(0, 8)
+		                        );
 		String fcId = "fc_" + callId;
-		String name = event.toolName() != null ? event.toolName() : "unknown";
-		String args = event.toolInput() != null ? event.toolInput() : "{}";
+		String name = Optional.ofNullable(event.toolName()).orElse("unknown");
+		String args = Optional.ofNullable(event.toolInput()).orElse("{}");
 
 		FunctionCallItem emptyItem = FunctionCallItem.of(
 				fcId,
@@ -536,46 +326,37 @@ public class StreamConverter {
 				args
 		);
 
-		return toResponsesSse(Map.of(
-				"type",
-				"response.output_item.added",
-				"output_index",
-				outputIndex,
-				"item",
-				emptyItem
-		))
-		       + toResponsesSse(Map.of(
-				"type",
-				"response.function_call_arguments.delta",
-				"item_id",
-				fcId,
-				"call_id",
-				callId,
-				"output_index",
-				outputIndex,
-				"delta",
-				args
-		))
-		       + toResponsesSse(Map.of(
-				"type",
-				"response.function_call_arguments.done",
-				"item_id",
-				fcId,
-				"call_id",
-				callId,
-				"output_index",
-				outputIndex,
-				"arguments",
-				args
-		))
-		       + toResponsesSse(Map.of(
-				"type",
-				"response.output_item.done",
-				"output_index",
-				outputIndex,
-				"item",
-				doneItem
-		));
+		return toResponsesSse(
+				ResponsesSsePayloads.FunctionCallOutputItemAdded.of(
+						outputIndex,
+						emptyItem
+				)
+		)
+		       +
+		       toResponsesSse(
+				       ResponsesSsePayloads.FunctionCallArgumentsDelta.of(
+						       fcId,
+						       callId,
+						       outputIndex,
+						       args
+				       )
+		       )
+		       +
+		       toResponsesSse(
+				       ResponsesSsePayloads.FunctionCallArgumentsDone.of(
+						       fcId,
+						       callId,
+						       outputIndex,
+						       args
+				       )
+		       )
+		       +
+		       toResponsesSse(
+				       ResponsesSsePayloads.FunctionCallOutputItemDone.of(
+						       outputIndex,
+						       doneItem
+				       )
+		       );
 	}
 
 	public String toResponsesCompleted(
@@ -587,41 +368,11 @@ public class StreamConverter {
 			int outputTokens
 	) throws Exception {
 		List<Object> output = new ArrayList<>();
-		output.add(
-				Map.of(
-						"type",
-						"message",
-						"role",
-						"assistant",
-						"content",
-						List.of(Map.of("type", "output_text", "text", fullText))
-				)
-		);
+		output.add(ResponsesSsePayloads.MessageOutputItem.of(fullText));
 		output.addAll(toolCalls);
 		return toResponsesSse(
-				Map.of(
-						"type", "response.completed",
-						"response", Map.of(
-								"id",
-								responseId,
-								"object",
-								"response",
-								"status",
-								"completed",
-								"model",
-								model,
-								"output",
-								output,
-								"usage",
-								Map.of(
-										"input_tokens",
-										inputTokens,
-										"output_tokens",
-										outputTokens,
-										"total_tokens",
-										inputTokens + outputTokens
-								)
-						)
+				ResponsesSsePayloads.ResponseCompleted.of(
+						responseId, model, output, inputTokens, outputTokens
 				)
 		);
 	}

@@ -5,7 +5,9 @@ import dev.suprim.gateway.logging.RequestLogPublisher;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
+import dev.suprim.gateway.proxy.StreamConverter;
 import dev.suprim.gateway.proxy.StreamHandler;
+import dev.suprim.gateway.proxy.StreamingEventWriter;
 import dev.suprim.gateway.proxy.kiro.KiroHttpClient.KiroResponse;
 import dev.suprim.gateway.utils.ErrorResponse;
 import dev.suprim.gateway.virtualkey.VirtualKeyService;
@@ -27,6 +29,7 @@ public class KiroFacade {
 	private final JsonMapper mapper = new JsonMapper();
 	private final KiroAuthManager auth;
 	private final StreamHandler streamHandler;
+	private final StreamConverter streamConverter;
 	private final RequestLogPublisher logPublisher;
 	private final VirtualKeyService keyService;
 	private final KiroUpstreamDispatcher upstreamDispatcher;
@@ -146,33 +149,23 @@ public class KiroFacade {
 		httpRes.setContentType("text/event-stream; charset=utf-8");
 		httpRes.setHeader("Cache-Control", "no-cache");
 		PrintWriter writer = httpRes.getWriter();
-		String id = formatConverter.generateId(req.format());
 
-		writer.write(
-				formatConverter.preamble(
-						req.format(), id, req.model(), req.inputTokens()
-				)
+		boolean thinkingEnabled = req.format() != Format.ANTHROPIC
+		                          || req.request().thinkingEnabled();
+
+		StreamingEventWriter eventWriter = new StreamingEventWriter(
+				writer, streamConverter, req.format(), req.model(),
+				thinkingEnabled
 		);
-		writer.flush();
 
 		StreamHandler.StreamResult result = streamHandler.streamToWriter(
 				response,
 				writer,
-				event -> formatConverter.convertEvent(
-						event,
-						req.format(),
-						req.model(),
-						id
-				),
+				eventWriter,
 				startTime
 		);
 
-		writer.write(
-				formatConverter.finale(
-						req.format(), id, req.model(), result, req.inputTokens()
-				)
-		);
-		writer.flush();
+		eventWriter.finish();
 
 		publishLog(
 				req,
@@ -198,9 +191,13 @@ public class KiroFacade {
 		StreamHandler.CollectResult collected = streamHandler.collectContent(
 				response);
 		String content = collected.content();
+		String reasoning = collected.reasoning();
 		double credits = collected.credits();
 		int outputTokens = streamHandler.countTokens(content);
 		String id = formatConverter.generateId(req.format());
+
+		boolean emitReasoning = reasoning != null &&
+				(req.format() != Format.ANTHROPIC || req.request().thinkingEnabled());
 
 		httpRes.setCharacterEncoding("UTF-8");
 		httpRes.setContentType("application/json; charset=utf-8");
@@ -208,6 +205,7 @@ public class KiroFacade {
 				httpRes.getWriter(),
 				formatConverter.nonStreamBody(
 						req.format(), id, req.model(), content,
+						emitReasoning ? reasoning : null,
 						req.inputTokens(), outputTokens
 				)
 		);
