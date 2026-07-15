@@ -4,8 +4,8 @@ import dev.suprim.gateway.logging.LogTag;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.StreamConverter;
+import dev.suprim.gateway.proxy.StreamingEventWriter;
 import dev.suprim.gateway.proxy.InternalRequest;
-import dev.suprim.gateway.proxy.kiro.KiroEvent;
 import dev.suprim.gateway.utils.ErrorResponse;
 
 import jakarta.servlet.http.HttpServletResponse;
@@ -18,13 +18,8 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.PrintWriter;
 import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
-import java.util.function.Consumer;
 
 /**
  * Main facade orchestrating DeepSeek Web API calls: pool → auth → session → PoW → completion → auto-continue → stream.
@@ -140,254 +135,17 @@ public class DeepSeekFacade {
 			httpRes.setStatus(200);
 			httpRes.setContentType("text/event-stream");
 			httpRes.setCharacterEncoding("UTF-8");
-			PrintWriter writer = httpRes.getWriter();
-			String id = "chatcmpl-" + UUID.randomUUID();
 
-			boolean[] messagePreambleSent = {false};
-			boolean[] thinkingBlockOpen = {false};
-			boolean[] textBlockOpen = {false};
-			boolean[] hasContent = {false};
-			int[] blockIndex = {0};
-
-			Consumer<KiroEvent> consumer = event -> {
-				try {
-					if (!"content".equals(event.type()) && !"reasoning".equals(
-							event.type())) {
-						return;
-					}
-
-					if (format == Format.ANTHROPIC) {
-						if (!messagePreambleSent[0]) {
-							messagePreambleSent[0] = true;
-							writer.write(
-									converter.toAnthropicEvent(
-											"message_start", Map.of(
-													"type", "message_start",
-													"message", Map.of(
-															"id",
-															id,
-															"type",
-															"message",
-															"role",
-															"assistant",
-															"content",
-															List.of(),
-															"model",
-															model,
-															"usage",
-															Map.of(
-																	"input_tokens",
-																	0,
-																	"output_tokens",
-																	0
-															)
-													)
-											)
-									)
-							);
-						}
-
-						if ("reasoning".equals(event.type())) {
-							if (!thinkingBlockOpen[0]) {
-								thinkingBlockOpen[0] = true;
-								writer.write(
-										converter.toAnthropicEvent(
-												"content_block_start", Map.of(
-														"type",
-														"content_block_start",
-														"index",
-														blockIndex[0],
-														"content_block",
-														Map.of(
-																"type",
-																"thinking",
-																"thinking",
-																"",
-																"signature",
-																""
-														)
-												)
-										)
-								);
-							}
-							writer.write(
-									converter.toAnthropicEvent(
-											"content_block_delta", Map.of(
-													"type",
-													"content_block_delta",
-													"index",
-													blockIndex[0],
-													"delta",
-													Map.of(
-															"type",
-															"thinking_delta",
-															"thinking",
-															event.content()
-													)
-											)
-									)
-							);
-						} else {
-							if (thinkingBlockOpen[0] && !textBlockOpen[0]) {
-								writer.write(
-										converter.toAnthropicEvent(
-												"content_block_stop",
-												Map.of(
-														"type",
-														"content_block_stop",
-														"index",
-														blockIndex[0]
-												)
-										)
-								);
-								blockIndex[0]++;
-								thinkingBlockOpen[0] = false;
-							}
-							if (!textBlockOpen[0]) {
-								textBlockOpen[0] = true;
-								writer.write(
-										converter.toAnthropicEvent(
-												"content_block_start", Map.of(
-														"type",
-														"content_block_start",
-														"index",
-														blockIndex[0],
-														"content_block",
-														Map.of(
-																"type",
-																"text",
-																"text",
-																""
-														)
-												)
-										)
-								);
-							}
-							hasContent[0] = true;
-							writer.write(
-									converter.toAnthropicEvent(
-											"content_block_delta", Map.of(
-													"type",
-													"content_block_delta",
-													"index",
-													blockIndex[0],
-													"delta",
-													Map.of(
-															"type",
-															"text_delta",
-															"text",
-															event.content()
-													)
-											)
-									)
-							);
-						}
-					} else if (format == Format.RESPONSES) {
-						if (!messagePreambleSent[0]) {
-							messagePreambleSent[0] = true;
-							writer.write(
-									converter.toResponsesCreated(
-											id,
-											model
-									)
-							);
-						}
-
-						if ("reasoning".equals(event.type())) {
-							if (!thinkingBlockOpen[0]) {
-								thinkingBlockOpen[0] = true;
-								writer.write(
-										converter.toResponsesSse(
-												Map.of(
-														"type",
-														"response.reasoning_summary_part.added",
-														"output_index",
-														0,
-														"summary_index",
-														blockIndex[0],
-														"part",
-														Map.of(
-																"type",
-																"summary_text",
-																"text",
-																""
-														)
-												)
-										)
-								);
-							}
-							writer.write(
-									converter.toResponsesSse(
-											Map.of(
-													"type",
-													"response.reasoning_summary_text.delta",
-													"output_index",
-													0,
-													"summary_index",
-													blockIndex[0],
-													"delta",
-													event.content()
-											)
-									)
-							);
-						} else {
-							if (thinkingBlockOpen[0] && !textBlockOpen[0]) {
-								writer.write(
-										converter.toResponsesSse(
-												Map.of(
-														"type",
-														"response.reasoning_summary_part.done",
-														"output_index",
-														0,
-														"summary_index",
-														blockIndex[0],
-														"part",
-														Map.of(
-																"type",
-																"summary_text",
-																"text",
-																""
-														)
-												)
-										)
-								);
-								blockIndex[0]++;
-								thinkingBlockOpen[0] = false;
-							}
-							if (!textBlockOpen[0]) {
-								textBlockOpen[0] = true;
-								writer.write(
-										converter.toResponsesOutputItemAdded(id)
-								);
-								writer.write(converter.toResponsesContentPartAdded());
-							}
-							hasContent[0] = true;
-							writer.write(converter.toResponsesTextDelta(event.content()));
-						}
-					} else {
-						if ("content".equals(event.type())) {
-							hasContent[0] = true;
-							String sse = converter.toOpenAiChunk(
-									event,
-									model,
-									id
-							);
-							if (sse != null) {
-								writer.write(sse);
-							}
-						}
-					}
-					writer.flush();
-				} catch (Exception e) {
-					throw new RuntimeException(e);
-				}
-			};
-
-			DeepSeekAutoContinue.Result result = autoContinue.process(
-					responseStream, chatSessionId, token, powHeader, consumer
+			StreamingEventWriter eventWriter = new StreamingEventWriter(
+					httpRes.getWriter(), converter, format, model
 			);
 
-			if (!hasContent[0]) {
+			DeepSeekAutoContinue.Result result = autoContinue.process(
+					responseStream, chatSessionId, token, powHeader,
+					eventWriter.asConsumer()
+			);
+
+			if (!eventWriter.hasContent()) {
 				if (retry < MAX_EMPTY_RETRIES - 1) {
 					log.info(
 							LogTag.DEEPSEEK +
@@ -395,56 +153,7 @@ public class DeepSeekFacade {
 					);
 				}
 			} else {
-				if (format == Format.ANTHROPIC) {
-					if (textBlockOpen[0]) {
-						writer.write(converter.toAnthropicEvent(
-								"content_block_stop",
-								Map.of(
-										"type",
-										"content_block_stop",
-										"index",
-										blockIndex[0]
-								)
-						));
-					} else if (thinkingBlockOpen[0]) {
-						writer.write(
-								converter.toAnthropicEvent(
-										"content_block_stop",
-										Map.of(
-												"type",
-												"content_block_stop",
-												"index",
-												blockIndex[0]
-										)
-								)
-						);
-					}
-					writer.write(
-							converter.toAnthropicEvent(
-									"message_delta", Map.of(
-											"type",
-											"message_delta",
-											"delta",
-											Map.of("stop_reason", "end_turn"),
-											"usage",
-											Map.of("output_tokens", 0)
-									)
-							)
-					);
-					writer.write(
-							"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n");
-				} else if (format == Format.RESPONSES) {
-					writer.write(converter.toResponsesTextDone("", id));
-					writer.write(
-							converter.toResponsesCompleted(
-									id, model, "", List.of(), 0, 0
-							)
-					);
-				} else {
-					writer.write(converter.toOpenAiStopChunk(model, id));
-					writer.write(converter.toOpenAiDone());
-				}
-				writer.flush();
+				eventWriter.finish();
 				return true;
 			}
 		}
