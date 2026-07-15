@@ -110,10 +110,8 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 		if (account.accessToken() == null) {
 			return List.of();
 		}
-		return AntigravityHttpClient.listModels(
-				account.accessToken(),
-				account.projectId()
-		);
+		String token = getAccessToken(account);
+		return AntigravityHttpClient.listModels(token, account.projectId());
 	}
 
 	public String getAccessToken(StoredAccount account) {
