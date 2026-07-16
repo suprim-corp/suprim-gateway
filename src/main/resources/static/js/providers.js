@@ -17,7 +17,7 @@ function showModels(index) {
     fetch('/providers/' + index + '/usage')
         .then(res => res.ok ? res.json() : null)
         .then(data => {
-            if (!data) return
+            if (!data || data.error) return
 
             // Codex format: {plan, session, weekly, limitReached, resetCredits}
             if (data.session || data.weekly) {

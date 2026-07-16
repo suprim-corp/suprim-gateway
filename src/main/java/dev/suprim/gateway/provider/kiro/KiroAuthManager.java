@@ -367,19 +367,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 			}
 		}
 		if (response.statusCode() != 200) {
-			String body = response.body();
-			String msg = null;
-			try {
-				Map<?, ?> err = new JsonMapper().readValue(body, Map.class);
-				Object m = err.get("message");
-				if (m instanceof String s && !s.isBlank()) {
-					msg = s;
-				}
-			} catch (Exception ignored) {}
-			throw new IOException(
-					Optional.ofNullable(msg)
-					        .orElse("HTTP %s".formatted(response.statusCode()))
-			);
+			throw new IOException(parseErrorMessage(response));
 		}
 
 		ModelsResponse result = new JsonMapper().readValue(
@@ -434,14 +422,25 @@ public class KiroAuthManager implements ProviderAuthManager {
 
 	private record ModelsResponse(List<Map<String, Object>> models) {}
 
+	private String parseErrorMessage(HttpResponse<String> response) {
+		try {
+			Map<?, ?> err = new JsonMapper().readValue(response.body(), Map.class);
+			Object m = err.get("message");
+			if (m instanceof String s && !s.isBlank()) {
+				return s;
+			}
+		} catch (Exception ignored) {}
+		return "HTTP " + response.statusCode();
+	}
+
 	public Map<String, Object> getUsageLimits(StoredAccount account) {
 		try {
 			boolean isApiKey = "api_key".equals(account.authType());
-			String region = regionFromProfileArn(account.profileArn());
-			if (region == null) {
-				region = account.region() !=
-				         null ? account.region() : config.region();
-			}
+			String token = getAccessToken(account);
+			String region = Optional.ofNullable(regionFromProfileArn(account.profileArn()))
+			                        .or(() -> Optional.ofNullable(account.apiRegion()))
+			                        .or(() -> Optional.ofNullable(account.region()))
+			                        .orElse(config.apiRegion());
 			String url = String.format(Kiro.Q_HOST_TEMPLATE, region) +
 			             Kiro.USAGE_LIMITS_PATH;
 			if (!isApiKey && account.profileArn() != null) {
@@ -455,8 +454,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 					           .uri(URI.create(url))
 					           .header(
 							           "Authorization",
-							           "Bearer " +
-							           account.accessToken()
+							           "Bearer " + token
 					           )
 					           .header(
 							           "Accept",
@@ -480,8 +478,21 @@ public class KiroAuthManager implements ProviderAuthManager {
 			}
 			HttpRequest request = reqBuilder.build();
 			HttpResponse<String> response = proxyChain.send(request);
+
+			if (response.statusCode() == 403 && !isApiKey &&
+			    !response.body().contains("FEATURE_NOT_SUPPORTED")
+			) {
+				StoredAccount refreshed = refreshAccountToken(account);
+				if (refreshed != null) {
+					credentialStore.upsert(refreshed);
+					HttpRequest retryReq = HttpRequest.newBuilder(request, (k, v) -> true)
+							.header("Authorization", "Bearer " + refreshed.accessToken())
+							.build();
+					response = proxyChain.send(retryReq);
+				}
+			}
 			if (response.statusCode() != 200) {
-				return Map.of();
+				return Map.of("error", parseErrorMessage(response));
 			}
 			return new JsonMapper().readValue(
 					response.body(),
@@ -489,7 +500,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 			);
 		} catch (Exception e) {
 			log.warn("[Usage] getUsageLimits failed: {}", e.getMessage());
-			return Map.of();
+			return Map.of("error", e.getMessage());
 		}
 	}
 
