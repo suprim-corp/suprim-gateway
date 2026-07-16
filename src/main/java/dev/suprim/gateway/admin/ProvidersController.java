@@ -7,6 +7,7 @@ import dev.suprim.gateway.provider.codex.CodexAuthManager;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.model.ModelInfo;
 import dev.suprim.gateway.model.ModelRegistry;
+import dev.suprim.gateway.provider.antigravity.AntigravityAuthManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -28,6 +29,7 @@ class ProvidersController {
 	private final ModelRegistry modelRegistry;
 	private final KiroAuthManager kiroAuthManager;
 	private final CodexAuthManager codexAuthManager;
+	private final AntigravityAuthManager antigravityAuthManager;
 
 	@GetMapping("/providers")
 	String providers(Model model) {
@@ -141,6 +143,10 @@ class ProvidersController {
 		return switch (Provider.valueOf(account.provider())) {
 			case KIRO -> kiroAuthManager.getUsageLimits(account);
 			case CODEX -> codexAuthManager.getUsageLimits(account);
+			case ANTIGRAVITY -> {
+				String tier = antigravityAuthManager.getSubscriptionTier(account);
+				yield tier != null ? Map.of("tier", tier) : Map.of();
+			}
 			default -> Map.of();
 		};
 	}

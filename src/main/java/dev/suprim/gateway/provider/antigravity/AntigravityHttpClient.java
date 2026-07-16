@@ -1,6 +1,7 @@
 package dev.suprim.gateway.provider.antigravity;
 
 import dev.suprim.gateway.instants.Antigravity;
+import dev.suprim.gateway.proxy.ProxyChain;
 
 import lombok.Builder;
 import lombok.extern.slf4j.Slf4j;
@@ -45,7 +46,7 @@ class AntigravityHttpClient {
 		);
 	}
 
-	static List<Map<String, Object>> listModels(String accessToken, String projectId) throws IOException {
+	static List<Map<String, Object>> listModels(String accessToken, String projectId, ProxyChain proxyChain) throws IOException {
 		String body = projectId != null && !projectId.isEmpty()
 				? "{\"project\":\"" + projectId + "\"}"
 				: "{}";
@@ -61,7 +62,7 @@ class AntigravityHttpClient {
 		headers.forEach(reqBuilder::header);
 		reqBuilder.POST(HttpRequest.BodyPublishers.ofString(body));
 		try {
-			HttpResponse<String> response = HTTP_CLIENT.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
+			HttpResponse<String> response = proxyChain.send(reqBuilder.build());
 			if (response.statusCode() != 200) {
 				log.warn("[Antigravity] listModels returned {}: {}", response.statusCode(), response.body());
 				return List.of();

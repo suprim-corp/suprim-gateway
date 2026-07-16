@@ -7,6 +7,7 @@ import dev.suprim.gateway.provider.OAuthProviderAuthManager;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
+import dev.suprim.gateway.proxy.ProxyChain;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
@@ -15,6 +16,9 @@ import org.springframework.stereotype.Component;
 import jakarta.annotation.PostConstruct;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +32,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class AntigravityAuthManager implements OAuthProviderAuthManager {
 
 	private final CredentialStore credentialStore;
+	private final ProxyChain proxyChain;
 	private final ReentrantLock refreshLock = new ReentrantLock();
 	private final ConcurrentHashMap<String, TokenState> tokenCache = new ConcurrentHashMap<>();
 
@@ -105,13 +110,55 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 		this.projectId = null;
 	}
 
+	public String getSubscriptionTier(StoredAccount account) {
+		String token = getAccessToken(account);
+		try {
+			String body = ProjectIdFetcher.buildLoadCodeAssistBody();
+			HttpRequest request =
+					HttpRequest.newBuilder()
+					           .uri(
+							           URI.create(
+									           Antigravity.CLOUDCODE_BASE +
+									           "/v1internal:loadCodeAssist"
+							           )
+					           )
+					           .header("Authorization", "Bearer " + token)
+					           .header("Content-Type", "application/json")
+					           .header(
+							           "User-Agent",
+							           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/2.0.1 Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36"
+					           )
+					           .header(
+							           "X-Goog-Api-Client",
+							           "google-cloud-sdk vscode/1.96.0"
+					           )
+					           .POST(HttpRequest.BodyPublishers.ofString(body))
+					           .build();
+			HttpResponse<String> response = proxyChain.send(request);
+			log.debug(
+					LogTag.ANTIGRAVITY + "loadCodeAssist status={} body={}",
+					response.statusCode(),
+					response.body()
+			);
+			if (response.statusCode() == 200) {
+				return ProjectIdFetcher.parseTier(response.body());
+			}
+		} catch (Exception e) {
+			log.warn(
+					LogTag.ANTIGRAVITY + "Failed to fetch tier: {}",
+					e.getMessage()
+			);
+		}
+		return null;
+	}
+
 	@Cacheable("antigravityModels")
 	public List<Map<String, Object>> listModels(StoredAccount account) throws IOException {
 		if (account.accessToken() == null) {
 			return List.of();
 		}
 		String token = getAccessToken(account);
-		return AntigravityHttpClient.listModels(token, account.projectId());
+		return AntigravityHttpClient.listModels(token, account.projectId(), proxyChain);
 	}
 
 	public String getAccessToken(StoredAccount account) {
@@ -154,9 +201,15 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 			}
 			this.expiresAt = Instant.now().plusSeconds(response.expiresIn());
 			persistToStore();
-			log.info(LogTag.ANTIGRAVITY + "Token refreshed, expires at {}", expiresAt);
+			log.info(
+					LogTag.ANTIGRAVITY + "Token refreshed, expires at {}",
+					expiresAt
+			);
 		} catch (Exception e) {
-			log.error(LogTag.ANTIGRAVITY + "Token refresh failed: {}", e.getMessage());
+			log.error(
+					LogTag.ANTIGRAVITY + "Token refresh failed: {}",
+					e.getMessage()
+			);
 			throw new RuntimeException("Antigravity token refresh failed", e);
 		} finally {
 			refreshLock.unlock();

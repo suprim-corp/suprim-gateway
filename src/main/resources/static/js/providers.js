@@ -11,6 +11,7 @@ function showModels(index) {
     error.classList.add('hidden')
     empty.classList.add('hidden')
     usageBanner.classList.add('hidden')
+    document.getElementById('usageBar').parentElement.classList.remove('hidden')
     list.innerHTML = ''
     dialog.showModal()
 
@@ -18,6 +19,15 @@ function showModels(index) {
         .then(res => res.ok ? res.json() : null)
         .then(data => {
             if (!data || data.error) return
+
+            // Antigravity format: {tier}
+            if (data.tier) {
+                document.getElementById('usageLabel').textContent = data.tier
+                document.getElementById('usageText').textContent = ''
+                document.getElementById('usageBar').parentElement.classList.add('hidden')
+                usageBanner.classList.remove('hidden')
+                return
+            }
 
             // Codex format: {plan, session, weekly, limitReached, resetCredits}
             if (data.session || data.weekly) {

@@ -60,6 +60,26 @@ class ProjectIdFetcher {
 		return "{\"metadata\":{\"ideType\":\"VSCODE\",\"platform\":\"PLATFORM_UNSPECIFIED\",\"pluginType\":\"GEMINI\"}}";
 	}
 
+	static String parseTier(String json) {
+		try {
+			JsonNode node = MAPPER.readTree(json);
+			JsonNode allowedTiers = node.get("allowedTiers");
+			if (allowedTiers != null && allowedTiers.isArray() && !allowedTiers.isEmpty()) {
+				JsonNode first = allowedTiers.get(0);
+				JsonNode name = first.get("name");
+				JsonNode desc = first.get("description");
+				if (name != null && !name.isNull()) {
+					String tierName = name.asString();
+					if (desc != null && !desc.isNull()) {
+						return tierName + " — " + desc.asString();
+					}
+					return tierName;
+				}
+			}
+		} catch (Exception ignored) {}
+		return null;
+	}
+
 	static String parseProjectId(String json) {
 		try {
 			JsonNode node = MAPPER.readTree(json);
