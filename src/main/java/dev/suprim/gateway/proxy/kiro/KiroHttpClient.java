@@ -41,7 +41,7 @@ public class KiroHttpClient {
 			boolean stream,
 			String accessToken
 	) throws Exception {
-		return request(method, url, body, stream, accessToken, null);
+		return request(method, url, body, stream, accessToken, null, false);
 	}
 
 	public KiroResponse request(
@@ -51,6 +51,18 @@ public class KiroHttpClient {
 			boolean stream,
 			String accessToken,
 			String amzTarget
+	) throws Exception {
+		return request(method, url, body, stream, accessToken, amzTarget, false);
+	}
+
+	public KiroResponse request(
+			String method,
+			String url,
+			String body,
+			boolean stream,
+			String accessToken,
+			String amzTarget,
+			boolean isApiKey
 	) throws Exception {
 		int maxRetries = stream ? config.firstTokenMaxRetries() : 3;
 
@@ -71,7 +83,8 @@ public class KiroHttpClient {
 						stream,
 						maxRetries,
 						accessToken,
-						amzTarget
+						amzTarget,
+						isApiKey
 				);
 			} catch (IOException e) {
 				if (!proxyChain.hasProxies()) {
@@ -94,14 +107,15 @@ public class KiroHttpClient {
 			boolean stream,
 			int maxRetries,
 			String accessToken,
-			String amzTarget
+			String amzTarget,
+			boolean isApiKey
 	) throws Exception {
 		HttpResponse<InputStream> lastResponse = null;
 		Exception lastError = null;
 
 		for (int attempt = 0; attempt < maxRetries; attempt++) {
 			try {
-				Map<String, String> headers = kiroHeaders.build(accessToken);
+				Map<String, String> headers = kiroHeaders.build(accessToken, isApiKey);
 
 				HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
 				                                            .uri(URI.create(url));

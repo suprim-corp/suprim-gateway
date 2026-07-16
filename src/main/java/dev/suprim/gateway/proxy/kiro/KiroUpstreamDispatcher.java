@@ -88,7 +88,7 @@ public class KiroUpstreamDispatcher {
 			KiroResponse result;
 
 			try {
-				result = tryAllEndpoints(payload, stream, accessToken, account.name());
+				result = tryAllEndpoints(payload, stream, accessToken, account);
 			} catch (Exception e) {
 				log.error(
 						LogTag.KIRO + "Request failed for {}: {}",
@@ -113,7 +113,7 @@ public class KiroUpstreamDispatcher {
 				continue;
 			}
 
-			result = tryAllEndpoints(payload, stream, accessToken, account.name());
+			result = tryAllEndpoints(payload, stream, accessToken, account);
 			if (result != null) {
 				log.info(LogTag.KIRO + "Response served by account: {} (after refresh)", account.name());
 				return result;
@@ -122,11 +122,12 @@ public class KiroUpstreamDispatcher {
 		throw new RuntimeException("All Kiro accounts exhausted");
 	}
 
-	private KiroResponse tryAllEndpoints(String payload, boolean stream, String accessToken, String accountName) throws Exception {
+	private KiroResponse tryAllEndpoints(String payload, boolean stream, String accessToken, StoredAccount account) throws Exception {
+		boolean isApiKey = "api_key".equalsIgnoreCase(account.authType());
 		for (KiroEndpoint ep : ENDPOINTS) {
 			String amzTarget = ep.amzTarget().isEmpty() ? null : ep.amzTarget();
 			KiroResponse response = kiroClient.request(
-					"POST", ep.url(), payload, stream, accessToken, amzTarget
+					"POST", ep.url(), payload, stream, accessToken, amzTarget, isApiKey
 			);
 			if (response.status() == 200) {
 				return response;
@@ -137,7 +138,7 @@ public class KiroUpstreamDispatcher {
 			}
 			if (response.status() == 429 || response.status() == 503) {
 				log.warn(LogTag.KIRO + "Account {} got {} from {}, trying next account",
-						accountName, response.status(), ep.name());
+						account.name(), response.status(), ep.name());
 				try (InputStream is = response.body()) {
 					is.readAllBytes();
 				}
