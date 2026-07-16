@@ -15,6 +15,8 @@ import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -44,6 +46,7 @@ public class KiroUpstreamDispatcher {
 	private final KiroAuthManager auth;
 	private final AccountRotator accountRotator;
 	private final CredentialStore credentialStore;
+	private final ConcurrentHashMap<String, Integer> preferredEndpoint = new ConcurrentHashMap<>();
 
 	public KiroResponse dispatch(
 			InternalRequest request,
@@ -99,46 +102,121 @@ public class KiroUpstreamDispatcher {
 			}
 
 			if (result != null) {
-				log.info(LogTag.KIRO + "Response served by account: {}", account.name());
+				log.info(
+						LogTag.KIRO + "Response served by account: {}",
+						account.name()
+				);
 				return result;
 			}
 
 			// all endpoints 403 → refresh token and retry once
-			log.info(LogTag.KIRO + "All endpoints 403 for {}, refreshing token", account.name());
+			log.info(
+					LogTag.KIRO + "All endpoints 403 for {}, refreshing token",
+					account.name()
+			);
 			try {
 				auth.forceRefresh();
 				accessToken = auth.getAccessToken(account);
 			} catch (Exception e) {
-				log.warn(LogTag.KIRO + "Refresh failed for {}: {}", account.name(), e.getMessage());
+				log.warn(
+						LogTag.KIRO + "Refresh failed for {}: {}",
+						account.name(),
+						e.getMessage()
+				);
 				continue;
 			}
 
 			result = tryAllEndpoints(payload, stream, accessToken, account);
 			if (result != null) {
-				log.info(LogTag.KIRO + "Response served by account: {} (after refresh)", account.name());
+				log.info(
+						LogTag.KIRO +
+						"Response served by account: {} (after refresh)",
+						account.name()
+				);
 				return result;
 			}
 		}
 		throw new RuntimeException("All Kiro accounts exhausted");
 	}
 
-	private KiroResponse tryAllEndpoints(String payload, boolean stream, String accessToken, StoredAccount account) throws Exception {
+	private KiroResponse tryAllEndpoints(
+			String payload,
+			boolean stream,
+			String accessToken,
+			StoredAccount account
+	) throws Exception {
 		boolean isApiKey = "api_key".equalsIgnoreCase(account.authType());
-		for (KiroEndpoint ep : ENDPOINTS) {
+		String accountKey = Optional.ofNullable(account.name())
+		                            .orElse(
+				                            account.accessToken()
+				                                   .substring(0, 8)
+		                            );
+		Integer preferred = preferredEndpoint.get(accountKey);
+
+		if (preferred != null) {
+			KiroEndpoint ep = ENDPOINTS.get(preferred);
 			String amzTarget = ep.amzTarget().isEmpty() ? null : ep.amzTarget();
 			KiroResponse response = kiroClient.request(
-					"POST", ep.url(), payload, stream, accessToken, amzTarget, isApiKey
+					"POST",
+					ep.url(),
+					payload,
+					stream,
+					accessToken,
+					amzTarget,
+					isApiKey
 			);
 			if (response.status() == 200) {
 				return response;
 			}
+			if (response.status() == 429 || response.status() == 503) {
+				log.warn(
+						LogTag.KIRO +
+						"Account {} got {} from {}, trying next account",
+						account.name(), response.status(), ep.name()
+				);
+				try (InputStream is = response.body()) {
+					is.readAllBytes();
+				}
+				return null;
+			}
+			log.warn(
+					LogTag.KIRO +
+					"{} from preferred {}, falling back to all endpoints",
+					response.status(),
+					ep.name()
+			);
+			preferredEndpoint.remove(accountKey);
+		}
+
+		for (int i = 0; i < ENDPOINTS.size(); i++) {
+			KiroEndpoint ep = ENDPOINTS.get(i);
+			String amzTarget = ep.amzTarget().isEmpty() ? null : ep.amzTarget();
+			KiroResponse response = kiroClient.request(
+					"POST",
+					ep.url(),
+					payload,
+					stream,
+					accessToken,
+					amzTarget,
+					isApiKey
+			);
+			if (response.status() == 200) {
+				preferredEndpoint.put(accountKey, i);
+				return response;
+			}
 			if (response.status() == 403) {
-				log.warn(LogTag.KIRO + "403 from {}, trying next endpoint", ep.name());
+				log.warn(
+						LogTag.KIRO + "403 from {}, trying next endpoint",
+						ep.name()
+				);
 				continue;
 			}
 			if (response.status() == 429 || response.status() == 503) {
-				log.warn(LogTag.KIRO + "Account {} got {} from {}, trying next account",
-						account.name(), response.status(), ep.name());
+				log.warn(
+						LogTag.KIRO +
+						"Account {} got {} from {}, trying next account",
+						account.name(), response.status(), ep.name()
+				);
 				try (InputStream is = response.body()) {
 					is.readAllBytes();
 				}
@@ -161,15 +239,22 @@ public class KiroUpstreamDispatcher {
 		);
 
 		for (KiroEndpoint ep : ENDPOINTS) {
-			String amzTarget = ep.amzTarget().isEmpty() ? null : ep.amzTarget();
 			KiroResponse response = kiroClient.request(
-					"POST", ep.url(), payload, stream, accessToken, amzTarget
+					"POST",
+					ep.url(),
+					payload,
+					stream,
+					accessToken,
+					ep.amzTarget().isEmpty() ? null : ep.amzTarget()
 			);
 			if (response.status() == 200) {
 				return response;
 			}
 			if (response.status() == 403) {
-				log.warn(LogTag.KIRO + "403 from {}, trying next endpoint", ep.name());
+				log.warn(
+						LogTag.KIRO + "403 from {}, trying next endpoint",
+						ep.name()
+				);
 				continue;
 			}
 			return response;
