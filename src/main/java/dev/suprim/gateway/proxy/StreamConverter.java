@@ -101,6 +101,11 @@ public class StreamConverter {
 		return "data: " + mapper.writeValueAsString(chunk) + "\n\n";
 	}
 
+	public String toOpenAiFinishChunk(String model, String id, String finishReason) throws Exception {
+		CompletionChunk chunk = CompletionChunk.finish(id, model, finishReason);
+		return "data: " + mapper.writeValueAsString(chunk) + "\n\n";
+	}
+
 	public CompletionResponse toOpenAiNonStreaming(
 			List<KiroEvent> events,
 			String model,

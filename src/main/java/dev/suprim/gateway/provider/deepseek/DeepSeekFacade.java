@@ -6,6 +6,7 @@ import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.StreamConverter;
 import dev.suprim.gateway.proxy.StreamingEventWriter;
 import dev.suprim.gateway.proxy.InternalRequest;
+import dev.suprim.gateway.proxy.Tool;
 import dev.suprim.gateway.utils.ErrorResponse;
 
 import jakarta.servlet.http.HttpServletResponse;
@@ -19,7 +20,9 @@ import tools.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Main facade orchestrating DeepSeek Web API calls: pool → auth → session → PoW → completion → auto-continue → stream.
@@ -141,16 +144,21 @@ public class DeepSeekFacade {
 					format != Format.ANTHROPIC || request.thinkingEnabled()
 			);
 
+			Set<String> toolNames = extractToolNames(request);
+			DeepSeekToolSieve toolSieve = new DeepSeekToolSieve(eventWriter.asConsumer(), toolNames);
+
 			DeepSeekAutoContinue.Result result = autoContinue.process(
 					responseStream, chatSessionId, token, powHeader,
-					eventWriter.asConsumer()
+					toolSieve::accept
 			);
+			toolSieve.flush();
 
-			if (!eventWriter.hasContent()) {
+			if (!eventWriter.hasOutput()) {
 				if (retry < MAX_EMPTY_RETRIES - 1) {
 					log.info(
 							LogTag.DEEPSEEK +
-							"Empty output on attempt {}, retrying", retry + 1
+							"Empty output on attempt {} (status={}), retrying",
+							retry + 1, result.status()
 					);
 				}
 			} else {
@@ -267,6 +275,18 @@ public class DeepSeekFacade {
 					algorithm, challenge, salt, nonce, signature, targetPath
 			);
 		}
+	}
+
+	private Set<String> extractToolNames(InternalRequest request) {
+		if (request.tools() == null || request.tools().isEmpty()) {
+			return Set.of();
+		}
+		return request.tools().stream()
+				.map(Tool::function)
+				.filter(Objects::nonNull)
+				.map(Tool.Function::name)
+				.filter(Objects::nonNull)
+				.collect(Collectors.toSet());
 	}
 
 }

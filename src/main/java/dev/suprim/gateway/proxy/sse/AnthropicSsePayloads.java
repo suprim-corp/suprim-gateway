@@ -220,6 +220,18 @@ public final class AnthropicSsePayloads {
 			                   .usage(Usage.of(0))
 			                   .build();
 		}
+
+		public static MessageDelta withStopReason(String stopReason) {
+			return MessageDelta.builder()
+			                   .type("message_delta")
+			                   .delta(
+					                   DeltaBody.builder()
+					                            .stopReason(stopReason)
+					                            .build()
+			                   )
+			                   .usage(Usage.of(0))
+			                   .build();
+		}
 	}
 
 	@Builder

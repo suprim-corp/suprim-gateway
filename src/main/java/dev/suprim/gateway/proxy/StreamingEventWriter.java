@@ -26,6 +26,8 @@ public class StreamingEventWriter {
 	private boolean thinkingBlockOpen = false;
 	private boolean textBlockOpen = false;
 	private boolean hasContent = false;
+	private boolean hasOutput = false;
+	private boolean hasToolUse = false;
 	private int blockIndex = 0;
 
 	public StreamingEventWriter(
@@ -56,6 +58,10 @@ public class StreamingEventWriter {
 		return hasContent;
 	}
 
+	public boolean hasOutput() {
+		return hasOutput;
+	}
+
 	public Consumer<KiroEvent> asConsumer() {
 		return event -> {
 			try {
@@ -68,7 +74,9 @@ public class StreamingEventWriter {
 
 	public void write(KiroEvent event) throws Exception {
 		if (!"content".equals(event.type()) &&
-		    !"reasoning".equals(event.type())) {
+		    !"reasoning".equals(event.type()) &&
+		    !"tool_use".equals(event.type())
+		) {
 			return;
 		}
 
@@ -76,6 +84,7 @@ public class StreamingEventWriter {
 			return;
 		}
 
+		hasOutput = true;
 		switch (format) {
 			case ANTHROPIC -> writeAnthropic(event);
 			case RESPONSES -> writeResponses(event);
@@ -104,7 +113,22 @@ public class StreamingEventWriter {
 			);
 		}
 
-		if ("reasoning".equals(event.type())) {
+		if ("tool_use".equals(event.type()) && event.toolStop()) {
+			if (textBlockOpen) {
+				writer.write(
+						converter.toAnthropicEvent(
+								"content_block_stop",
+								AnthropicSsePayloads.ContentBlockStop.of(blockIndex)
+						)
+				);
+				blockIndex++;
+				textBlockOpen = false;
+			}
+			hasContent = true;
+			hasToolUse = true;
+			writer.write(converter.toAnthropicToolUse(event, blockIndex));
+			blockIndex++;
+		} else if ("reasoning".equals(event.type())) {
 			if (!thinkingBlockOpen) {
 				thinkingBlockOpen = true;
 				writer.write(
@@ -165,7 +189,21 @@ public class StreamingEventWriter {
 			writer.write(converter.toResponsesCreated(id, model));
 		}
 
-		if ("reasoning".equals(event.type())) {
+		if ("tool_use".equals(event.type()) && event.toolStop()) {
+			if (thinkingBlockOpen && !textBlockOpen) {
+				writer.write(
+						converter.toResponsesSse(
+								ResponsesSsePayloads.ReasoningSummaryPartDone.of(
+										blockIndex)
+						)
+				);
+				blockIndex++;
+				thinkingBlockOpen = false;
+			}
+			hasContent = true;
+			writer.write(converter.toResponsesToolCall(event, blockIndex));
+			blockIndex++;
+		} else if ("reasoning".equals(event.type())) {
 			if (!thinkingBlockOpen) {
 				thinkingBlockOpen = true;
 				writer.write(
@@ -208,6 +246,12 @@ public class StreamingEventWriter {
 		if ("reasoning".equals(event.type())) {
 			String sse = converter.toOpenAiReasoningChunk(event, model, id);
 			writer.write(sse);
+		} else if ("tool_use".equals(event.type()) && event.toolStop()) {
+			hasContent = true;
+			String sse = converter.toOpenAiChunk(event, model, id);
+			if (sse != null) {
+				writer.write(sse);
+			}
 		} else if ("content".equals(event.type())) {
 			hasContent = true;
 			String sse = converter.toOpenAiChunk(event, model, id);
@@ -233,10 +277,11 @@ public class StreamingEventWriter {
 					)
 			);
 		}
+		String stopReason = hasToolUse ? "tool_use" : "end_turn";
 		writer.write(
 				converter.toAnthropicEvent(
 						"message_delta",
-						AnthropicSsePayloads.MessageDelta.endTurn()
+						AnthropicSsePayloads.MessageDelta.withStopReason(stopReason)
 				)
 		);
 		writer.write(
@@ -258,7 +303,8 @@ public class StreamingEventWriter {
 	}
 
 	private void finishCompletion() throws Exception {
-		writer.write(converter.toOpenAiStopChunk(model, id));
+		String finishReason = hasToolUse ? "tool_calls" : "stop";
+		writer.write(converter.toOpenAiFinishChunk(model, id, finishReason));
 		writer.write(converter.toOpenAiDone());
 	}
 }

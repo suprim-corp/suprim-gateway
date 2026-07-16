@@ -71,16 +71,25 @@ public class DeepSeekEventParser {
 			Consumer<KiroEvent> consumer
 	) {
 		DeepSeekEventParser parser = new DeepSeekEventParser(consumer);
+		StringBuilder rawCapture = new StringBuilder();
 		try {
 			byte[] buf = new byte[8192];
 			int read;
 			while ((read = input.read(buf)) != -1) {
+				if (rawCapture.length() < 2000) {
+					rawCapture.append(new String(buf, 0, read, StandardCharsets.UTF_8));
+				}
 				parser.feed(buf, 0, read);
 			}
 		} catch (Exception e) {
 			log.error("Error parsing stream: {}", e.getMessage());
 		}
-		return parser.finish();
+		Result result = parser.finish();
+		if (result.events().isEmpty()) {
+			log.debug("[DeepSeek] Empty parse, raw stream: {}",
+					rawCapture.length() > 1000 ? rawCapture.substring(0, 1000) : rawCapture.toString());
+		}
+		return result;
 	}
 
 	public void feed(byte[] data) {

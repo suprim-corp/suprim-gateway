@@ -74,6 +74,25 @@ public class DeepSeekAutoContinue {
 		if (parsed.responseMessageId() > 0) {
 			messageId = parsed.responseMessageId();
 		}
+		log.debug(
+				"[DeepSeek] Initial parse: events={}, status={}, messageId={}",
+				allEvents.size(), currentStatus, messageId
+		);
+		if (!allEvents.isEmpty()) {
+			long reasoningCount = allEvents.stream()
+					.filter(e -> "reasoning".equals(e.type()))
+					.count();
+			long contentCount = allEvents.stream()
+					.filter(e -> "content".equals(e.type()))
+					.count();
+			long toolCount = allEvents.stream()
+					.filter(e -> "tool_use".equals(e.type()))
+					.count();
+			log.debug(
+					"[DeepSeek] Event breakdown: reasoning={}, content={}, tool_use={}",
+					reasoningCount, contentCount, toolCount
+			);
+		}
 
 		int rounds = 0;
 		while (

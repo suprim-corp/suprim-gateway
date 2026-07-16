@@ -41,6 +41,30 @@ public final class CompletionsSsePayloads {
 			                      .choices(List.of(StreamChoice.stop()))
 			                      .build();
 		}
+
+		public static CompletionChunk finish(
+				String id,
+				String model,
+				String finishReason
+		) {
+			return CompletionChunk.builder()
+			                      .id(id)
+			                      .object("chat.completion.chunk")
+			                      .created(System.currentTimeMillis() / 1000)
+			                      .model(model)
+			                      .choices(
+					                      List.of(
+							                      StreamChoice.builder()
+							                                  .index(0)
+							                                  .delta(CompletionDelta.empty())
+							                                  .finishReason(
+									                                  finishReason
+							                                  )
+							                                  .build()
+					                      )
+			                      )
+			                      .build();
+		}
 	}
 
 	@Builder
