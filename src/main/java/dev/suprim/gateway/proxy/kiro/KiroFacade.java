@@ -73,10 +73,20 @@ public class KiroFacade {
 	) throws Exception {
 		long startTime = System.currentTimeMillis();
 
-		KiroResponse response = upstreamDispatcher.dispatch(
-				req.request(),
-				req.stream() || req.format() == Format.RESPONSES
-		);
+		KiroResponse response;
+		try {
+			response = upstreamDispatcher.dispatch(
+					req.request(),
+					req.stream() || req.format() == Format.RESPONSES
+			);
+		} catch (RuntimeException e) {
+			httpRes.setStatus(503);
+			httpRes.setContentType("application/json");
+			httpRes.getWriter().write(
+					"{\"error\":{\"message\":\"" + e.getMessage() + "\",\"type\":\"service_unavailable\"}}"
+			);
+			return;
+		}
 
 		if (response.status() != 200) {
 			handleError(response, req, startTime, httpRes);
