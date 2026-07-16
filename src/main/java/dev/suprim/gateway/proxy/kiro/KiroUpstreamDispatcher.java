@@ -1,5 +1,6 @@
 package dev.suprim.gateway.proxy.kiro;
 
+import dev.suprim.gateway.instants.Kiro;
 import dev.suprim.gateway.logging.LogTag;
 import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
@@ -25,18 +26,18 @@ public class KiroUpstreamDispatcher {
 
 	private static final List<KiroEndpoint> ENDPOINTS = List.of(
 			new KiroEndpoint(
-					"https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
-					"AmazonCodeWhispererStreamingService.GenerateAssistantResponse",
+					Kiro.CODEWHISPERER_HOST + Kiro.GENERATE_PATH,
+					Kiro.AMZ_TARGET,
 					"CodeWhisperer"
 			),
 			new KiroEndpoint(
-					"https://q.us-east-1.amazonaws.com/generateAssistantResponse",
+					Kiro.Q_HOST + Kiro.GENERATE_PATH,
 					"",
 					"Kiro IDE"
 			),
 			new KiroEndpoint(
-					"https://q.us-east-1.amazonaws.com/generateAssistantResponse",
-					"AmazonQDeveloperStreamingService.SendMessage",
+					Kiro.Q_HOST + Kiro.GENERATE_PATH,
+					Kiro.AMZ_TARGET_Q,
 					"AmazonQ"
 			)
 	);
