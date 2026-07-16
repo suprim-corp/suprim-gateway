@@ -35,7 +35,8 @@ public class ModelRegistry {
 	private final XaiAuthManager xaiAuthManager;
 	private final CodexAuthManager codexAuthManager;
 
-	private final AtomicReference<List<ModelForListingApi>> cachedModels = new AtomicReference<>(List.of());
+	private final AtomicReference<List<ModelForListingApi>> cachedModels =
+			new AtomicReference<>(List.of());
 
 	@PostConstruct
 	void warmUp() {
@@ -46,7 +47,10 @@ public class ModelRegistry {
 	public void refreshCache() {
 		List<ModelForListingApi> models = fetchAllModels();
 		cachedModels.set(models);
-		log.info("\033[36m[Models]\033[0m Cache refreshed: {} models", models.size());
+		log.info(
+				"\033[36m[Models]\033[0m Cache refreshed: {} models",
+				models.size()
+		);
 	}
 
 	public List<ModelForListingApi> getAllModelsForApi() {
@@ -56,136 +60,164 @@ public class ModelRegistry {
 	private List<ModelForListingApi> fetchAllModels() {
 		List<ModelForListingApi> result = new ArrayList<>();
 		long now = System.currentTimeMillis() / 1000;
-
 		LinkedHashSet<String> seen = new LinkedHashSet<>();
-		List<StoredAccount> accounts =
+
+		Map<String, List<StoredAccount>> byProvider =
 				credentialStore.load()
 				               .stream()
-				               .collect(
-						               Collectors.toMap(
-								               StoredAccount::provider,
-								               a -> a,
-								               (first, second) ->
-										               "api_key".equals(second.authType()) ? second : first
-						               )
-				               )
-				               .values()
-				               .stream()
-				               .toList();
+				               .filter(a -> a.provider() != null)
+				               .collect(Collectors.groupingBy(StoredAccount::provider));
 
-		for (StoredAccount account : accounts) {
+		for (Map.Entry<String, List<StoredAccount>> entry : byProvider.entrySet()) {
+			Provider provider;
 			try {
-				switch (Provider.valueOf(account.provider())) {
-					case KIRO ->
-							kiroAuthManager.listModels(account).forEach(m -> {
-								String modelId = (String) m.get("id");
-								String id = Provider.KIRO.getPrefix() + modelId;
-								if (modelId != null && seen.add(id)) {
-									result.add(
-											ModelForListingApi.builder()
-											                  .id(id)
-											                  .object("model")
-											                  .ownedBy(Provider.KIRO.name())
-											                  .created(now)
-											                  .displayName((String) m.get(
-													                  "name"))
-											                  .build()
-									);
-								}
-							});
-					case ANTIGRAVITY -> antigravityAuthManager
-							.listModels(account)
-							.forEach(m -> {
-								String modelId = (String) m.get("id");
-								String id = Provider.ANTIGRAVITY.getPrefix() +
-								            modelId;
-								if (seen.add(id)) {
-									String label = "Antigravity | " +
-									               Optional.ofNullable((String) m.get(
-											                       "displayName"))
-									                       .orElse(modelId);
-									result.add(
-											ModelForListingApi
-													.builder()
-													.id(id)
-													.created(now)
-													.ownedBy(Provider.ANTIGRAVITY.name())
-													.displayName(label)
-													.object("model")
-													.build()
-									);
-								}
-							});
-					case XAI -> xaiAuthManager
-							.listModels(account)
-							.forEach(m -> {
-								String id = (String) m.get("id");
-								if (seen.add(id)) {
-									String displayName =
-											Optional.ofNullable(
-													        (String) m.get("displayName")
-											        )
-											        .orElse(
-													        id.startsWith(
-															        "grok/")
-															        ? id.substring(
-															        5) : id
-											        );
-									result.add(
-											ModelForListingApi
-													.builder()
-													.id(id)
-													.created(now)
-													.ownedBy(Provider.XAI.name())
-													.displayName(displayName)
-													.object("model")
-													.build()
-									);
-								}
-							});
-					case CODEX -> codexAuthManager
-							.listModels(account)
-							.forEach(m -> {
-								String id = (String) m.get("id");
-								if (seen.add(id)) {
-									String displayName =
-											Optional.ofNullable(
-													        (String) m.get("displayName")
-											        )
-											        .orElse(
-													        id.startsWith(
-															        Provider.CODEX.getPrefix()
-													        ) ? id.substring(6) : id
-											        );
-									result.add(
-											ModelForListingApi
-													.builder()
-													.id(id)
-													.created(now)
-													.ownedBy(Provider.CODEX.name())
-													.displayName(displayName)
-													.object("model")
-													.build()
-									);
-								}
-							});
-					case DEEPSEEK -> DeepSeekModels.ALL.forEach(id -> {
-						if (seen.add(id)) {
-							result.add(
-									ModelForListingApi.builder()
-									                  .id(id)
-									                  .object("model")
-									                  .ownedBy(Provider.DEEPSEEK.name())
-									                  .created(now)
-									                  .displayName(DeepSeekModels.displayName(id))
-									                  .build()
-							);
-						}
-					});
-					default -> {}
+				provider = Provider.valueOf(entry.getKey());
+			} catch (IllegalArgumentException e) {
+				continue;
+			}
+
+			if (provider == Provider.DEEPSEEK) {
+				DeepSeekModels.ALL.forEach(id -> {
+					if (seen.add(id)) {
+						result.add(
+								ModelForListingApi.builder()
+								                  .id(id)
+								                  .object("model")
+								                  .ownedBy(Provider.DEEPSEEK.name())
+								                  .created(now)
+								                  .displayName(
+														  DeepSeekModels.displayName(id)
+								                  )
+								                  .build()
+						);
+					}
+				});
+				continue;
+			}
+
+			for (StoredAccount account : entry.getValue()) {
+				try {
+					switch (provider) {
+						case KIRO -> kiroAuthManager.listModels(account)
+						                            .forEach(m -> {
+							                            String modelId = (String) m.get(
+									                            "id");
+							                            String id =
+									                            Provider.KIRO.getPrefix() +
+									                            modelId;
+							                            if (modelId != null &&
+							                                seen.add(id)) {
+								                            result.add(
+										                            ModelForListingApi.builder()
+										                                              .id(id)
+										                                              .object("model")
+										                                              .ownedBy(
+												                                              Provider.KIRO.name()
+										                                              )
+										                                              .created(
+												                                              now)
+										                                              .displayName(
+												                                              (String) m.get("name")
+										                                              )
+										                                              .build()
+								                            );
+							                            }
+						                            });
+						case ANTIGRAVITY -> antigravityAuthManager
+								.listModels(account)
+								.forEach(m -> {
+									String modelId = (String) m.get("id");
+									String id =
+											Provider.ANTIGRAVITY.getPrefix() +
+											modelId;
+									if (seen.add(id)) {
+										String label = "Antigravity | " +
+										               Optional.ofNullable(
+															   (String) m.get("displayName")
+										                       )
+										                       .orElse(modelId);
+										result.add(
+												ModelForListingApi
+														.builder()
+														.id(id)
+														.created(now)
+														.ownedBy(Provider.ANTIGRAVITY.name())
+														.displayName(label)
+														.object("model")
+														.build()
+										);
+									}
+								});
+						case XAI -> xaiAuthManager
+								.listModels(account)
+								.forEach(m -> {
+									String id = (String) m.get("id");
+									if (seen.add(id)) {
+										String displayName =
+												Optional.ofNullable(
+														        (String) m.get(
+																        "displayName")
+												        )
+												        .orElse(
+														        id.startsWith(
+																        "grok/")
+																        ? id.substring(
+																        5) : id
+												        );
+										result.add(
+												ModelForListingApi
+														.builder()
+														.id(id)
+														.created(now)
+														.ownedBy(Provider.XAI.name())
+														.displayName(displayName)
+														.object("model")
+														.build()
+										);
+									}
+								});
+						case CODEX -> codexAuthManager
+								.listModels(account)
+								.forEach(m -> {
+									String id = (String) m.get("id");
+									if (seen.add(id)) {
+										String displayName =
+												Optional.ofNullable(
+														        (String) m.get(
+																        "displayName"
+														        )
+												        )
+												        .orElse(
+														        id.startsWith(
+																        Provider.CODEX.getPrefix()
+														        ) ? id.substring(
+																        6) : id
+												        );
+										result.add(
+												ModelForListingApi
+														.builder()
+														.id(id)
+														.created(now)
+														.ownedBy(Provider.CODEX.name())
+														.displayName(displayName)
+														.object("model")
+														.build()
+										);
+									}
+								});
+						default -> {}
+					}
+					// account succeeded — skip remaining accounts for this provider
+					break;
+				} catch (Exception e) {
+					log.warn(
+							"[Models] {} account '{}' failed, trying next: {}",
+							account.provider(),
+							Optional.ofNullable(account.name())
+							        .orElse("unnamed"),
+							e.getMessage()
+					);
 				}
-			} catch (Exception e) {
-				log.warn("[Models] Failed to load models for {}: {}", account.provider(), e.getMessage());
 			}
 		}
 
