@@ -117,13 +117,17 @@ class ProvidersController {
 
 	@GetMapping("/providers/{index}/models")
 	@ResponseBody
-	List<ModelInfo> models(@PathVariable int index) throws Exception {
+	Object models(@PathVariable int index) {
 		List<StoredAccount> accounts = credentialStore.load();
 		if (index < 0 || index >= accounts.size()) {
 			return List.of();
 		}
 		StoredAccount account = accounts.get(index);
-		return modelRegistry.getModelsForProvider(account);
+		try {
+			return modelRegistry.getModelsForProvider(account);
+		} catch (Exception e) {
+			return Map.of("error", e.getMessage());
+		}
 	}
 
 	@GetMapping("/providers/{index}/usage")

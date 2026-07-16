@@ -367,15 +367,21 @@ public class KiroAuthManager implements ProviderAuthManager {
 			}
 		}
 		if (response.statusCode() != 200) {
+			String body = response.body();
+			String msg = null;
+			try {
+				Map<?, ?> err = new JsonMapper().readValue(body, Map.class);
+				Object m = err.get("message");
+				if (m instanceof String s && !s.isBlank()) {
+					msg = s;
+				}
+			} catch (Exception ignored) {}
 			throw new IOException(
-					"ListAvailableModels HTTP " + response.statusCode() +
-					": " + response.body());
+					Optional.ofNullable(msg)
+					        .orElse("HTTP %s".formatted(response.statusCode()))
+			);
 		}
-		log.debug(
-				"[Models] ListAvailableModels region={} status={}",
-				region,
-				response.statusCode()
-		);
+
 		ModelsResponse result = new JsonMapper().readValue(
 				response.body(),
 				ModelsResponse.class

@@ -68,6 +68,11 @@ function showModels(index) {
         })
         .then(models => {
             loading.classList.add('hidden')
+            if (models.error) {
+                error.textContent = models.error
+                error.classList.remove('hidden')
+                return
+            }
             if (models.length === 0) {
                 empty.classList.remove('hidden')
                 return

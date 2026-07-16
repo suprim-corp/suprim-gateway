@@ -20,6 +20,7 @@ import jakarta.annotation.PostConstruct;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.util.*;
+import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -66,6 +67,11 @@ public class ModelRegistry {
 				credentialStore.load()
 				               .stream()
 				               .filter(a -> a.provider() != null)
+				               .sorted(
+						               Comparator.comparing(
+								               a -> !"api_key".equals(a.authType())
+						               )
+				               )
 				               .collect(Collectors.groupingBy(StoredAccount::provider));
 
 		for (Map.Entry<String, List<StoredAccount>> entry : byProvider.entrySet()) {
@@ -86,7 +92,9 @@ public class ModelRegistry {
 								                  .ownedBy(Provider.DEEPSEEK.name())
 								                  .created(now)
 								                  .displayName(
-														  DeepSeekModels.displayName(id)
+										                  DeepSeekModels.displayName(
+												                  id
+										                  )
 								                  )
 								                  .build()
 						);
@@ -117,7 +125,9 @@ public class ModelRegistry {
 										                                              .created(
 												                                              now)
 										                                              .displayName(
-												                                              (String) m.get("name")
+												                                              (String) m.get(
+														                                              "name"
+												                                              )
 										                                              )
 										                                              .build()
 								                            );
@@ -133,7 +143,9 @@ public class ModelRegistry {
 									if (seen.add(id)) {
 										String label = "Antigravity | " +
 										               Optional.ofNullable(
-															   (String) m.get("displayName")
+												                       (String) m.get(
+														                       "displayName"
+												                       )
 										                       )
 										                       .orElse(modelId);
 										result.add(
@@ -224,85 +236,55 @@ public class ModelRegistry {
 		return result;
 	}
 
-	public List<ModelInfo> getModelsForProvider(StoredAccount account) {
+	public List<ModelInfo> getModelsForProvider(StoredAccount account) throws Exception {
 		return switch (Provider.valueOf(account.provider())) {
-			case KIRO -> safeListModels(
-					() -> kiroAuthManager.listModels(account)
-					                     .stream()
-					                     .map(m -> {
-						                     String id =
-								                     Provider.KIRO.getPrefix() +
-								                     m.get("id");
-						                     Object cost = m.get("cost");
-						                     String unit = (String) m.get("unit");
-						                     if (cost instanceof Number c &&
-						                         unit != null &&
-						                         !unit.isEmpty()) {
-							                     return ModelInfo.of(
-									                     id,
-									                     c.doubleValue(),
-									                     unit
-							                     );
-						                     }
-						                     return ModelInfo.of(id);
-					                     })
-					                     .toList()
-			);
-			case ANTIGRAVITY -> safeListModels(
-					() -> antigravityAuthManager.listModels(account)
-					                            .stream()
-					                            .map(m -> {
-								                            Object quota = m.get("quota");
-								                            if (quota instanceof Integer q) {
-									                            return ModelInfo.of(
-											                            Provider.ANTIGRAVITY.getPrefix() +
-											                            m.get("id"),
-											                            q
-									                            );
-								                            }
-
-								                            return ModelInfo.of(
-										                            Provider.ANTIGRAVITY.getPrefix() +
-										                            m.get("id")
-								                            );
-							                            }
-					                            )
-					                            .toList()
-			);
-			case XAI -> safeListModels(
-					() -> xaiAuthManager.listModels(account)
-					                    .stream()
-					                    .map(m -> ModelInfo.of(
-									                    (String) m.get("id")
-							                    )
-					                    )
-					                    .toList()
-			);
-			case CODEX -> safeListModels(
-					() -> codexAuthManager.listModels(account)
-					                      .stream()
-					                      .map(m -> ModelInfo.of(
-									                      (String) m.get("id")
-							                      )
-					                      )
-					                      .toList()
-			);
+			case KIRO -> kiroAuthManager.listModels(account)
+			                            .stream()
+			                            .map(m -> {
+				                            String id =
+						                            Provider.KIRO.getPrefix() +
+						                            m.get("id");
+				                            Object cost = m.get("cost");
+				                            String unit = (String) m.get("unit");
+				                            if (cost instanceof Number c &&
+				                                unit != null &&
+				                                !unit.isEmpty()) {
+					                            return ModelInfo.of(
+							                            id,
+							                            c.doubleValue(),
+							                            unit
+					                            );
+				                            }
+				                            return ModelInfo.of(id);
+			                            })
+			                            .toList();
+			case ANTIGRAVITY -> antigravityAuthManager.listModels(account)
+			                                          .stream()
+			                                          .map(m -> {
+				                                          Object quota = m.get("quota");
+				                                          if (quota instanceof Integer q) {
+					                                          return ModelInfo.of(
+							                                          Provider.ANTIGRAVITY.getPrefix() +
+							                                          m.get("id"),
+							                                          q
+					                                          );
+				                                          }
+				                                          return ModelInfo.of(
+						                                          Provider.ANTIGRAVITY.getPrefix() +
+						                                          m.get("id")
+				                                          );
+			                                          })
+			                                          .toList();
+			case XAI -> xaiAuthManager.listModels(account)
+			                          .stream()
+			                          .map(m -> ModelInfo.of((String) m.get("id")))
+			                          .toList();
+			case CODEX -> codexAuthManager.listModels(account)
+			                             .stream()
+			                             .map(m -> ModelInfo.of((String) m.get("id")))
+			                             .toList();
 			default -> List.of();
 		};
-	}
-
-	private List<ModelInfo> safeListModels(ModelsFetcher fetcher) {
-		try {
-			return fetcher.fetch();
-		} catch (Exception e) {
-			log.warn("[Models] listModels failed: {}", e.getMessage());
-			return List.of();
-		}
-	}
-
-	@FunctionalInterface
-	private interface ModelsFetcher {
-		List<ModelInfo> fetch() throws Exception;
 	}
 
 	@Builder
