@@ -27,7 +27,7 @@ public class StartupBanner {
     private static final int WIDTH = 52;
     private static final String TOP = "╔" + "═".repeat(WIDTH) + "╗";
     private static final String BOT = "╚" + "═".repeat(WIDTH) + "╝";
-    private static final String SEP = "╠" + "─".repeat(WIDTH) + "╣";
+    private static final String SEP = "╠" + "═".repeat(WIDTH) + "╣";
 
     private final CredentialStore credentialStore;
     private final ProxyChain proxyChain;
