@@ -24,7 +24,7 @@ class AntigravityAuthManagerTest {
 	void setUp() {
 		Path storePath = tempDir.resolve("credentials.json");
 		store = new CredentialStore(storePath);
-		authManager = new AntigravityAuthManager(store);
+		authManager = new AntigravityAuthManager(store, null);
 	}
 
 	@Test
@@ -51,7 +51,7 @@ class AntigravityAuthManagerTest {
 				""".formatted(Instant.now().plusSeconds(3600).toString());
 		Files.writeString(storePath, json);
 
-		AntigravityAuthManager mgr = new AntigravityAuthManager(store);
+		AntigravityAuthManager mgr = new AntigravityAuthManager(store, null);
 		mgr.init();
 		assertTrue(mgr.isConnected());
 	}
@@ -81,7 +81,7 @@ class AntigravityAuthManagerTest {
 				""".formatted(future.toString());
 		Files.writeString(storePath, json);
 
-		AntigravityAuthManager mgr = new AntigravityAuthManager(store);
+		AntigravityAuthManager mgr = new AntigravityAuthManager(store, null);
 		mgr.init();
 		assertEquals("ya29.valid-token", mgr.getAccessToken());
 	}
@@ -106,7 +106,7 @@ class AntigravityAuthManagerTest {
 				""".formatted(future.toString());
 		Files.writeString(storePath, json);
 
-		AntigravityAuthManager mgr = new AntigravityAuthManager(store);
+		AntigravityAuthManager mgr = new AntigravityAuthManager(store, null);
 		mgr.init();
 		assertEquals("projects/cloudaicompanion-abc123", mgr.getProjectId());
 	}

@@ -28,7 +28,7 @@ class AntigravityOAuthControllerTest {
 	void setUp() {
 		Path storePath = tempDir.resolve("credentials.json");
 		CredentialStore store = new CredentialStore(storePath);
-		AntigravityAuthManager authManager = new AntigravityAuthManager(store);
+		AntigravityAuthManager authManager = new AntigravityAuthManager(store, null);
 		AntigravityLoopbackServer loopbackServer = mock(AntigravityLoopbackServer.class);
 		AntigravityOAuthController controller = new AntigravityOAuthController(authManager, loopbackServer);
 		mockMvc = MockMvcBuilders.standaloneSetup(controller).build();

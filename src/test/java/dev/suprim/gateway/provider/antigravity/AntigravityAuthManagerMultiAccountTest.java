@@ -23,7 +23,7 @@ class AntigravityAuthManagerMultiAccountTest {
 	@BeforeEach
 	void setUp() {
 		CredentialStore store = new CredentialStore(tempDir.resolve("creds.json"));
-		authManager = new AntigravityAuthManager(store);
+		authManager = new AntigravityAuthManager(store, null);
 	}
 
 	@Test
