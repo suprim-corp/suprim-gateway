@@ -75,6 +75,7 @@ public class CodexFacade {
 			payloadNode.remove("messages");
 		}
 		payloadNode.remove("stream_options");
+		mapSamplingToReasoning(payloadNode);
 		String payload = MAPPER.writeValueAsString(payloadNode);
 
 		for (int attempt = 0; attempt < maxAttempts; attempt++) {
@@ -378,5 +379,55 @@ public class CodexFacade {
 				               .clientIp(clientIp)
 				               .build()
 		);
+	}
+
+	/**
+	 * GPT-5 series doesn't support sampling params (temperature, top_p, etc).
+	 * Maps temperature → reasoning.effort, max_tokens → max_output_tokens,
+	 * then strips unsupported fields.
+	 *
+	 * temperature → reasoning.effort mapping:
+	 *   [0.0, 0.3] → "high"
+	 *   (0.3, 0.7] → "medium"
+	 *   (0.7, 1.0] → "low"
+	 *   (1.0, 2.0] → "minimal"
+	 *
+	 * @see <a href="https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_new_params_and_tools">GPT-5 New Params and Tools</a>
+	 * @see <a href="https://developers.openai.com/api/docs/guides/deployment-checklist">API Deployment Checklist — reasoning.effort values</a>
+	 * @see <a href="https://help.openai.com/en/articles/5072518">Controlling the length of OpenAI model responses</a>
+	 */
+	private static void mapSamplingToReasoning(ObjectNode node) {
+		if (!node.has("reasoning") && node.has("temperature")) {
+			double temp = node.get("temperature").asDouble(1.0);
+			String effort;
+			if (temp <= 0.3) {
+				effort = "high";
+			} else if (temp <= 0.7) {
+				effort = "medium";
+			} else if (temp <= 1.0) {
+				effort = "low";
+			} else {
+				effort = "minimal";
+			}
+			ObjectNode reasoning = node.putObject("reasoning");
+			reasoning.put("effort", effort);
+		}
+		if (!node.has("max_output_tokens")) {
+			if (node.has("max_tokens")) {
+				node.set("max_output_tokens", node.get("max_tokens"));
+			} else if (node.has("max_completion_tokens")) {
+				node.set("max_output_tokens", node.get("max_completion_tokens"));
+			}
+		}
+		node.remove("temperature");
+		node.remove("top_p");
+		node.remove("frequency_penalty");
+		node.remove("presence_penalty");
+		node.remove("logit_bias");
+		node.remove("logprobs");
+		node.remove("top_logprobs");
+		node.remove("n");
+		node.remove("max_tokens");
+		node.remove("max_completion_tokens");
 	}
 }
