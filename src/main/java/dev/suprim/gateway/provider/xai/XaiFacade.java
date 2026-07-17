@@ -90,33 +90,33 @@ public class XaiFacade {
 
 				if (content != null && content.isArray()) {
 					convertAnthropicImages((ObjectNode) msg, content);
-					content = msg.get("content");
+//					content = msg.get("content");
 				}
 
-				if (content == null || content.isNull()) {
-					log.debug(LogTag.XAI + "msg[{}] role={} content=null", i, role);
-				} else if (content.isArray()) {
-					log.debug(
-							LogTag.XAI + "msg[{}] role={} content=array({})",
-							i,
-							role,
-							content.size()
-					);
-				} else if (content.isString()) {
-					log.debug(
-							LogTag.XAI + "msg[{}] role={} content=text(len={})",
-							i,
-							role,
-							content.asString().length()
-					);
-				} else {
-					log.debug(
-							LogTag.XAI + "msg[{}] role={} content={}",
-							i,
-							role,
-							content.getNodeType()
-					);
-				}
+//				if (content == null || content.isNull()) {
+//					log.debug(LogTag.XAI + "msg[{}] role={} content=null", i, role);
+//				} else if (content.isArray()) {
+//					log.debug(
+//							LogTag.XAI + "msg[{}] role={} content=array({})",
+//							i,
+//							role,
+//							content.size()
+//					);
+//				} else if (content.isString()) {
+//					log.debug(
+//							LogTag.XAI + "msg[{}] role={} content=text(len={})",
+//							i,
+//							role,
+//							content.asString().length()
+//					);
+//				} else {
+//					log.debug(
+//							LogTag.XAI + "msg[{}] role={} content={}",
+//							i,
+//							role,
+//							content.getNodeType()
+//					);
+//				}
 			}
 		}
 
