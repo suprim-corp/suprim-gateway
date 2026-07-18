@@ -50,7 +50,7 @@ class XaiHttpClient {
 			HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
 			if (response.statusCode() != 200) {
 				log.warn("[xAI] listModels returned {}: {}", response.statusCode(), response.body());
-				return List.of();
+				throw new IOException(parseErrorMessage(response.body()));
 			}
 			ObjectMapper mapper = new ObjectMapper();
 			JsonNode root = mapper.readTree(response.body());
@@ -115,5 +115,20 @@ class XaiHttpClient {
 			}
 		}
 		throw new IOException("All retries exhausted");
+	}
+
+	private static String parseErrorMessage(String body) {
+		try {
+			JsonNode root = new ObjectMapper().readTree(body);
+			JsonNode error = root.get("error");
+			if (error != null && error.isString()) {
+				return error.asString();
+			}
+			JsonNode message = root.get("message");
+			if (message != null && message.isString()) {
+				return message.asString();
+			}
+		} catch (Exception ignored) {}
+		return body.length() > 200 ? body.substring(0, 200) : body;
 	}
 }

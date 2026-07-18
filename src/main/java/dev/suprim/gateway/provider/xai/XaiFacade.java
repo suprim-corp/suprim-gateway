@@ -210,7 +210,7 @@ public class XaiFacade {
 		ErrorResponse.openAi(
 				httpRes,
 				response.status(),
-				"xAI upstream error",
+				body.length() > 200 ? body.substring(0, 200) : body,
 				"upstream_error"
 		);
 	}
