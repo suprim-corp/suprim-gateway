@@ -67,14 +67,18 @@ public class CodexFacade {
 		long startTime = System.currentTimeMillis();
 		int maxAttempts = accounts.size();
 
-		ObjectNode payloadNode = MAPPER.valueToTree(request);
-		payloadNode.put("store", false);
-		payloadNode.put("stream", true);
-		if (payloadNode.has("messages") && !payloadNode.has("input")) {
-			payloadNode.set("input", payloadNode.get("messages"));
-			payloadNode.remove("messages");
+		ObjectNode payloadNode = CodexRequestConverter.toPayload(
+				model,
+				request.messages(),
+				request.tools(),
+				true
+		);
+		if (request.temperature() != null) {
+			payloadNode.put("temperature", request.temperature());
 		}
-		payloadNode.remove("stream_options");
+		if (request.maxTokens() != null) {
+			payloadNode.put("max_tokens", request.maxTokens());
+		}
 		mapSamplingToReasoning(payloadNode);
 		String payload = MAPPER.writeValueAsString(payloadNode);
 
