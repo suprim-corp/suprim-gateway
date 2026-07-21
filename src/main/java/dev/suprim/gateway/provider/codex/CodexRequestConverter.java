@@ -31,7 +31,12 @@ final class CodexRequestConverter {
 		root.put("model", model);
 		root.put("store", false);
 		root.put("stream", stream);
-		root.set("input", toInput(messages));
+
+		StringBuilder instructions = new StringBuilder();
+		root.set("input", toInput(messages, instructions));
+		if (!instructions.isEmpty()) {
+			root.put("instructions", instructions.toString());
+		}
 		if (tools != null && !tools.isEmpty()) {
 			root.set("tools", toTools(tools));
 		}
@@ -39,6 +44,13 @@ final class CodexRequestConverter {
 	}
 
 	static ArrayNode toInput(List<Message> messages) {
+		return toInput(messages, new StringBuilder());
+	}
+
+	static ArrayNode toInput(
+			List<Message> messages,
+			StringBuilder instructions
+	) {
 		ArrayNode input = MAPPER.createArrayNode();
 		if (messages == null) {
 			return input;
@@ -46,6 +58,18 @@ final class CodexRequestConverter {
 
 		for (Message msg : messages) {
 			if (msg == null || msg.role() == null) {
+				continue;
+			}
+
+			// Codex rejects system/developer in input — lift to top-level instructions
+			if ("system".equals(msg.role()) || "developer".equals(msg.role())) {
+				String text = contentAsString(msg.content());
+				if (!text.isEmpty()) {
+					if (!instructions.isEmpty()) {
+						instructions.append("\n\n");
+					}
+					instructions.append(text);
+				}
 				continue;
 			}
 
@@ -83,7 +107,6 @@ final class CodexRequestConverter {
 							        .map(Message.Function::name)
 							        .orElse("")
 					);
-
 					fc.put(
 							"arguments",
 							Optional.ofNullable(fn)

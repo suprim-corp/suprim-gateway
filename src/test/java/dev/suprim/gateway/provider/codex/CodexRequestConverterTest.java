@@ -101,4 +101,23 @@ class CodexRequestConverterTest {
 		assertFalse(payload.has("messages"));
 		assertFalse(payload.has("thinking"));
 	}
+
+	@Test
+	void systemMessagesLiftToInstructions() {
+		ObjectNode payload = CodexRequestConverter.toPayload(
+				"gpt-5.6-terra",
+				List.of(
+						Message.of("system", "be brief"),
+						Message.of("developer", "json only"),
+						Message.of("user", "hi")
+				),
+				List.of(),
+				true
+		);
+		assertEquals("be brief\n\njson only", payload.get("instructions").asString());
+		ArrayNode input = (ArrayNode) payload.get("input");
+		assertEquals(1, input.size());
+		assertEquals("user", input.get(0).get("role").asString());
+		assertFalse(input.get(0).get("role").asString().equals("system"));
+	}
 }
