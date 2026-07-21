@@ -11,6 +11,7 @@ import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.ProxyChain;
 import dev.suprim.gateway.proxy.StreamConverter;
+import dev.suprim.gateway.proxy.StreamingEventWriter;
 import dev.suprim.gateway.proxy.kiro.KiroEvent;
 import dev.suprim.gateway.utils.ErrorResponse;
 
@@ -130,10 +131,11 @@ public class CodexFacade {
 				return;
 			}
 
-			// Codex upstream returns Responses API SSE — pass-through directly
+			// Codex upstream returns Responses API SSE
 			relayUpstream(
 					response, account.name(), model, inputTokens,
-					keyId, clientIp, startTime, format, httpRes
+					keyId, clientIp, startTime, format,
+					request.thinkingEnabled(), httpRes
 			);
 			return;
 		}
@@ -202,6 +204,7 @@ public class CodexFacade {
 			String clientIp,
 			long startTime,
 			Format format,
+			boolean requestThinkingEnabled,
 			HttpServletResponse httpRes
 	) throws Exception {
 		if (format == Format.RESPONSES) {
@@ -225,26 +228,16 @@ public class CodexFacade {
 		httpRes.setHeader("Cache-Control", "no-cache");
 		PrintWriter writer = httpRes.getWriter();
 
-		boolean anthropic = format == Format.ANTHROPIC;
-		String chunkId = "chatcmpl-" + java.util.UUID.randomUUID();
-		String msgId = anthropic
-				? "msg_" + java.util.UUID.randomUUID().toString().replace(
-				"-",
-				""
-		).substring(0, 20)
-				: null;
-
+		boolean thinkingEnabled =
+				format != Format.ANTHROPIC || requestThinkingEnabled;
 		StreamConverter converter = new StreamConverter();
-		if (anthropic) {
-			writer.write(
-					converter.toAnthropicPreamble(
-							msgId,
-							model,
-							inputTokens
-					)
-			);
-			writer.flush();
-		}
+		StreamingEventWriter eventWriter = new StreamingEventWriter(
+				writer,
+				converter,
+				format,
+				model,
+				thinkingEnabled
+		);
 
 		Long firstTokenMs = null;
 		int outputTokens = 0;
@@ -253,55 +246,34 @@ public class CodexFacade {
 				response.body()))) {
 			String line;
 			while ((line = reader.readLine()) != null) {
-				if (!line.startsWith("data: ")) continue;
+				if (!line.startsWith("data: ")) {
+					continue;
+				}
 				String data = line.substring(6).trim();
-				if (data.isEmpty() || "[DONE]".equals(data)) continue;
+				if (data.isEmpty() || "[DONE]".equals(data)) {
+					continue;
+				}
 
 				JsonNode node = MAPPER.readTree(data);
-				String type = node.has("type") ? node.get("type")
-				                                     .asString() : "";
-
-				if ("response.output_text.delta".equals(type)) {
-					String delta = node.has("delta") ? node.get("delta")
-					                                       .asString() : null;
-					if (delta != null && !delta.isEmpty()) {
-						if (firstTokenMs == null) {
-							firstTokenMs =
-									System.currentTimeMillis() - startTime;
-						}
-						if (anthropic) {
-							writer.write(converter.toAnthropicDelta(delta));
-						} else {
-							writer.write(
-									converter.toOpenAiChunk(
-											KiroEvent.content(delta),
-											model, chunkId
-									)
-							);
-						}
-						writer.flush();
+				Optional<KiroEvent> event = CodexSseMapper.toEvent(node);
+				if (event.isPresent()) {
+					if (firstTokenMs == null) {
+						firstTokenMs = System.currentTimeMillis() - startTime;
 					}
-				} else if ("response.completed".equals(type)) {
-					JsonNode resp = node.get("response");
-					if (resp != null && resp.has("usage")) {
-						JsonNode usage = resp.get("usage");
-						outputTokens = usage.has("output_tokens")
-								? usage.get("output_tokens").asInt() : 0;
-						if (usage.has("input_tokens")) {
-							inputTokens = usage.get("input_tokens").asInt();
-						}
-					}
+					eventWriter.write(event.get());
+				}
+				Optional<Integer> outTok = CodexSseMapper.usageOutputTokens(node);
+				if (outTok.isPresent()) {
+					outputTokens = outTok.get();
+				}
+				Optional<Integer> inTok = CodexSseMapper.usageInputTokens(node);
+				if (inTok.isPresent()) {
+					inputTokens = inTok.get();
 				}
 			}
 		}
 
-		if (anthropic) {
-			writer.write(converter.toAnthropicFinale(outputTokens, false));
-		} else {
-			writer.write(converter.toOpenAiStopChunk(model, chunkId));
-			writer.write(converter.toOpenAiDone());
-		}
-		writer.flush();
+		eventWriter.finish();
 
 		int latency = (int) (System.currentTimeMillis() - startTime);
 		logPublisher.publish(
