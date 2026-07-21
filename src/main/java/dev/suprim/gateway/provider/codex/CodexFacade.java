@@ -429,5 +429,6 @@ public class CodexFacade {
 		node.remove("n");
 		node.remove("max_tokens");
 		node.remove("max_completion_tokens");
+		node.remove("thinking"); // Anthropic-only; Codex uses reasoning.effort
 	}
 }
