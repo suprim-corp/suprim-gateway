@@ -141,6 +141,12 @@ public class CodexHttpClient {
 				}
 
 				if (status == 429 || status >= 500) {
+					if (attempt == MAX_RETRIES - 1) {
+						return CodexResponse.builder()
+						                    .status(status)
+						                    .body(response.body())
+						                    .build();
+					}
 					long delay = BASE_RETRY_DELAY * (1L << attempt);
 					log.warn(
 							"[Codex] {} from upstream, waiting {}ms (attempt {}/{})",
@@ -149,6 +155,9 @@ public class CodexHttpClient {
 							attempt + 1,
 							MAX_RETRIES
 					);
+					try (InputStream ignored = response.body()) {
+						ignored.readAllBytes();
+					}
 					Thread.sleep(delay);
 					continue;
 				}

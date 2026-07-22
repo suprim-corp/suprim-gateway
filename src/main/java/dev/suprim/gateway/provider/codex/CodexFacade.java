@@ -23,10 +23,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.util.List;
 import java.util.Optional;
 
@@ -102,11 +99,19 @@ public class CodexFacade {
 					account.name(), attempt + 1, maxAttempts
 			);
 
-			CodexHttpClient.CodexResponse response = CodexHttpClient.call(
-					payload,
-					accessToken,
-					proxyChain
-			);
+			CodexHttpClient.CodexResponse response;
+			try {
+				response = CodexHttpClient.call(payload, accessToken, proxyChain);
+			} catch (IOException e) {
+				log.warn(LogTag.CODEX + "Upstream request failed: {}", e.getMessage());
+				ErrorResponse.openAi(
+						httpRes,
+						502,
+						"Codex upstream unavailable",
+						"upstream_unavailable"
+				);
+				return;
+			}
 			log.info(
 					LogTag.CODEX + "Upstream responded with status {}",
 					response.status()
