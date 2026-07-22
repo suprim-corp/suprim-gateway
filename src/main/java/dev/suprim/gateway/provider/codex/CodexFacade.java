@@ -101,9 +101,16 @@ public class CodexFacade {
 
 			CodexHttpClient.CodexResponse response;
 			try {
-				response = CodexHttpClient.call(payload, accessToken, proxyChain);
+				response = CodexHttpClient.call(
+						payload,
+						accessToken,
+						proxyChain
+				);
 			} catch (IOException e) {
-				log.warn(LogTag.CODEX + "Upstream request failed: {}", e.getMessage());
+				log.warn(
+						LogTag.CODEX + "Upstream request failed: {}",
+						e.getMessage()
+				);
 				ErrorResponse.openAi(
 						httpRes,
 						502,
@@ -228,38 +235,45 @@ public class CodexFacade {
 		}
 
 		// COMPLETION or ANTHROPIC — parse Responses API SSE and convert
-		httpRes.setCharacterEncoding("UTF-8");
-		httpRes.setContentType("text/event-stream; charset=utf-8");
-		httpRes.setHeader("Cache-Control", "no-cache");
-		PrintWriter writer = httpRes.getWriter();
+		try (
+				BufferedReader reader =
+						new BufferedReader(new InputStreamReader(response.body()))
+		) {
+			String firstData = readFirstData(reader);
+			if (firstData == null) {
+				handleEmptyStream(
+						accountName,
+						model,
+						inputTokens,
+						keyId,
+						clientIp,
+						startTime,
+						httpRes
+				);
+				return;
+			}
 
-		boolean thinkingEnabled =
-				format != Format.ANTHROPIC || requestThinkingEnabled;
-		StreamConverter converter = new StreamConverter();
-		StreamingEventWriter eventWriter = new StreamingEventWriter(
-				writer,
-				converter,
-				format,
-				model,
-				thinkingEnabled,
-				inputTokens
-		);
+			httpRes.setCharacterEncoding("UTF-8");
+			httpRes.setContentType("text/event-stream; charset=utf-8");
+			httpRes.setHeader("Cache-Control", "no-cache");
+			PrintWriter writer = httpRes.getWriter();
 
-		Long firstTokenMs = null;
-		int outputTokens = 0;
+			boolean thinkingEnabled =
+					format != Format.ANTHROPIC || requestThinkingEnabled;
+			StreamConverter converter = new StreamConverter();
+			StreamingEventWriter eventWriter = new StreamingEventWriter(
+					writer,
+					converter,
+					format,
+					model,
+					thinkingEnabled,
+					inputTokens
+			);
 
-		try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-				response.body()))) {
-			String line;
-			while ((line = reader.readLine()) != null) {
-				if (!line.startsWith("data: ")) {
-					continue;
-				}
-				String data = line.substring(6).trim();
-				if (data.isEmpty() || "[DONE]".equals(data)) {
-					continue;
-				}
-
+			Long firstTokenMs = null;
+			int outputTokens = 0;
+			String data = firstData;
+			do {
 				JsonNode node = MAPPER.readTree(data);
 				Optional<KiroEvent> event = CodexSseMapper.toEvent(node);
 				if (event.isPresent()) {
@@ -276,31 +290,84 @@ public class CodexFacade {
 				if (inTok.isPresent()) {
 					inputTokens = inTok.get();
 				}
+			} while ((data = readFirstData(reader)) != null);
+
+			eventWriter.finish(outputTokens);
+
+			int latency = (int) (System.currentTimeMillis() - startTime);
+			logPublisher.publish(
+					RequestLogEvent.builder()
+					               .virtualKeyId(keyId)
+					               .accountId(accountName)
+					               .model(model)
+					               .requestedModel(model)
+					               .status(200)
+					               .promptTokens(inputTokens)
+					               .completionTokens(outputTokens)
+					               .latencyMs(latency)
+					               .firstTokenMs(
+							               Optional.ofNullable(firstTokenMs)
+							                       .map(Long::intValue)
+							                       .orElse(null)
+					               )
+					               .streaming(true)
+					               .clientIp(clientIp)
+					               .build()
+			);
+		}
+	}
+
+	private String readFirstData(BufferedReader reader) throws IOException {
+		String line;
+		while ((line = reader.readLine()) != null) {
+			if (!line.startsWith("data: ")) {
+				continue;
+			}
+			String data = line.substring(6).trim();
+			if (!data.isEmpty() && !"[DONE]".equals(data)) {
+				return data;
 			}
 		}
+		return null;
+	}
 
-		eventWriter.finish(outputTokens);
+	private String readFirstSseLine(BufferedReader reader) throws IOException {
+		String line;
+		while ((line = reader.readLine()) != null) {
+			if (line.startsWith("event:") || line.startsWith("data:")) {
+				return line;
+			}
+		}
+		return null;
+	}
 
+	private void handleEmptyStream(
+			String accountName,
+			String model,
+			int inputTokens,
+			String keyId,
+			String clientIp,
+			long startTime,
+			HttpServletResponse httpRes
+	) throws IOException {
 		int latency = (int) (System.currentTimeMillis() - startTime);
+		String message = "Codex upstream returned an empty SSE stream";
+		log.error(LogTag.CODEX + message);
 		logPublisher.publish(
 				RequestLogEvent.builder()
 				               .virtualKeyId(keyId)
 				               .accountId(accountName)
 				               .model(model)
 				               .requestedModel(model)
-				               .status(200)
+				               .status(502)
 				               .promptTokens(inputTokens)
-				               .completionTokens(outputTokens)
 				               .latencyMs(latency)
-				               .firstTokenMs(
-						               Optional.ofNullable(firstTokenMs)
-						                       .map(Long::intValue)
-						                       .orElse(null)
-				               )
 				               .streaming(true)
 				               .clientIp(clientIp)
+				               .errorMessage(message)
 				               .build()
 		);
+		ErrorResponse.openAi(httpRes, 502, message, "upstream_empty_response");
 	}
 
 	private void passThrough(
@@ -313,66 +380,68 @@ public class CodexFacade {
 			long startTime,
 			HttpServletResponse httpRes
 	) throws Exception {
-		httpRes.setCharacterEncoding("UTF-8");
-		httpRes.setContentType("text/event-stream; charset=utf-8");
-		httpRes.setHeader("Cache-Control", "no-cache");
-		PrintWriter writer = httpRes.getWriter();
+		try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+				response.body()))) {
+			String firstLine = readFirstSseLine(reader);
+			if (firstLine == null) {
+				handleEmptyStream(
+						accountName,
+						model,
+						inputTokens,
+						keyId,
+						clientIp,
+						startTime,
+						httpRes
+				);
+				return;
+			}
 
-		Long firstTokenMs = null;
-		try (
-				BufferedReader reader =
-						new BufferedReader(
-								new InputStreamReader(
-										response.body()
-								)
-						)
-		) {
+			httpRes.setCharacterEncoding("UTF-8");
+			httpRes.setContentType("text/event-stream; charset=utf-8");
+			httpRes.setHeader("Cache-Control", "no-cache");
+			PrintWriter writer = httpRes.getWriter();
+			long firstTokenMs = System.currentTimeMillis() - startTime;
+			writer.write(firstLine);
+			writer.write("\n");
+
 			String line;
 			while ((line = reader.readLine()) != null) {
-				if (firstTokenMs == null &&
-				    (line.startsWith("event:") || line.startsWith("data:"))) {
-					firstTokenMs = System.currentTimeMillis() - startTime;
-				}
 				writer.write(line);
 				writer.write("\n");
 				if (line.isEmpty()) {
 					writer.flush();
 				}
 			}
-		}
-		writer.flush();
+			writer.flush();
 
-		int latency = (int) (System.currentTimeMillis() - startTime);
-		logPublisher.publish(
-				RequestLogEvent.builder()
-				               .virtualKeyId(keyId)
-				               .accountId(accountName)
-				               .model(model)
-				               .requestedModel(model)
-				               .status(200)
-				               .promptTokens(inputTokens)
-				               .latencyMs(latency)
-				               .firstTokenMs(
-						               Optional.ofNullable(firstTokenMs)
-						                       .map(Long::intValue)
-						                       .orElse(null)
-				               )
-				               .streaming(true)
-				               .clientIp(clientIp)
-				               .build()
-		);
+			int latency = (int) (System.currentTimeMillis() - startTime);
+			logPublisher.publish(
+					RequestLogEvent.builder()
+					               .virtualKeyId(keyId)
+					               .accountId(accountName)
+					               .model(model)
+					               .requestedModel(model)
+					               .status(200)
+					               .promptTokens(inputTokens)
+					               .latencyMs(latency)
+					               .firstTokenMs((int) firstTokenMs)
+					               .streaming(true)
+					               .clientIp(clientIp)
+					               .build()
+			);
+		}
 	}
 
 	/**
 	 * GPT-5 series doesn't support sampling params (temperature, top_p, etc).
 	 * Maps temperature → reasoning.effort, max_tokens → max_output_tokens,
 	 * then strips unsupported fields.
-	 *
+	 * <p>
 	 * temperature → reasoning.effort mapping:
-	 *   [0.0, 0.3] → "high"
-	 *   (0.3, 0.7] → "medium"
-	 *   (0.7, 1.0] → "low"
-	 *   (1.0, 2.0] → "minimal"
+	 * [0.0, 0.3] → "high"
+	 * (0.3, 0.7] → "medium"
+	 * (0.7, 1.0] → "low"
+	 * (1.0, 2.0] → "minimal"
 	 *
 	 * @see <a href="https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_new_params_and_tools">GPT-5 New Params and Tools</a>
 	 * @see <a href="https://developers.openai.com/api/docs/guides/deployment-checklist">API Deployment Checklist — reasoning.effort values</a>
@@ -398,7 +467,10 @@ public class CodexFacade {
 			if (node.has("max_tokens")) {
 				node.set("max_output_tokens", node.get("max_tokens"));
 			} else if (node.has("max_completion_tokens")) {
-				node.set("max_output_tokens", node.get("max_completion_tokens"));
+				node.set(
+						"max_output_tokens",
+						node.get("max_completion_tokens")
+				);
 			}
 		}
 		node.remove("temperature");
