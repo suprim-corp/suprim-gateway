@@ -87,6 +87,7 @@ function showModels(index) {
                 empty.classList.remove('hidden')
                 return
             }
+            models.sort((a, b) => (a.id || a).localeCompare(b.id || b))
             models.forEach(m => {
                 const li = document.createElement('li')
                 li.className = 'flex items-center justify-between px-3 py-1.5 text-xs bg-zinc-950 border border-zinc-800 rounded'
