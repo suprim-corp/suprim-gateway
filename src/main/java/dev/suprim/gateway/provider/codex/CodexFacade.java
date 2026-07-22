@@ -236,7 +236,8 @@ public class CodexFacade {
 				converter,
 				format,
 				model,
-				thinkingEnabled
+				thinkingEnabled,
+				inputTokens
 		);
 
 		Long firstTokenMs = null;
@@ -273,7 +274,7 @@ public class CodexFacade {
 			}
 		}
 
-		eventWriter.finish();
+		eventWriter.finish(outputTokens);
 
 		int latency = (int) (System.currentTimeMillis() - startTime);
 		logPublisher.publish(

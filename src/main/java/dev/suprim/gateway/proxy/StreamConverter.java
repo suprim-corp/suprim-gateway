@@ -155,7 +155,7 @@ public class StreamConverter {
 	) throws Exception {
 		return toAnthropicEvent(
 				"message_start",
-				AnthropicSsePayloads.MessageStart.of(id, model)
+				AnthropicSsePayloads.MessageStart.of(id, model, inputTokens)
 		)
 		       + toAnthropicEvent(
 				"content_block_start",

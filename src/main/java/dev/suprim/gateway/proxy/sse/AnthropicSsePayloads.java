@@ -16,10 +16,14 @@ public final class AnthropicSsePayloads {
 			String type,
 			MessageInfo message
 	) {
-		public static MessageStart of(String id, String model) {
+		public static MessageStart of(
+				String id,
+				String model,
+				int inputTokens
+		) {
 			return MessageStart.builder()
 			                   .type("message_start")
-			                   .message(MessageInfo.of(id, model))
+			                   .message(MessageInfo.of(id, model, inputTokens))
 			                   .build();
 		}
 	}
@@ -33,14 +37,23 @@ public final class AnthropicSsePayloads {
 			String model,
 			Usage usage
 	) {
-		public static MessageInfo of(String id, String model) {
+		public static MessageInfo of(
+				String id,
+				String model,
+				int inputTokens
+		) {
 			return MessageInfo.builder()
 			                  .id(id)
 			                  .type("message")
 			                  .role("assistant")
 			                  .content(List.of())
 			                  .model(model)
-			                  .usage(Usage.zero())
+			                  .usage(
+					                  Usage.builder()
+					                       .inputTokens(inputTokens)
+					                       .outputTokens(0)
+					                       .build()
+					  )
 			                  .build();
 		}
 	}
@@ -221,7 +234,10 @@ public final class AnthropicSsePayloads {
 			                   .build();
 		}
 
-		public static MessageDelta withStopReason(String stopReason) {
+		public static MessageDelta withStopReason(
+				String stopReason,
+				int outputTokens
+		) {
 			return MessageDelta.builder()
 			                   .type("message_delta")
 			                   .delta(
@@ -229,7 +245,7 @@ public final class AnthropicSsePayloads {
 					                            .stopReason(stopReason)
 					                            .build()
 			                   )
-			                   .usage(Usage.of(0))
+			                   .usage(Usage.of(outputTokens))
 			                   .build();
 		}
 	}

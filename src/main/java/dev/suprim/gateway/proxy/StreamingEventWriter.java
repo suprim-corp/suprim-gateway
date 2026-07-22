@@ -21,6 +21,7 @@ public class StreamingEventWriter {
 	private final String model;
 	private final String id;
 	private final boolean thinkingEnabled;
+	private final int inputTokens;
 
 	private boolean messagePreambleSent = false;
 	private boolean thinkingBlockOpen = false;
@@ -46,12 +47,24 @@ public class StreamingEventWriter {
 			String model,
 			boolean thinkingEnabled
 	) {
+		this(writer, converter, format, model, thinkingEnabled, 0);
+	}
+
+	public StreamingEventWriter(
+			PrintWriter writer,
+			StreamConverter converter,
+			Format format,
+			String model,
+			boolean thinkingEnabled,
+			int inputTokens
+	) {
 		this.writer = writer;
 		this.converter = converter;
 		this.format = format;
 		this.model = model;
 		this.id = "chatcmpl-" + UUID.randomUUID();
 		this.thinkingEnabled = thinkingEnabled;
+		this.inputTokens = inputTokens;
 	}
 
 	public boolean hasContent() {
@@ -94,8 +107,12 @@ public class StreamingEventWriter {
 	}
 
 	public void finish() throws Exception {
+		finish(0);
+	}
+
+	public void finish(int outputTokens) throws Exception {
 		switch (format) {
-			case ANTHROPIC -> finishAnthropic();
+			case ANTHROPIC -> finishAnthropic(outputTokens);
 			case RESPONSES -> finishResponses();
 			default -> finishCompletion();
 		}
@@ -108,7 +125,7 @@ public class StreamingEventWriter {
 			writer.write(
 					converter.toAnthropicEvent(
 							"message_start",
-							AnthropicSsePayloads.MessageStart.of(id, model)
+							AnthropicSsePayloads.MessageStart.of(id, model, inputTokens)
 					)
 			);
 		}
@@ -261,7 +278,7 @@ public class StreamingEventWriter {
 		}
 	}
 
-	private void finishAnthropic() throws Exception {
+	private void finishAnthropic(int outputTokens) throws Exception {
 		if (textBlockOpen) {
 			writer.write(
 					converter.toAnthropicEvent(
@@ -281,7 +298,10 @@ public class StreamingEventWriter {
 		writer.write(
 				converter.toAnthropicEvent(
 						"message_delta",
-						AnthropicSsePayloads.MessageDelta.withStopReason(stopReason)
+						AnthropicSsePayloads.MessageDelta.withStopReason(
+								stopReason,
+								outputTokens
+						)
 				)
 		);
 		writer.write(
