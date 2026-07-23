@@ -42,6 +42,15 @@ public class ModelResolver {
 	}
 
 	public String resolve(String requestedModel) {
+		String normalized = canonicalize(requestedModel);
+		if (cachedModels.contains(normalized)) return normalized;
+		if (HIDDEN_MODELS.containsKey(normalized)) return normalized;
+
+		// passthrough — let Kiro decide
+		return normalized;
+	}
+
+	public String canonicalize(String requestedModel) {
 		if (requestedModel == null || requestedModel.isBlank()) {
 			throw new IllegalArgumentException("Model is required");
 		}
@@ -50,15 +59,7 @@ public class ModelResolver {
 		if (aliased != null) return aliased;
 
 		String normalized = normalize(requestedModel);
-
-		String aliased2 = ALIASES.get(normalized);
-		if (aliased2 != null) return aliased2;
-
-		if (cachedModels.contains(normalized)) return normalized;
-		if (HIDDEN_MODELS.containsKey(normalized)) return normalized;
-
-		// passthrough — let Kiro decide
-		return normalized;
+		return ALIASES.getOrDefault(normalized, normalized);
 	}
 
 	public Set<String> getAvailableModels() {

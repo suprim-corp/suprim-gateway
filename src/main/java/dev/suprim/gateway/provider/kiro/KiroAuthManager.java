@@ -300,7 +300,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 			"claude-3.7-sonnet"
 	);
 
-	@Cacheable("kiroModels")
+	@Cacheable(value = "kiroModels", key = "T(dev.suprim.gateway.provider.kiro.KiroAccountModelAvailability).accountKey(#account)")
 	public List<Map<String, Object>> listModels(StoredAccount account) throws Exception {
 
 		boolean isApiKey = "api_key".equals(account.authType());

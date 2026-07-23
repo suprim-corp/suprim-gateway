@@ -27,21 +27,11 @@ public class AccountRotator {
 	void logAccounts() {
 		Map<String, List<StoredAccount>> byProvider =
 				credentialStore.load()
-				               .stream()
-				               .filter(acc ->
-						               acc.provider() !=
-						               null
-				               )
-				               .collect(
-						               Collectors.groupingBy(
-								               StoredAccount::provider
-						               )
-				               );
+			               .stream()
+			               .filter(acc -> acc.provider() != null)
+			               .collect(Collectors.groupingBy(StoredAccount::provider));
 		for (Provider provider : Provider.values()) {
-			List<StoredAccount> accounts = byProvider.getOrDefault(
-					provider.name(),
-					List.of()
-			);
+			List<StoredAccount> accounts = byProvider.getOrDefault(provider.name(), List.of());
 			if (accounts.isEmpty()) {
 				continue;
 			}
@@ -53,28 +43,21 @@ public class AccountRotator {
 				case DEEPSEEK -> LogTag.DEEPSEEK;
 			};
 			String names = accounts.stream()
-			                       .map(acc -> "\033[36m" + Optional.ofNullable(acc.name())
-			                                           .orElse("unnamed") + "\033[0m"
-			                       )
+			                       .map(acc -> "\033[36m" + Optional.ofNullable(acc.name()).orElse("unnamed") + "\033[0m")
 			                       .collect(Collectors.joining(", ", "[", "]"));
 			log.info("{}Loaded {} accounts: {}", tag, accounts.size(), names);
 		}
 	}
 
 	public StoredAccount next(String provider) {
-		List<StoredAccount> accounts = credentialStore.findAllByProvider(
-				provider
-		);
+		return next(provider, credentialStore.findAllByProvider(provider));
+	}
+
+	public StoredAccount next(String provider, List<StoredAccount> accounts) {
 		if (accounts.isEmpty()) {
-			throw new IllegalStateException(
-					"No accounts for provider: " + provider
-			);
+			throw new IllegalStateException("No accounts for provider: " + provider);
 		}
-		int index = counters.computeIfAbsent(
-				                    provider,
-				                    k -> new AtomicInteger(0)
-		                    )
-		                    .getAndIncrement();
+		int index = counters.computeIfAbsent(provider, key -> new AtomicInteger(0)).getAndIncrement();
 		return accounts.get(Math.floorMod(index, accounts.size()));
 	}
 }

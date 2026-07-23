@@ -2,10 +2,12 @@ package dev.suprim.gateway.proxy.kiro;
 
 import dev.suprim.gateway.instants.Kiro;
 import dev.suprim.gateway.logging.LogTag;
+import dev.suprim.gateway.model.ModelResolver;
 import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
+import dev.suprim.gateway.provider.kiro.KiroAccountModelAvailability;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.provider.kiro.payload.PayloadBuilder;
 import dev.suprim.gateway.proxy.InternalRequest;
@@ -49,6 +51,8 @@ public class KiroUpstreamDispatcher {
 	private final KiroAuthManager auth;
 	private final AccountRotator accountRotator;
 	private final CredentialStore credentialStore;
+	private final KiroAccountModelAvailability modelAvailability;
+	private final ModelResolver modelResolver;
 	private final ConcurrentHashMap<String, Integer> preferredEndpoint = new ConcurrentHashMap<>();
 
 	public KiroResponse dispatch(
@@ -58,15 +62,32 @@ public class KiroUpstreamDispatcher {
 		List<StoredAccount> accounts = credentialStore.findAllByProvider(
 				Provider.KIRO.name()
 		);
-		if (accounts.size() <= 1) {
-			return dispatchSingle(request, stream);
+		String model = modelResolver.canonicalize(request.model());
+		List<StoredAccount> eligibleAccounts = modelAvailability.eligibleAccounts(
+				model,
+				accounts
+		);
+		if (eligibleAccounts.isEmpty()) {
+			if (modelAvailability.isWarmUpComplete(accounts)) {
+				return KiroResponse.builder()
+				                   .status(400)
+				                   .body(new ByteArrayInputStream(
+								                   "{\"message\":\"Invalid model. Please select a different model to continue.\",\"reason\":\"INVALID_MODEL_ID\"}"
+										                   .getBytes(StandardCharsets.UTF_8)
+						                   )
+				                   )
+				                   .contentType("application/json")
+				                   .build();
+			}
+			throw new RuntimeException("Kiro model availability is warming up");
 		}
-		return dispatchWithRotation(request, stream, accounts);
+		return dispatchWithRotation(request, stream, model, eligibleAccounts);
 	}
 
 	private KiroResponse dispatchWithRotation(
 			InternalRequest request,
 			boolean stream,
+			String model,
 			List<StoredAccount> accounts
 	) throws Exception {
 		String payload = payloadBuilder.buildOpenAiPayload(request, auth);
@@ -74,7 +95,10 @@ public class KiroUpstreamDispatcher {
 		KiroResponse invalidModelResponse = null;
 
 		for (int attempt = 0; attempt < maxAttempts; attempt++) {
-			StoredAccount account = accountRotator.next(Provider.KIRO.name());
+			StoredAccount account = accountRotator.next(
+					Provider.KIRO.name(),
+					accounts
+			);
 			String accessToken;
 			try {
 				accessToken = auth.getAccessToken(account);
@@ -109,15 +133,18 @@ public class KiroUpstreamDispatcher {
 				KiroResponse invalidModel = copyInvalidModelResponse(result);
 				if (invalidModel != null) {
 					invalidModelResponse = invalidModel;
+					modelAvailability.invalidateModel(account, model);
 					log.warn(
-							LogTag.KIRO + "Account {} rejected the model, trying next account",
+							LogTag.KIRO +
+							"Account {} rejected the model, trying next account",
 							account.name()
 					);
 					continue;
 				}
 				if (result.status() == 429 || result.status() == 503) {
 					log.warn(
-							LogTag.KIRO + "Account {} got {}, trying next account",
+							LogTag.KIRO +
+							"Account {} got {}, trying next account",
 							account.name(), result.status()
 					);
 					continue;
@@ -253,7 +280,8 @@ public class KiroUpstreamDispatcher {
 
 		try (InputStream body = response.body()) {
 			byte[] error = body.readAllBytes();
-			if (!new String(error, StandardCharsets.UTF_8).contains("\"reason\":\"INVALID_MODEL_ID\"")) {
+			if (!new String(error, StandardCharsets.UTF_8).contains(
+					"\"reason\":\"INVALID_MODEL_ID\"")) {
 				return null;
 			}
 			return KiroResponse.builder()

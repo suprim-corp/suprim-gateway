@@ -4,6 +4,8 @@ import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
+import dev.suprim.gateway.model.ModelResolver;
+import dev.suprim.gateway.provider.kiro.KiroAccountModelAvailability;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.provider.kiro.payload.PayloadBuilder;
 import dev.suprim.gateway.proxy.InternalRequest;
@@ -24,6 +26,8 @@ class KiroUpstreamDispatcherTest {
 	private AccountRotator rotator;
 	private CredentialStore store;
 	private KiroAuthManager authManager;
+	private KiroAccountModelAvailability modelAvailability;
+	private ModelResolver modelResolver;
 	private PayloadBuilder payloadBuilder;
 
 	@BeforeEach
@@ -32,10 +36,16 @@ class KiroUpstreamDispatcherTest {
 		rotator = mock(AccountRotator.class);
 		store = mock(CredentialStore.class);
 		authManager = mock(KiroAuthManager.class);
+		modelAvailability = mock(KiroAccountModelAvailability.class);
+		modelResolver = new ModelResolver();
 		payloadBuilder = mock(PayloadBuilder.class);
 
-		dispatcher = new KiroUpstreamDispatcher(kiroClient, payloadBuilder, authManager, rotator, store);
+		dispatcher = new KiroUpstreamDispatcher(
+				kiroClient, payloadBuilder, authManager, rotator, store, modelAvailability, modelResolver
+		);
 
+		when(modelAvailability.eligibleAccounts(anyString(), anyList())).thenAnswer(invocation -> invocation.getArgument(1));
+		when(modelAvailability.isWarmUpComplete(anyList())).thenReturn(true);
 		when(payloadBuilder.buildOpenAiPayload(any(), any())).thenReturn("{\"test\":true}");
 	}
 
@@ -46,17 +56,36 @@ class KiroUpstreamDispatcherTest {
 		                                  .authType("API_KEY").accessToken("api-key-1")
 		                                  .build();
 		when(store.findAllByProvider("KIRO")).thenReturn(List.of(acc));
-		when(authManager.getAccessToken()).thenReturn("api-key-1");
+		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc);
+		when(authManager.getAccessToken(acc)).thenReturn("api-key-1");
 
 		KiroResponse expected = new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()), "text/event-stream");
-		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), any()))
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), any(), anyBoolean()))
 				.thenReturn(expected);
 
 		InternalRequest request = InternalRequest.builder().model("claude-sonnet-4-20250514").messages(List.of()).build();
 		KiroResponse result = dispatcher.dispatch(request, true);
 
 		assertEquals(200, result.status());
-		verify(rotator, never()).next(anyString());
+		verify(rotator).next(eq("KIRO"), anyList());
+	}
+
+	@Test
+	void dispatch_withoutCachedModel_doesNotCallUpstream() throws Exception {
+		StoredAccount acc = StoredAccount.builder()
+		                                  .name("solo").provider("KIRO")
+		                                  .authType("API_KEY").accessToken("api-key-1")
+		                                  .build();
+		when(store.findAllByProvider("KIRO")).thenReturn(List.of(acc));
+		when(modelAvailability.eligibleAccounts(anyString(), anyList())).thenReturn(List.of());
+		when(modelAvailability.isWarmUpComplete(anyList())).thenReturn(false);
+
+		InternalRequest request = InternalRequest.builder().model("claude-sonnet-5").messages(List.of()).build();
+
+		RuntimeException error = assertThrows(RuntimeException.class, () -> dispatcher.dispatch(request, true));
+
+		assertEquals("Kiro model availability is warming up", error.getMessage());
+		verifyNoInteractions(kiroClient, payloadBuilder, authManager, rotator);
 	}
 
 	@Test
@@ -71,7 +100,7 @@ class KiroUpstreamDispatcherTest {
 		                                   .build();
 
 		when(store.findAllByProvider("KIRO")).thenReturn(List.of(acc1, acc2));
-		when(rotator.next("KIRO")).thenReturn(acc1, acc2);
+		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc1, acc2);
 		when(authManager.getAccessToken(acc1)).thenReturn("api-key-1");
 		when(authManager.getAccessToken(acc2)).thenReturn("api-key-2");
 
@@ -84,7 +113,7 @@ class KiroUpstreamDispatcherTest {
 		KiroResponse result = dispatcher.dispatch(request, true);
 
 		assertEquals(200, result.status());
-		verify(rotator, times(2)).next("KIRO");
+		verify(rotator, times(2)).next(eq("KIRO"), anyList());
 	}
 
 	@Test
@@ -99,7 +128,7 @@ class KiroUpstreamDispatcherTest {
 		                                   .build();
 
 		when(store.findAllByProvider("KIRO")).thenReturn(List.of(acc1, acc2));
-		when(rotator.next("KIRO")).thenReturn(acc1, acc2);
+		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc1, acc2);
 		when(authManager.getAccessToken(acc1)).thenReturn("api-key-1");
 		when(authManager.getAccessToken(acc2)).thenReturn("api-key-2");
 		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), any(), anyBoolean()))
@@ -115,7 +144,7 @@ class KiroUpstreamDispatcherTest {
 		KiroResponse result = dispatcher.dispatch(request, true);
 
 		assertEquals(200, result.status());
-		verify(rotator, times(2)).next("KIRO");
+		verify(rotator, times(2)).next(eq("KIRO"), anyList());
 	}
 
 	@Test
@@ -131,7 +160,7 @@ class KiroUpstreamDispatcherTest {
 		String error = "{\"reason\":\"INVALID_MODEL_ID\"}";
 
 		when(store.findAllByProvider("KIRO")).thenReturn(List.of(acc1, acc2));
-		when(rotator.next("KIRO")).thenReturn(acc1, acc2);
+		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc1, acc2);
 		when(authManager.getAccessToken(acc1)).thenReturn("api-key-1");
 		when(authManager.getAccessToken(acc2)).thenReturn("api-key-2");
 		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), any(), anyBoolean()))
@@ -144,7 +173,7 @@ class KiroUpstreamDispatcherTest {
 
 		assertEquals(400, result.status());
 		assertEquals(error, new String(result.body().readAllBytes()));
-		verify(rotator, times(2)).next("KIRO");
+		verify(rotator, times(2)).next(eq("KIRO"), anyList());
 	}
 
 	@Test

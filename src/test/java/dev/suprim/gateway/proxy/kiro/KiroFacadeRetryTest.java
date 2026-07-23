@@ -1,10 +1,12 @@
 package dev.suprim.gateway.proxy.kiro;
 
 import dev.suprim.gateway.logging.RequestLogPublisher;
+import dev.suprim.gateway.model.ModelResolver;
 import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
+import dev.suprim.gateway.provider.kiro.KiroAccountModelAvailability;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.provider.kiro.payload.PayloadBuilder;
 import dev.suprim.gateway.proxy.Format;
@@ -40,6 +42,8 @@ class KiroFacadeRetryTest {
 		rotator = mock(AccountRotator.class);
 		kiroClient = mock(KiroHttpClient.class);
 		PayloadBuilder payloadBuilder = mock(PayloadBuilder.class);
+		KiroAccountModelAvailability modelAvailability = mock(KiroAccountModelAvailability.class);
+		ModelResolver modelResolver = new ModelResolver();
 		StreamConverter streamConverter = new StreamConverter();
 		StreamHandler streamHandler = mock(StreamHandler.class);
 		ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
@@ -51,7 +55,11 @@ class KiroFacadeRetryTest {
 		when(streamHandler.countTokens(anyString())).thenReturn(5);
 		when(payloadBuilder.buildOpenAiPayload(any(), any())).thenReturn("{\"test\":true}");
 
-		upstreamDispatcher = new KiroUpstreamDispatcher(kiroClient, payloadBuilder, authManager, rotator, store);
+		when(modelAvailability.eligibleAccounts(anyString(), anyList())).thenAnswer(invocation -> invocation.getArgument(1));
+		when(modelAvailability.isWarmUpComplete(anyList())).thenReturn(true);
+		upstreamDispatcher = new KiroUpstreamDispatcher(
+				kiroClient, payloadBuilder, authManager, rotator, store, modelAvailability, modelResolver
+		);
 		KiroFormatConverter formatConverter = new KiroFormatConverter(streamConverter);
 
 		facade = new KiroFacade(
@@ -72,7 +80,7 @@ class KiroFacadeRetryTest {
 		                                   .build();
 
 		when(store.findAllByProvider("KIRO")).thenReturn(List.of(acc1, acc2));
-		when(rotator.next("KIRO")).thenReturn(acc1, acc2);
+		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc1, acc2);
 		when(authManager.getAccessToken(acc1)).thenReturn("key1");
 		when(authManager.getAccessToken(acc2)).thenReturn("key2");
 
@@ -99,7 +107,7 @@ class KiroFacadeRetryTest {
 		MockHttpServletResponse httpRes = new MockHttpServletResponse();
 		facade.handle(request, "claude-sonnet-4-20250514", false, 10, "key1", "127.0.0.1", Format.COMPLETION, httpRes);
 
-		verify(rotator, times(2)).next("KIRO");
+		verify(rotator, times(2)).next(eq("KIRO"), anyList());
 	}
 
 	@Test
