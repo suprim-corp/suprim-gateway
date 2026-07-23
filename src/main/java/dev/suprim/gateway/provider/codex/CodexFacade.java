@@ -24,8 +24,10 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.io.*;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -38,6 +40,7 @@ public class CodexFacade {
 	private final AccountRotator accountRotator;
 	private final CredentialStore credentialStore;
 	private final ProxyChain proxyChain;
+	private final CodexAccountCooldown accountCooldown;
 
 	public void handle(
 			InternalRequest request,
@@ -80,8 +83,13 @@ public class CodexFacade {
 		mapSamplingToReasoning(payloadNode);
 		String payload = MAPPER.writeValueAsString(payloadNode);
 
+		Set<String> attemptedAccounts = new HashSet<>();
 		for (int attempt = 0; attempt < maxAttempts; attempt++) {
 			StoredAccount account = accountRotator.next(Provider.CODEX.name());
+			String accountKey = accountCooldown.accountKey(account);
+			if (!attemptedAccounts.add(accountKey) || accountCooldown.isCoolingDown(account)) {
+				continue;
+			}
 			String accessToken;
 			try {
 				accessToken = authManager.getAccessToken(account);
@@ -125,8 +133,9 @@ public class CodexFacade {
 			);
 
 			if (response.status() == 429 || response.status() == 503) {
+				accountCooldown.coolDown(account);
 				log.warn(
-						LogTag.CODEX + "Account {} got {}, trying next",
+						LogTag.CODEX + "Account {} got {}, cooling down for 6h",
 						account.name(), response.status()
 				);
 				try (InputStream is = response.body()) {
