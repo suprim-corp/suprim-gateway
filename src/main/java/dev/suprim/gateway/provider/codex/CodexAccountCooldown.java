@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 class CodexAccountCooldown {
 
-	private static final Duration COOLDOWN = Duration.ofHours(6);
+	private static final Duration COOLDOWN = Duration.ofHours(1);
 
 	private final Clock clock;
 	private final ConcurrentHashMap<String, Instant> cooldowns = new ConcurrentHashMap<>();
