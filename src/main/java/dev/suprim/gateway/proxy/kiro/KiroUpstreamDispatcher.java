@@ -14,7 +14,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -69,6 +71,7 @@ public class KiroUpstreamDispatcher {
 	) throws Exception {
 		String payload = payloadBuilder.buildOpenAiPayload(request, auth);
 		int maxAttempts = accounts.size();
+		KiroResponse invalidModelResponse = null;
 
 		for (int attempt = 0; attempt < maxAttempts; attempt++) {
 			StoredAccount account = accountRotator.next(Provider.KIRO.name());
@@ -103,6 +106,22 @@ public class KiroUpstreamDispatcher {
 			}
 
 			if (result != null) {
+				KiroResponse invalidModel = copyInvalidModelResponse(result);
+				if (invalidModel != null) {
+					invalidModelResponse = invalidModel;
+					log.warn(
+							LogTag.KIRO + "Account {} rejected the model, trying next account",
+							account.name()
+					);
+					continue;
+				}
+				if (result.status() == 429 || result.status() == 503) {
+					log.warn(
+							LogTag.KIRO + "Account {} got {}, trying next account",
+							account.name(), result.status()
+					);
+					continue;
+				}
 				log.info(
 						LogTag.KIRO + "Response served by account: {}",
 						account.name()
@@ -136,6 +155,9 @@ public class KiroUpstreamDispatcher {
 				);
 				return result;
 			}
+		}
+		if (invalidModelResponse != null) {
+			return invalidModelResponse;
 		}
 		throw new RuntimeException("All Kiro accounts exhausted");
 	}
@@ -175,9 +197,7 @@ public class KiroUpstreamDispatcher {
 						"Account {} got {} from {}, trying next account",
 						account.name(), response.status(), ep.name()
 				);
-				try (InputStream is = response.body()) {
-					is.readAllBytes();
-				}
+				drain(response.body());
 				return null;
 			}
 			log.warn(
@@ -218,14 +238,36 @@ public class KiroUpstreamDispatcher {
 						"Account {} got {} from {}, trying next account",
 						account.name(), response.status(), ep.name()
 				);
-				try (InputStream is = response.body()) {
-					is.readAllBytes();
-				}
+				drain(response.body());
 				return null;
 			}
 			return response;
 		}
 		return null;
+	}
+
+	private KiroResponse copyInvalidModelResponse(KiroResponse response) throws Exception {
+		if (response.status() != 400) {
+			return null;
+		}
+
+		try (InputStream body = response.body()) {
+			byte[] error = body.readAllBytes();
+			if (!new String(error, StandardCharsets.UTF_8).contains("\"reason\":\"INVALID_MODEL_ID\"")) {
+				return null;
+			}
+			return KiroResponse.builder()
+			                   .status(response.status())
+			                   .body(new ByteArrayInputStream(error))
+			                   .contentType(response.contentType())
+			                   .build();
+		}
+	}
+
+	private void drain(InputStream body) throws Exception {
+		try (body) {
+			body.readAllBytes();
+		}
 	}
 
 	private KiroResponse dispatchSingle(
