@@ -45,6 +45,9 @@ public class StreamHandler {
 				System.arraycopy(buf, 0, chunk, 0, read);
 				List<KiroEvent> events = parser.feed(chunk);
 				for (KiroEvent event : events) {
+					if (firstTokenMs[0] < 0 && isModelOutput(event)) {
+						firstTokenMs[0] = System.currentTimeMillis() - startTime;
+					}
 					if ("metering".equals(event.type())) {
 						credits[0] += event.credits();
 						continue;
@@ -144,5 +147,11 @@ public class StreamHandler {
 
 	public int countTokens(String text) {
 		return tokenEstimator.countTokens(text);
+	}
+
+	private boolean isModelOutput(KiroEvent event) {
+		return "content".equals(event.type()) ||
+		       "reasoning".equals(event.type()) ||
+		       "tool_use".equals(event.type());
 	}
 }
