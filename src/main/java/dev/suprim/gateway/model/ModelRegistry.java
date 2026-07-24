@@ -129,64 +129,62 @@ public class ModelRegistry {
 				try {
 					switch (provider) {
 						case ANTIGRAVITY -> antigravityAuthManager.listModels(
-								account).forEach(model -> {
-							Object idObj = model.get("id");
-							if (idObj == null) {
-								return;
-							}
-							String modelId = idObj.toString();
-							String id =
-									Provider.ANTIGRAVITY.getPrefix() + modelId;
-							String name = Optional.ofNullable(
-									                      model.get("displayName")
-									                           .toString()
-							                      )
-							                      .orElse(modelId);
-							addModel(
-									result,
-									seen,
-									id,
-									Provider.ANTIGRAVITY.name(),
-									"Antigravity | " + name,
-									now
-							);
-						});
+								                                          account
+						                                          )
+						                                          .forEach(model -> {
+									                                          Object idObj =
+											                                          model.get("id");
+									                                          if (idObj ==
+									                                              null) {
+										                                          return;
+									                                          }
+									                                          String modelId = idObj.toString();
+									                                          addModel(
+											                                          result,
+											                                          seen,
+											                                          Provider.ANTIGRAVITY.getPrefix() +
+											                                          modelId,
+											                                          Provider.ANTIGRAVITY.name(),
+											                                          "Antigravity | " +
+											                                          displayName(
+													                                          model,
+													                                          modelId
+											                                          ),
+											                                          now
+									                                          );
+								                                          }
+						                                          );
 						case XAI -> xaiAuthManager.listModels(account).forEach(
 								model -> {
 									String id = model.get("id").toString();
-									String name = Optional.ofNullable(
-											                      model.get("displayName")
-											                           .toString()
-									                      )
-									                      .orElse(id.startsWith(
-											                      "grok/") ? id.substring(
-											                      5) : id);
+									String fallback = id.startsWith("grok/") ? id.substring(
+											5) : id;
 									addModel(
 											result,
 											seen,
 											id,
 											Provider.XAI.name(),
-											name,
+											displayName(model, fallback),
 											now
 									);
 								});
 						case CODEX ->
 								codexAuthManager.listModels(account).forEach(
 										model -> {
-											String id = model.get("id").toString();
-											String name = Optional.ofNullable(
-													                      model.get("displayName")
-													                           .toString()
-											                      )
-											                      .orElse(id.startsWith(
-													                      Provider.CODEX.getPrefix()) ? id.substring(
-													                      6) : id);
+											String id = model.get("id")
+											                 .toString();
+											String fallback = id.startsWith(
+													Provider.CODEX.getPrefix()) ? id.substring(
+													6) : id;
 											addModel(
 													result,
 													seen,
 													id,
 													Provider.CODEX.name(),
-													name,
+													displayName(
+															model,
+															fallback
+													),
 													now
 											);
 										});
@@ -205,6 +203,15 @@ public class ModelRegistry {
 			}
 		}
 		return result;
+	}
+
+	private static String displayName(
+			Map<String, Object> model,
+			String fallback
+	) {
+		return Optional.ofNullable(model.get("displayName"))
+		               .map(Object::toString)
+		               .orElse(fallback);
 	}
 
 	private void addModel(
@@ -233,9 +240,8 @@ public class ModelRegistry {
 			case KIRO -> kiroModelAvailability.modelsForAccount(account)
 			                                  .stream()
 			                                  .map(id -> ModelInfo.of(
-							                                  Provider.KIRO.getPrefix() +
-							                                  id
-					                                  )
+					                                  Provider.KIRO.getPrefix() +
+					                                  id)
 			                                  )
 			                                  .toList();
 			case ANTIGRAVITY -> antigravityAuthManager.listModels(account)
@@ -253,24 +259,19 @@ public class ModelRegistry {
 				                                          }
 				                                          return ModelInfo.of(
 						                                          Provider.ANTIGRAVITY.getPrefix() +
-						                                          model.get("id")
-				                                          );
+						                                          model.get("id"));
 			                                          })
 			                                          .toList();
 			case XAI -> xaiAuthManager.listModels(account)
 			                          .stream()
-			                          .map(model -> ModelInfo.of(
-							                          model.get("id").toString()
-					                          )
+			                          .map(model -> ModelInfo.of(model.get("id")
+			                                                          .toString())
 			                          )
 			                          .toList();
 			case CODEX -> codexAuthManager.listModels(account)
 			                              .stream()
-			                              .map(
-					                              model -> ModelInfo.of(
-							                              model.get("id")
-							                                   .toString()
-					                              )
+			                              .map(model -> ModelInfo.of(model.get(
+					                              "id").toString())
 			                              )
 			                              .toList();
 			default -> List.of();

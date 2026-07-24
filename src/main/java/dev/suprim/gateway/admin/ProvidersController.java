@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -144,8 +145,12 @@ class ProvidersController {
 			case KIRO -> kiroAuthManager.getUsageLimits(account);
 			case CODEX -> codexAuthManager.getUsageLimits(account);
 			case ANTIGRAVITY -> {
+				Map<String, Object> usage = new LinkedHashMap<>(antigravityAuthManager.getQuota(account));
 				String tier = antigravityAuthManager.getSubscriptionTier(account);
-				yield tier != null ? Map.of("tier", tier) : Map.of();
+				if (tier != null) {
+					usage.put("tier", tier);
+				}
+				yield usage;
 			}
 			default -> Map.of();
 		};

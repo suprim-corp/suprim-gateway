@@ -47,18 +47,10 @@ class AntigravityHttpClient {
 	}
 
 	static List<Map<String, Object>> listModels(String accessToken, String projectId, ProxyChain proxyChain) throws IOException {
-		String body = projectId != null && !projectId.isEmpty()
-				? "{\"project\":\"" + projectId + "\"}"
-				: "{}";
+		String body = buildProjectBody(projectId);
 		HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
 		                                            .uri(URI.create(Antigravity.CLOUDCODE_BASE + "/v1internal:fetchAvailableModels"));
-		Map<String, String> headers = Map.of(
-				"Authorization", "Bearer " + accessToken,
-				"Content-Type", "application/json",
-				"User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/2.0.1 Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36",
-				"X-Goog-Api-Client", "google-cloud-sdk vscode/1.96.0",
-				"Client-Metadata", "{\"ideType\":\"VSCODE\",\"platform\":\"MACOS\",\"pluginType\":\"GEMINI\",\"osVersion\":\"15.1\",\"arch\":\"arm64\"}"
-		);
+		Map<String, String> headers = buildAntigravityHeaders(accessToken);
 		headers.forEach(reqBuilder::header);
 		reqBuilder.POST(HttpRequest.BodyPublishers.ofString(body));
 		try {
@@ -71,6 +63,57 @@ class AntigravityHttpClient {
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			throw new IOException("listModels interrupted", e);
+		}
+	}
+
+	static Map<String, Object> getQuotaSummary(String accessToken, String projectId, ProxyChain proxyChain) throws IOException {
+		HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
+		                                            .uri(URI.create(Antigravity.CLOUDCODE_BASE + "/v1internal:retrieveUserQuotaSummary"));
+		buildAntigravityHeaders(accessToken).forEach(reqBuilder::header);
+		reqBuilder.POST(HttpRequest.BodyPublishers.ofString(buildProjectBody(projectId)));
+		try {
+			HttpResponse<String> response = proxyChain.send(reqBuilder.build());
+			if (response.statusCode() != 200) {
+				log.debug("[Antigravity] retrieveUserQuotaSummary returned {}", response.statusCode());
+				return Map.of();
+			}
+			return parseQuotaSummary(response.body());
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new IOException("retrieveUserQuotaSummary interrupted", e);
+		}
+	}
+
+	static String buildProjectBody(String projectId) {
+		return projectId != null && !projectId.isEmpty()
+				? "{\"project\":\"" + projectId + "\"}"
+				: "{}";
+	}
+
+	private static Map<String, String> buildAntigravityHeaders(String accessToken) {
+		return Map.of(
+				"Authorization", "Bearer " + accessToken,
+				"Content-Type", "application/json",
+				"User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/2.0.1 Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36",
+				"X-Goog-Api-Client", "google-cloud-sdk vscode/1.96.0",
+				"Client-Metadata", "{\"ideType\":\"VSCODE\",\"platform\":\"MACOS\",\"pluginType\":\"GEMINI\",\"osVersion\":\"15.1\",\"arch\":\"arm64\"}"
+		);
+	}
+
+	static Map<String, Object> parseQuotaSummary(String json) {
+		try {
+			JsonNode root = new ObjectMapper().readTree(json);
+			JsonNode fraction = root.findValue("remainingFraction");
+			if (fraction == null || !fraction.isNumber()) return Map.of();
+			double value = fraction.asDouble();
+			if (value < 0 || value > 1) return Map.of();
+			Map<String, Object> quota = new LinkedHashMap<>();
+			quota.put("quota", (int) Math.round(value * 100));
+			JsonNode resetTime = root.findValue("resetTime");
+			if (resetTime != null && resetTime.isTextual()) quota.put("resetTime", resetTime.asString());
+			return quota;
+		} catch (Exception ignored) {
+			return Map.of();
 		}
 	}
 

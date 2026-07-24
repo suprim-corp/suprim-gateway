@@ -110,6 +110,17 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 		this.projectId = null;
 	}
 
+	public Map<String, Object> getQuota(StoredAccount account) {
+		try {
+			return AntigravityHttpClient.getQuotaSummary(
+					getAccessToken(account), account.projectId(), proxyChain
+			);
+		} catch (IOException e) {
+			log.debug(LogTag.ANTIGRAVITY + "retrieveUserQuotaSummary failed");
+			return Map.of();
+		}
+	}
+
 	public String getSubscriptionTier(StoredAccount account) {
 		String token = getAccessToken(account);
 		try {
@@ -136,9 +147,8 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 					           .build();
 			HttpResponse<String> response = proxyChain.send(request);
 			log.debug(
-					LogTag.ANTIGRAVITY + "loadCodeAssist status={} body={}",
-					response.statusCode(),
-					response.body()
+					LogTag.ANTIGRAVITY + "loadCodeAssist status={}",
+					response.statusCode()
 			);
 			if (response.statusCode() == 200) {
 				return ProjectIdFetcher.parseTier(response.body());
