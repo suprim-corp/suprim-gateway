@@ -113,8 +113,8 @@ public class StreamingEventWriter {
 	public void finish(int outputTokens) throws Exception {
 		switch (format) {
 			case ANTHROPIC -> finishAnthropic(outputTokens);
-			case RESPONSES -> finishResponses();
-			default -> finishCompletion();
+			case RESPONSES -> finishResponses(outputTokens);
+			default -> finishCompletion(outputTokens);
 		}
 		writer.flush();
 	}
@@ -308,7 +308,7 @@ public class StreamingEventWriter {
 				"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n");
 	}
 
-	private void finishResponses() throws Exception {
+	private void finishResponses(int outputTokens) throws Exception {
 		writer.write(converter.toResponsesTextDone("", id));
 		writer.write(
 				converter.toResponsesCompleted(
@@ -316,15 +316,19 @@ public class StreamingEventWriter {
 						model,
 						"",
 						List.of(),
-						0,
-						0
+						inputTokens,
+						outputTokens
 				)
 		);
 	}
 
-	private void finishCompletion() throws Exception {
+	private void finishCompletion(int outputTokens) throws Exception {
 		String finishReason = hasToolUse ? "tool_calls" : "stop";
-		writer.write(converter.toOpenAiFinishChunk(model, id, finishReason));
+		writer.write(
+				converter.toOpenAiFinishChunk(
+						model, id, finishReason, inputTokens, outputTokens
+				)
+		);
 		writer.write(converter.toOpenAiDone());
 	}
 }

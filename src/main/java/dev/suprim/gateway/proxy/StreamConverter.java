@@ -101,15 +101,25 @@ public class StreamConverter {
 		return "data: " + mapper.writeValueAsString(chunk) + "\n\n";
 	}
 
-	public String toOpenAiFinishChunk(String model, String id, String finishReason) throws Exception {
-		CompletionChunk chunk = CompletionChunk.finish(id, model, finishReason);
+	public String toOpenAiFinishChunk(
+			String model,
+			String id,
+			String finishReason,
+			int inputTokens,
+			int outputTokens
+	) throws Exception {
+		CompletionChunk chunk = CompletionChunk.finish(
+				id, model, finishReason, inputTokens, outputTokens
+		);
 		return "data: " + mapper.writeValueAsString(chunk) + "\n\n";
 	}
 
 	public CompletionResponse toOpenAiNonStreaming(
 			List<KiroEvent> events,
 			String model,
-			String reasoning
+			String reasoning,
+			int inputTokens,
+			int outputTokens
 	) {
 		StringBuilder contentBuilder = new StringBuilder();
 		List<ToolCallDelta> toolCalls = new ArrayList<>();
@@ -137,7 +147,9 @@ public class StreamConverter {
 				toolCalls
 		);
 
-		return CompletionResponse.of(model, message, finishReason);
+		return CompletionResponse.of(
+				model, message, finishReason, inputTokens, outputTokens
+		);
 	}
 
 	public String toAnthropicEvent(
@@ -310,9 +322,9 @@ public class StreamConverter {
 	) throws Exception {
 		String callId = Optional.ofNullable(event.toolUseId())
 		                        .orElse(
-										UUID.randomUUID()
-		                                    .toString()
-		                                    .substring(0, 8)
+				                        UUID.randomUUID()
+				                            .toString()
+				                            .substring(0, 8)
 		                        );
 		String fcId = "fc_" + callId;
 		String name = Optional.ofNullable(event.toolName()).orElse("unknown");

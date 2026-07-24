@@ -14,9 +14,10 @@ public final class CompletionsSsePayloads {
 	// --- Streaming records ---
 
 	@Builder
+	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record CompletionChunk(
 			String id, String object, long created, String model,
-			List<StreamChoice> choices
+			List<StreamChoice> choices, Usage usage
 	) {
 		public static CompletionChunk of(
 				String id,
@@ -45,7 +46,9 @@ public final class CompletionsSsePayloads {
 		public static CompletionChunk finish(
 				String id,
 				String model,
-				String finishReason
+				String finishReason,
+				int inputTokens,
+				int outputTokens
 		) {
 			return CompletionChunk.builder()
 			                      .id(id)
@@ -63,6 +66,7 @@ public final class CompletionsSsePayloads {
 							                                  .build()
 					                      )
 			                      )
+			                      .usage(Usage.of(inputTokens, outputTokens))
 			                      .build();
 		}
 	}
@@ -149,7 +153,9 @@ public final class CompletionsSsePayloads {
 		public static CompletionResponse of(
 				String model,
 				CompletionMessage message,
-				String finishReason
+				String finishReason,
+				int inputTokens,
+				int outputTokens
 		) {
 			return CompletionResponse.builder()
 			                         .id("chatcmpl-" + UUID.randomUUID())
@@ -164,7 +170,7 @@ public final class CompletionsSsePayloads {
 							                         )
 					                         )
 			                         )
-			                         .usage(Usage.zero())
+			                         .usage(Usage.of(inputTokens, outputTokens))
 			                         .build();
 		}
 	}

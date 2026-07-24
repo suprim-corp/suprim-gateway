@@ -89,7 +89,12 @@ public class StreamHandler {
 		}
 		filter.flush(filtered -> {
 					if (filtered.isEmpty()) return;
+					if (firstTokenMs[0] < 0) {
+						firstTokenMs[0] =
+								System.currentTimeMillis() - startTime;
+					}
 					fullText.append(filtered);
+					outputTokens[0] += tokenEstimator.countTokens(filtered);
 					try {
 						eventWriter.write(KiroEvent.content(filtered));
 						writer.flush();

@@ -450,7 +450,9 @@ public class AntigravityFacade {
 			case COMPLETION -> streamConverter.toOpenAiNonStreaming(
 					List.of(KiroEvent.content(text)),
 					model,
-					null
+					null,
+					inputTokens,
+					outputTokens
 			);
 			case RESPONSES -> streamConverter.toResponsesNonStreaming(
 					id, model, text, null, inputTokens, outputTokens

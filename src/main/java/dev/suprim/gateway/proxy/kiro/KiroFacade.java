@@ -165,7 +165,7 @@ public class KiroFacade {
 
 		StreamingEventWriter eventWriter = new StreamingEventWriter(
 				writer, streamConverter, req.format(), req.model(),
-				thinkingEnabled
+				thinkingEnabled, req.inputTokens()
 		);
 
 		StreamHandler.StreamResult result = streamHandler.streamToWriter(
@@ -175,7 +175,7 @@ public class KiroFacade {
 				startTime
 		);
 
-		eventWriter.finish();
+		eventWriter.finish(result.outputTokens());
 
 		publishLog(
 				req,
