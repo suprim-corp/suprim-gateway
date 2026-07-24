@@ -1,26 +1,31 @@
 package dev.suprim.gateway.model;
 
+import dev.suprim.gateway.config.AppConfig;
+import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
-import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.antigravity.AntigravityAuthManager;
 import dev.suprim.gateway.provider.codex.CodexAuthManager;
 import dev.suprim.gateway.provider.deepseek.DeepSeekModels;
-import dev.suprim.gateway.provider.kiro.KiroAuthManager;
-import dev.suprim.gateway.config.AppConfig;
+import dev.suprim.gateway.provider.kiro.KiroAccountModelAvailability;
+import dev.suprim.gateway.provider.kiro.KiroModelsRefreshedEvent;
 import dev.suprim.gateway.provider.xai.XaiAuthManager;
-import tools.jackson.databind.PropertyNamingStrategies;
-import tools.jackson.databind.annotation.JsonNaming;
+import jakarta.annotation.PostConstruct;
 import lombok.Builder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
-
-import jakarta.annotation.PostConstruct;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+import tools.jackson.databind.PropertyNamingStrategies;
+import tools.jackson.databind.annotation.JsonNaming;
 
-import java.util.*;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -31,11 +36,10 @@ public class ModelRegistry {
 
 	private final AppConfig config;
 	private final CredentialStore credentialStore;
-	private final KiroAuthManager kiroAuthManager;
+	private final KiroAccountModelAvailability kiroModelAvailability;
 	private final AntigravityAuthManager antigravityAuthManager;
 	private final XaiAuthManager xaiAuthManager;
 	private final CodexAuthManager codexAuthManager;
-
 	private final AtomicReference<List<ModelForListingApi>> cachedModels =
 			new AtomicReference<>(List.of());
 
@@ -58,21 +62,45 @@ public class ModelRegistry {
 		return cachedModels.get();
 	}
 
+	@EventListener(KiroModelsRefreshedEvent.class)
+	void refreshKiroModels() {
+		refreshCache();
+	}
+
 	private List<ModelForListingApi> fetchAllModels() {
 		List<ModelForListingApi> result = new ArrayList<>();
 		long now = System.currentTimeMillis() / 1000;
 		LinkedHashSet<String> seen = new LinkedHashSet<>();
 
+		kiroModelAvailability.availableModels()
+		                     .forEach(modelId -> addModel(
+						                     result,
+						                     seen,
+						                     Provider.KIRO.getPrefix() + modelId,
+						                     Provider.KIRO.name(),
+						                     modelId,
+						                     now
+				                     )
+		                     );
+
 		Map<String, List<StoredAccount>> byProvider =
 				credentialStore.load()
 				               .stream()
-				               .filter(a -> a.provider() != null)
+				               .filter(account ->
+						               account.provider() != null
+				               )
 				               .sorted(
 						               Comparator.comparing(
-								               a -> !"api_key".equals(a.authType())
+								               account -> !"api_key".equals(
+										               account.authType()
+								               )
 						               )
 				               )
-				               .collect(Collectors.groupingBy(StoredAccount::provider));
+				               .collect(
+						               Collectors.groupingBy(
+								               StoredAccount::provider
+						               )
+				               );
 
 		for (Map.Entry<String, List<StoredAccount>> entry : byProvider.entrySet()) {
 			Provider provider;
@@ -81,145 +109,85 @@ public class ModelRegistry {
 			} catch (IllegalArgumentException e) {
 				continue;
 			}
-
+			if (provider == Provider.KIRO) {
+				continue;
+			}
 			if (provider == Provider.DEEPSEEK) {
-				DeepSeekModels.ALL.forEach(id -> {
-					if (seen.add(id)) {
-						result.add(
-								ModelForListingApi.builder()
-								                  .id(id)
-								                  .object("model")
-								                  .ownedBy(Provider.DEEPSEEK.name())
-								                  .created(now)
-								                  .displayName(
-										                  DeepSeekModels.displayName(
-												                  id
-										                  )
-								                  )
-								                  .build()
-						);
-					}
-				});
+				DeepSeekModels.ALL.forEach(id -> addModel(
+								result,
+								seen,
+								id,
+								Provider.DEEPSEEK.name(),
+								DeepSeekModels.displayName(id),
+								now
+						)
+				);
 				continue;
 			}
 
 			for (StoredAccount account : entry.getValue()) {
 				try {
 					switch (provider) {
-						case KIRO -> kiroAuthManager.listModels(account)
-						                            .forEach(m -> {
-							                            String modelId = (String) m.get(
-									                            "id");
-							                            String id =
-									                            Provider.KIRO.getPrefix() +
-									                            modelId;
-							                            if (modelId != null &&
-							                                seen.add(id)) {
-								                            result.add(
-										                            ModelForListingApi.builder()
-										                                              .id(id)
-										                                              .object("model")
-										                                              .ownedBy(
-												                                              Provider.KIRO.name()
-										                                              )
-										                                              .created(
-												                                              now)
-										                                              .displayName(
-												                                              (String) m.get(
-														                                              "name"
-												                                              )
-										                                              )
-										                                              .build()
-								                            );
-							                            }
-						                            });
-						case ANTIGRAVITY -> antigravityAuthManager
-								.listModels(account)
-								.forEach(m -> {
-									String modelId = (String) m.get("id");
-									String id =
-											Provider.ANTIGRAVITY.getPrefix() +
-											modelId;
-									if (seen.add(id)) {
-										String label = "Antigravity | " +
-										               Optional.ofNullable(
-												                       (String) m.get(
-														                       "displayName"
-												                       )
-										                       )
-										                       .orElse(modelId);
-										result.add(
-												ModelForListingApi
-														.builder()
-														.id(id)
-														.created(now)
-														.ownedBy(Provider.ANTIGRAVITY.name())
-														.displayName(label)
-														.object("model")
-														.build()
-										);
-									}
+						case ANTIGRAVITY -> antigravityAuthManager.listModels(
+								account).forEach(model -> {
+							String modelId = model.get("id").toString();
+							String id =
+									Provider.ANTIGRAVITY.getPrefix() + modelId;
+							String name = Optional.ofNullable(
+									                      model.get("displayName")
+									                           .toString()
+							                      )
+							                      .orElse(modelId);
+							addModel(
+									result,
+									seen,
+									id,
+									Provider.ANTIGRAVITY.name(),
+									"Antigravity | " + name,
+									now
+							);
+						});
+						case XAI -> xaiAuthManager.listModels(account).forEach(
+								model -> {
+									String id = (String) model.get("id");
+									String name = Optional.ofNullable(
+											                      model.get("displayName")
+											                           .toString()
+									                      )
+									                      .orElse(id.startsWith(
+											                      "grok/") ? id.substring(
+											                      5) : id);
+									addModel(
+											result,
+											seen,
+											id,
+											Provider.XAI.name(),
+											name,
+											now
+									);
 								});
-						case XAI -> xaiAuthManager
-								.listModels(account)
-								.forEach(m -> {
-									String id = (String) m.get("id");
-									if (seen.add(id)) {
-										String displayName =
-												Optional.ofNullable(
-														        (String) m.get(
-																        "displayName")
-												        )
-												        .orElse(
-														        id.startsWith(
-																        "grok/")
-																        ? id.substring(
-																        5) : id
-												        );
-										result.add(
-												ModelForListingApi
-														.builder()
-														.id(id)
-														.created(now)
-														.ownedBy(Provider.XAI.name())
-														.displayName(displayName)
-														.object("model")
-														.build()
-										);
-									}
-								});
-						case CODEX -> codexAuthManager
-								.listModels(account)
-								.forEach(m -> {
-									String id = (String) m.get("id");
-									if (seen.add(id)) {
-										String displayName =
-												Optional.ofNullable(
-														        (String) m.get(
-																        "displayName"
-														        )
-												        )
-												        .orElse(
-														        id.startsWith(
-																        Provider.CODEX.getPrefix()
-														        ) ? id.substring(
-																        6) : id
-												        );
-										result.add(
-												ModelForListingApi
-														.builder()
-														.id(id)
-														.created(now)
-														.ownedBy(Provider.CODEX.name())
-														.displayName(displayName)
-														.object("model")
-														.build()
-										);
-									}
-								});
+						case CODEX ->
+								codexAuthManager.listModels(account).forEach(
+										model -> {
+											String id = (String) model.get("id");
+											String name = Optional.ofNullable(
+													                      model.get("displayName")
+													                           .toString()
+											                      )
+											                      .orElse(id.startsWith(
+													                      Provider.CODEX.getPrefix()) ? id.substring(
+													                      6) : id);
+											addModel(
+													result,
+													seen,
+													id,
+													Provider.CODEX.name(),
+													name,
+													now
+											);
+										});
 						default -> {}
 					}
-					// account succeeded — skip remaining accounts for this provider
 					break;
 				} catch (Exception e) {
 					log.warn(
@@ -232,57 +200,75 @@ public class ModelRegistry {
 				}
 			}
 		}
-
 		return result;
+	}
+
+	private void addModel(
+			List<ModelForListingApi> result,
+			LinkedHashSet<String> seen,
+			String id,
+			String provider,
+			String displayName,
+			long created
+	) {
+		if (id != null && seen.add(id)) {
+			result.add(
+					ModelForListingApi.builder()
+					                  .id(id)
+					                  .object("model")
+					                  .ownedBy(provider)
+					                  .created(created)
+					                  .displayName(displayName)
+					                  .build()
+			);
+		}
 	}
 
 	public List<ModelInfo> getModelsForProvider(StoredAccount account) throws Exception {
 		return switch (Provider.valueOf(account.provider())) {
-			case KIRO -> kiroAuthManager.listModels(account)
-			                            .stream()
-			                            .map(m -> {
-				                            String id =
-						                            Provider.KIRO.getPrefix() +
-						                            m.get("id");
-				                            Object cost = m.get("cost");
-				                            String unit = (String) m.get("unit");
-				                            if (cost instanceof Number c &&
-				                                unit != null &&
-				                                !unit.isEmpty()) {
-					                            return ModelInfo.of(
-							                            id,
-							                            c.doubleValue(),
-							                            unit
-					                            );
-				                            }
-				                            return ModelInfo.of(id);
-			                            })
-			                            .toList();
+			case KIRO -> kiroModelAvailability.modelsForAccount(account)
+			                                  .stream()
+			                                  .map(id -> ModelInfo.of(
+							                                  Provider.KIRO.getPrefix() +
+							                                  id
+					                                  )
+			                                  )
+			                                  .toList();
 			case ANTIGRAVITY -> antigravityAuthManager.listModels(account)
 			                                          .stream()
-			                                          .map(m -> {
-				                                          Object quota = m.get("quota");
-				                                          if (quota instanceof Integer q) {
+			                                          .map(model -> {
+				                                          Object quota = model.get(
+						                                          "quota");
+				                                          if (quota instanceof Integer value) {
 					                                          return ModelInfo.of(
 							                                          Provider.ANTIGRAVITY.getPrefix() +
-							                                          m.get("id"),
-							                                          q
+							                                          model.get(
+									                                          "id"),
+							                                          value
 					                                          );
 				                                          }
 				                                          return ModelInfo.of(
 						                                          Provider.ANTIGRAVITY.getPrefix() +
-						                                          m.get("id")
+						                                          model.get("id")
 				                                          );
 			                                          })
 			                                          .toList();
 			case XAI -> xaiAuthManager.listModels(account)
 			                          .stream()
-			                          .map(m -> ModelInfo.of((String) m.get("id")))
+			                          .map(model -> ModelInfo.of(
+							                          model.get("id").toString()
+					                          )
+			                          )
 			                          .toList();
 			case CODEX -> codexAuthManager.listModels(account)
-			                             .stream()
-			                             .map(m -> ModelInfo.of((String) m.get("id")))
-			                             .toList();
+			                              .stream()
+			                              .map(
+					                              model -> ModelInfo.of(
+							                              model.get("id")
+							                                   .toString()
+					                              )
+			                              )
+			                              .toList();
 			default -> List.of();
 		};
 	}

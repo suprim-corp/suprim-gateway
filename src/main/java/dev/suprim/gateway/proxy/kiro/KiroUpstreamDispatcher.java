@@ -55,7 +55,9 @@ public class KiroUpstreamDispatcher {
 	private final ModelResolver modelResolver;
 	private final ConcurrentHashMap<String, Integer> preferredEndpoint = new ConcurrentHashMap<>();
 
-	public KiroResponse dispatch(
+	public record DispatchResult(KiroResponse response, String accountId) {}
+
+	public DispatchResult dispatch(
 			InternalRequest request,
 			boolean stream
 	) throws Exception {
@@ -69,22 +71,25 @@ public class KiroUpstreamDispatcher {
 		);
 		if (eligibleAccounts.isEmpty()) {
 			if (modelAvailability.isWarmUpComplete(accounts)) {
-				return KiroResponse.builder()
-				                   .status(400)
-				                   .body(new ByteArrayInputStream(
-								                   "{\"message\":\"Invalid model. Please select a different model to continue.\",\"reason\":\"INVALID_MODEL_ID\"}"
-										                   .getBytes(StandardCharsets.UTF_8)
-						                   )
-				                   )
-				                   .contentType("application/json")
-				                   .build();
+				return new DispatchResult(
+						KiroResponse.builder()
+						            .status(400)
+						            .body(new ByteArrayInputStream(
+								            "{\"message\":\"Invalid model. Please select a different model to continue.\",\"reason\":\"INVALID_MODEL_ID\"}"
+									            .getBytes(StandardCharsets.UTF_8)
+						            )
+						            )
+						            .contentType("application/json")
+						            .build(),
+						null
+				);
 			}
 			throw new RuntimeException("Kiro model availability is warming up");
 		}
 		return dispatchWithRotation(request, stream, model, eligibleAccounts);
 	}
 
-	private KiroResponse dispatchWithRotation(
+	private DispatchResult dispatchWithRotation(
 			InternalRequest request,
 			boolean stream,
 			String model,
@@ -92,7 +97,7 @@ public class KiroUpstreamDispatcher {
 	) throws Exception {
 		String payload = payloadBuilder.buildOpenAiPayload(request, auth);
 		int maxAttempts = accounts.size();
-		KiroResponse invalidModelResponse = null;
+		DispatchResult invalidModelResult = null;
 
 		for (int attempt = 0; attempt < maxAttempts; attempt++) {
 			StoredAccount account = accountRotator.next(
@@ -116,10 +121,9 @@ public class KiroUpstreamDispatcher {
 					account.name(), attempt + 1, maxAttempts
 			);
 
-			KiroResponse result;
-
+			KiroResponse response;
 			try {
-				result = tryAllEndpoints(payload, stream, accessToken, account);
+				response = tryAllEndpoints(payload, stream, accessToken, account);
 			} catch (Exception e) {
 				log.error(
 						LogTag.KIRO + "Request failed for {}: {}",
@@ -129,10 +133,13 @@ public class KiroUpstreamDispatcher {
 				continue;
 			}
 
-			if (result != null) {
-				KiroResponse invalidModel = copyInvalidModelResponse(result);
+			if (response != null) {
+				KiroResponse invalidModel = copyInvalidModelResponse(response);
 				if (invalidModel != null) {
-					invalidModelResponse = invalidModel;
+					invalidModelResult = new DispatchResult(
+							invalidModel,
+							account.name()
+					);
 					modelAvailability.invalidateModel(account, model);
 					log.warn(
 							LogTag.KIRO +
@@ -141,11 +148,11 @@ public class KiroUpstreamDispatcher {
 					);
 					continue;
 				}
-				if (result.status() == 429 || result.status() == 503) {
+				if (response.status() == 429 || response.status() == 503) {
 					log.warn(
 							LogTag.KIRO +
 							"Account {} got {}, trying next account",
-							account.name(), result.status()
+							account.name(), response.status()
 					);
 					continue;
 				}
@@ -153,7 +160,7 @@ public class KiroUpstreamDispatcher {
 						LogTag.KIRO + "Response served by account: {}",
 						account.name()
 				);
-				return result;
+				return new DispatchResult(response, account.name());
 			}
 
 			// all endpoints 403 → refresh token and retry once
@@ -173,18 +180,18 @@ public class KiroUpstreamDispatcher {
 				continue;
 			}
 
-			result = tryAllEndpoints(payload, stream, accessToken, account);
-			if (result != null) {
+			response = tryAllEndpoints(payload, stream, accessToken, account);
+			if (response != null) {
 				log.info(
 						LogTag.KIRO +
 						"Response served by account: {} (after refresh)",
 						account.name()
 				);
-				return result;
+				return new DispatchResult(response, account.name());
 			}
 		}
-		if (invalidModelResponse != null) {
-			return invalidModelResponse;
+		if (invalidModelResult != null) {
+			return invalidModelResult;
 		}
 		throw new RuntimeException("All Kiro accounts exhausted");
 	}
@@ -197,10 +204,10 @@ public class KiroUpstreamDispatcher {
 	) throws Exception {
 		boolean isApiKey = "api_key".equalsIgnoreCase(account.authType());
 		String accountKey = Optional.ofNullable(account.name())
-		                            .orElse(
-				                            account.accessToken()
-				                                   .substring(0, 8)
-		                            );
+		                            .orElseGet(() ->
+					                            account.accessToken()
+					                                   .substring(0, 8)
+			                            );
 		Integer preferred = preferredEndpoint.get(accountKey);
 
 		if (preferred != null) {

@@ -73,9 +73,9 @@ public class KiroFacade {
 	) throws Exception {
 		long startTime = System.currentTimeMillis();
 
-		KiroResponse response;
+		KiroUpstreamDispatcher.DispatchResult dispatchResult;
 		try {
-			response = upstreamDispatcher.dispatch(
+			dispatchResult = upstreamDispatcher.dispatch(
 					req.request(),
 					req.stream() || req.format() == Format.RESPONSES
 			);
@@ -88,20 +88,25 @@ public class KiroFacade {
 			return;
 		}
 
+		KiroResponse response = dispatchResult.response();
+		String accountId = dispatchResult.accountId();
 		if (response.status() != 200) {
-			handleError(response, req, startTime, httpRes);
+			handleError(response, req, accountId, startTime, httpRes);
 			return;
 		}
 
 		if (req.stream()) {
-			handleStream(httpRes, response, req, startTime);
+			handleStream(httpRes, response, req, accountId, startTime);
 		} else {
-			handleNonStream(httpRes, response, req, startTime);
+			handleNonStream(httpRes, response, req, accountId, startTime);
 		}
 	}
 
 	private void handleError(
-			KiroResponse response, ProxyRequest req, long startTime,
+			KiroResponse response,
+			ProxyRequest req,
+			String accountId,
+			long startTime,
 			HttpServletResponse httpRes
 	) throws Exception {
 		String body;
@@ -117,7 +122,7 @@ public class KiroFacade {
 		logPublisher.publish(
 				RequestLogEvent.builder()
 				               .virtualKeyId(req.keyId())
-				               .accountId(auth.getDisplayName())
+				               .accountId(accountId)
 				               .model(req.model())
 				               .requestedModel(req.model())
 				               .status(response.status())
@@ -153,6 +158,7 @@ public class KiroFacade {
 			HttpServletResponse httpRes,
 			KiroResponse response,
 			ProxyRequest req,
+			String accountId,
 			long startTime
 	) throws Exception {
 		httpRes.setCharacterEncoding("UTF-8");
@@ -179,6 +185,7 @@ public class KiroFacade {
 
 		publishLog(
 				req,
+				accountId,
 				result.outputTokens(),
 				true,
 				startTime,
@@ -196,6 +203,7 @@ public class KiroFacade {
 			HttpServletResponse httpRes,
 			KiroResponse response,
 			ProxyRequest req,
+			String accountId,
 			long startTime
 	) throws Exception {
 		StreamHandler.CollectResult collected = streamHandler.collectContent(
@@ -222,6 +230,7 @@ public class KiroFacade {
 
 		publishLog(
 				req,
+				accountId,
 				outputTokens,
 				false,
 				startTime,
@@ -234,6 +243,7 @@ public class KiroFacade {
 
 	private void publishLog(
 			ProxyRequest req,
+			String accountId,
 			int outputTokens,
 			boolean streaming,
 			long startTime,
@@ -243,7 +253,7 @@ public class KiroFacade {
 		logPublisher.publish(
 				RequestLogEvent.builder()
 				               .virtualKeyId(req.keyId())
-				               .accountId(auth.getDisplayName())
+				               .accountId(accountId)
 				               .model(req.model())
 				               .requestedModel(req.model())
 				               .status(200)

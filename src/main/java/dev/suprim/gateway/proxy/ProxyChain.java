@@ -61,7 +61,7 @@ public class ProxyChain implements Closeable {
 
 		if (rotator.isExhausted()) {
 			log.error("[Proxy] All proxies exhausted, request will fail");
-			closeClient();
+			currentClient = null;
 			return;
 		}
 
@@ -71,13 +71,11 @@ public class ProxyChain implements Closeable {
 				failed.maskedUrl(),
 				next.maskedUrl()
 		);
-		closeClient();
 		currentClient = ProxyClientFactory.build(next);
 	}
 
 	public void resetAttempts() {
 		rotator.resetAttempts();
-		closeClient();
 		currentClient = ProxyClientFactory.build(rotator.current());
 	}
 

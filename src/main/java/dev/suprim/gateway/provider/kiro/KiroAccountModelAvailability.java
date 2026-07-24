@@ -8,6 +8,7 @@ import dev.suprim.gateway.provider.StoredAccount;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.CacheManager;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.scheduling.annotation.Async;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -29,11 +31,13 @@ import java.util.stream.Collectors;
 public class KiroAccountModelAvailability {
 
 	private final CredentialStore credentialStore;
+	private final ApplicationEventPublisher eventPublisher;
 	private final KiroAuthManager kiroAuthManager;
 	private final ModelResolver modelResolver;
 	private final CacheManager cacheManager;
 	private final Map<String, Set<String>> modelsByAccount = new ConcurrentHashMap<>();
 	private final Set<String> completedAccounts = ConcurrentHashMap.newKeySet();
+	private final AtomicBoolean refreshing = new AtomicBoolean();
 
 	@EventListener(ApplicationReadyEvent.class)
 	@Async
@@ -43,8 +47,16 @@ public class KiroAccountModelAvailability {
 
 	@Scheduled(fixedDelay = 300_000)
 	public void refresh() {
-		for (StoredAccount account : credentialStore.findAllByProvider(Provider.KIRO.name())) {
-			refresh(account);
+		if (!refreshing.compareAndSet(false, true)) {
+			return;
+		}
+		try {
+			for (StoredAccount account : credentialStore.findAllByProvider(Provider.KIRO.name())) {
+				refresh(account);
+			}
+			eventPublisher.publishEvent(KiroModelsRefreshedEvent.builder().build());
+		} finally {
+			refreshing.set(false);
 		}
 	}
 
@@ -68,7 +80,6 @@ public class KiroAccountModelAvailability {
 					displayName(account)
 			);
 		} catch (Exception e) {
-			modelsByAccount.remove(key);
 			completedAccounts.add(key);
 			log.warn(
 					LogTag.KIRO + "Model cache failed for {}: {}",
@@ -112,6 +123,10 @@ public class KiroAccountModelAvailability {
 	public Set<String> availableModels() {
 		return modelsByAccount.values().stream().flatMap(Set::stream).collect(
 				Collectors.toUnmodifiableSet());
+	}
+
+	public Set<String> modelsForAccount(StoredAccount account) {
+		return modelsByAccount.getOrDefault(accountKey(account), Set.of());
 	}
 
 	public static String accountKey(StoredAccount account) {

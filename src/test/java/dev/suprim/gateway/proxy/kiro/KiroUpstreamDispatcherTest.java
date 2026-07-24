@@ -64,9 +64,12 @@ class KiroUpstreamDispatcherTest {
 				.thenReturn(expected);
 
 		InternalRequest request = InternalRequest.builder().model("claude-sonnet-4-20250514").messages(List.of()).build();
-		KiroResponse result = dispatcher.dispatch(request, true);
+		KiroUpstreamDispatcher.DispatchResult result = dispatcher.dispatch(
+				request, true
+		);
 
-		assertEquals(200, result.status());
+		assertEquals(200, result.response().status());
+		assertEquals("solo", result.accountId());
 		verify(rotator).next(eq("KIRO"), anyList());
 	}
 
@@ -110,9 +113,12 @@ class KiroUpstreamDispatcherTest {
 				.thenReturn(new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()), "text/event-stream"));
 
 		InternalRequest request = InternalRequest.builder().model("claude-sonnet-4-20250514").messages(List.of()).build();
-		KiroResponse result = dispatcher.dispatch(request, true);
+		KiroUpstreamDispatcher.DispatchResult result = dispatcher.dispatch(
+				request, true
+		);
 
-		assertEquals(200, result.status());
+		assertEquals(200, result.response().status());
+		assertEquals("k2", result.accountId());
 		verify(rotator, times(2)).next(eq("KIRO"), anyList());
 	}
 
@@ -141,9 +147,12 @@ class KiroUpstreamDispatcherTest {
 				.thenReturn(new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()), "text/event-stream"));
 
 		InternalRequest request = InternalRequest.builder().model("claude-sonnet-5").messages(List.of()).build();
-		KiroResponse result = dispatcher.dispatch(request, true);
+		KiroUpstreamDispatcher.DispatchResult result = dispatcher.dispatch(
+				request, true
+		);
 
-		assertEquals(200, result.status());
+		assertEquals(200, result.response().status());
+		assertEquals("k2", result.accountId());
 		verify(rotator, times(2)).next(eq("KIRO"), anyList());
 	}
 
@@ -169,10 +178,13 @@ class KiroUpstreamDispatcherTest {
 				.thenReturn(new KiroResponse(400, new ByteArrayInputStream(error.getBytes()), "application/json"));
 
 		InternalRequest request = InternalRequest.builder().model("claude-sonnet-5").messages(List.of()).build();
-		KiroResponse result = dispatcher.dispatch(request, true);
+		KiroUpstreamDispatcher.DispatchResult result = dispatcher.dispatch(
+				request, true
+		);
 
-		assertEquals(400, result.status());
-		assertEquals(error, new String(result.body().readAllBytes()));
+		assertEquals(400, result.response().status());
+		assertEquals("k2", result.accountId());
+		assertEquals(error, new String(result.response().body().readAllBytes()));
 		verify(rotator, times(2)).next(eq("KIRO"), anyList());
 	}
 
