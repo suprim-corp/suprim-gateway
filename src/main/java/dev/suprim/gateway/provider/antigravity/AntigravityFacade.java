@@ -21,8 +21,10 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -40,6 +42,7 @@ public class AntigravityFacade {
 	private final StreamConverter streamConverter;
 	private final AccountRotator accountRotator;
 	private final CredentialStore credentialStore;
+	private final AntigravityAccountCooldown accountCooldown;
 
 	public void handle(
 			InternalRequest request,
@@ -67,8 +70,13 @@ public class AntigravityFacade {
 		long startTime = System.currentTimeMillis();
 		int maxAttempts = accounts.size();
 
+		Set<String> attemptedAccounts = new HashSet<>();
 		for (int attempt = 0; attempt < maxAttempts; attempt++) {
 			StoredAccount account = accountRotator.next(Provider.ANTIGRAVITY.name());
+			String accountKey = accountCooldown.accountKey(account);
+			if (!attemptedAccounts.add(accountKey) || accountCooldown.isCoolingDown(account)) {
+				continue;
+			}
 			String accessToken;
 			try {
 				accessToken = authManager.getAccessToken(account);
@@ -96,8 +104,9 @@ public class AntigravityFacade {
 			);
 
 			if (response.status() == 429 || response.status() == 503) {
+				accountCooldown.coolDown(account);
 				log.warn(
-						LogTag.ANTIGRAVITY + "Account {} got {}, trying next",
+						LogTag.ANTIGRAVITY + "Account {} got {}, cooling down for 1h",
 						account.name(), response.status()
 				);
 				try (InputStream is = response.body()) {

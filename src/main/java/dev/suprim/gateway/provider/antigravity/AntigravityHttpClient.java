@@ -167,6 +167,9 @@ class AntigravityHttpClient {
 				}
 
 				if (status == 429 || status >= 500) {
+					if (attempt == MAX_RETRIES - 1) {
+						return new AntigravityResponse(status, response.body());
+					}
 					long delay = BASE_RETRY_DELAY * (1L << attempt);
 					log.warn(
 							"[Antigravity] {} from upstream, waiting {}ms (attempt {}/{})",
@@ -175,6 +178,9 @@ class AntigravityHttpClient {
 							attempt + 1,
 							MAX_RETRIES
 					);
+					try (InputStream ignored = response.body()) {
+						ignored.readAllBytes();
+					}
 					Thread.sleep(delay);
 					continue;
 				}

@@ -35,7 +35,10 @@ class AntigravityFacadeRetryTest {
 		ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
 		RequestLogPublisher logPublisher = new RequestLogPublisher(eventPublisher);
 		StreamConverter streamConverter = new StreamConverter();
-		facade = new AntigravityFacade(authManager, logPublisher, streamConverter, rotator, store);
+		facade = new AntigravityFacade(
+				authManager, logPublisher, streamConverter, rotator, store,
+				new AntigravityAccountCooldown()
+		);
 	}
 
 	@Test
@@ -76,6 +79,86 @@ class AntigravityFacadeRetryTest {
 			facade.handle(request, "gemini-2.5-pro", false, 10, "key1", "127.0.0.1", Format.COMPLETION, httpRes);
 
 			assertEquals(200, httpRes.getStatus());
+		}
+	}
+
+	@Test
+	void handle_skipsCooledAccountOnLaterRequest() throws Exception {
+		StoredAccount limited = StoredAccount.builder()
+		                                   .name("limited").provider("ANTIGRAVITY")
+		                                   .accessToken("tok1").refreshToken("ref1")
+		                                   .projectId("proj1")
+		                                   .expiresAt(Instant.now().plusSeconds(3600))
+		                                   .build();
+		StoredAccount healthy = StoredAccount.builder()
+		                                   .name("healthy").provider("ANTIGRAVITY")
+		                                   .accessToken("tok2").refreshToken("ref2")
+		                                   .projectId("proj2")
+		                                   .expiresAt(Instant.now().plusSeconds(3600))
+		                                   .build();
+		when(store.findAllByProvider("ANTIGRAVITY")).thenReturn(List.of(limited, healthy));
+		when(rotator.next("ANTIGRAVITY")).thenReturn(limited, healthy, limited, healthy);
+		when(authManager.getAccessToken(limited)).thenReturn("tok1");
+		when(authManager.getAccessToken(healthy)).thenReturn("tok2");
+		when(authManager.getProjectId(limited)).thenReturn("proj1");
+		when(authManager.getProjectId(healthy)).thenReturn("proj2");
+
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("gemini-2.5-pro")
+		                                         .messages(List.of())
+		                                         .stream(false)
+		                                         .build();
+
+		try (MockedStatic<AntigravityHttpClient> mocked = mockStatic(AntigravityHttpClient.class)) {
+			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
+			      .thenAnswer(ignored -> new AntigravityHttpClient.AntigravityResponse(429, new ByteArrayInputStream("rate limited".getBytes())));
+			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok2")))
+			      .thenAnswer(ignored -> new AntigravityHttpClient.AntigravityResponse(200, new ByteArrayInputStream("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hi\"}]}}]}\n".getBytes())));
+
+			MockHttpServletResponse firstResponse = new MockHttpServletResponse();
+			facade.handle(request, "gemini-2.5-pro", false, 10, "key1", "127.0.0.1", Format.COMPLETION, firstResponse);
+			MockHttpServletResponse secondResponse = new MockHttpServletResponse();
+			facade.handle(request, "gemini-2.5-pro", false, 10, "key1", "127.0.0.1", Format.COMPLETION, secondResponse);
+
+			assertEquals(200, firstResponse.getStatus());
+			assertEquals(200, secondResponse.getStatus());
+			mocked.verify(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok1")), times(1));
+			mocked.verify(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok2")), times(2));
+		}
+	}
+
+	@Test
+	void handle_coolsAccountAfter503() throws Exception {
+		StoredAccount account = StoredAccount.builder()
+		                                   .name("unavailable").provider("ANTIGRAVITY")
+		                                   .accessToken("tok").refreshToken("ref")
+		                                   .projectId("project")
+		                                   .expiresAt(Instant.now().plusSeconds(3600))
+		                                   .build();
+		when(store.findAllByProvider("ANTIGRAVITY")).thenReturn(List.of(account));
+		when(rotator.next("ANTIGRAVITY")).thenReturn(account);
+		when(authManager.getAccessToken(account)).thenReturn("tok");
+		when(authManager.getProjectId(account)).thenReturn("project");
+
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("gemini-2.5-pro")
+		                                         .messages(List.of())
+		                                         .stream(false)
+		                                         .build();
+
+		try (MockedStatic<AntigravityHttpClient> mocked = mockStatic(AntigravityHttpClient.class)) {
+			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok")))
+			      .thenAnswer(ignored -> new AntigravityHttpClient.AntigravityResponse(503, new ByteArrayInputStream("unavailable".getBytes())));
+
+			MockHttpServletResponse firstResponse = new MockHttpServletResponse();
+			facade.handle(request, "gemini-2.5-pro", false, 10, "key1", "127.0.0.1", Format.COMPLETION, firstResponse);
+			MockHttpServletResponse secondResponse = new MockHttpServletResponse();
+			facade.handle(request, "gemini-2.5-pro", false, 10, "key1", "127.0.0.1", Format.COMPLETION, secondResponse);
+
+			assertEquals(429, firstResponse.getStatus());
+			assertEquals(429, secondResponse.getStatus());
+			assertTrue(secondResponse.getContentAsString().contains("rate_limit_exhausted"));
+			mocked.verify(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok")), times(1));
 		}
 	}
 
