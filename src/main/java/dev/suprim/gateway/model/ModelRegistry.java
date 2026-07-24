@@ -130,7 +130,11 @@ public class ModelRegistry {
 					switch (provider) {
 						case ANTIGRAVITY -> antigravityAuthManager.listModels(
 								account).forEach(model -> {
-							String modelId = model.get("id").toString();
+							Object idObj = model.get("id");
+							if (idObj == null) {
+								return;
+							}
+							String modelId = idObj.toString();
 							String id =
 									Provider.ANTIGRAVITY.getPrefix() + modelId;
 							String name = Optional.ofNullable(
@@ -149,7 +153,7 @@ public class ModelRegistry {
 						});
 						case XAI -> xaiAuthManager.listModels(account).forEach(
 								model -> {
-									String id = (String) model.get("id");
+									String id = model.get("id").toString();
 									String name = Optional.ofNullable(
 											                      model.get("displayName")
 											                           .toString()
@@ -169,7 +173,7 @@ public class ModelRegistry {
 						case CODEX ->
 								codexAuthManager.listModels(account).forEach(
 										model -> {
-											String id = (String) model.get("id");
+											String id = model.get("id").toString();
 											String name = Optional.ofNullable(
 													                      model.get("displayName")
 													                           .toString()
