@@ -114,12 +114,12 @@ class LogsController {
 						                         .promptTokens(l.promptTokens())
 						                         .completionTokens(l.completionTokens())
 						                         .totalTokens(l.totalTokens())
-						                         .cost(nonNull(l.promptTokens()) &&
-						                               nonNull(l.completionTokens())
+						                         .cost(nonNull(l.promptTokens())
 								                         ? pricingService.calculateCost(
 								                         l.model(),
 								                         l.promptTokens(),
-								                         l.completionTokens()
+								                         Optional.ofNullable(l.completionTokens())
+								                                 .orElse(0)
 						                         )
 								                         : null)
 						                         .build()
