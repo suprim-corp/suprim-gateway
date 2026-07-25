@@ -105,8 +105,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 		if (isApiKey) {
 			return account.accessToken();
 		}
-		String key = Optional.ofNullable(account.name())
-		                     .orElse(account.profileArn());
+		String key = accountKey(account);
 		AccountTokenState state = accountTokenCache.computeIfAbsent(
 				key, k -> AccountTokenState.builder()
 				                           .accessToken(account.accessToken())
@@ -137,6 +136,26 @@ public class KiroAuthManager implements ProviderAuthManager {
 			return;
 		}
 		refresh();
+	}
+
+	public String forceRefresh(StoredAccount account) {
+		if ("API_KEY".equalsIgnoreCase(account.authType())) {
+			return account.accessToken();
+		}
+		StoredAccount refreshed = refreshAccountToken(account);
+		if (refreshed == null) {
+			throw new RuntimeException("Kiro token refresh failed for " + account.name());
+		}
+		credentialStore.upsert(refreshed);
+		accountTokenCache.put(
+				accountKey(account),
+				AccountTokenState.builder()
+				                 .accessToken(refreshed.accessToken())
+				                 .refreshToken(refreshed.refreshToken())
+				                 .expiresAt(refreshed.expiresAt())
+				                 .build()
+		);
+		return refreshed.accessToken();
 	}
 
 	public boolean isApiKeyAuth() {
@@ -633,6 +652,10 @@ public class KiroAuthManager implements ProviderAuthManager {
 		}
 		String region = parts[3].trim();
 		return region.isEmpty() ? null : region;
+	}
+
+	private String accountKey(StoredAccount account) {
+		return Optional.ofNullable(account.name()).orElse(account.profileArn());
 	}
 
 	private StoredAccount refreshAccountToken(StoredAccount account) {

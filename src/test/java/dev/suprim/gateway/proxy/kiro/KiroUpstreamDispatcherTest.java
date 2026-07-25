@@ -16,6 +16,8 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.util.List;
 
+import org.mockito.ArgumentCaptor;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -189,6 +191,74 @@ class KiroUpstreamDispatcherTest {
 	}
 
 	@Test
+	void dispatch_allEndpoints403AfterRefresh_rotatesToNextAccount() throws Exception {
+		StoredAccount acc1 = StoredAccount.builder()
+		                                   .name("k1").provider("KIRO")
+		                                   .authType("KIRO_DESKTOP").accessToken("old-token")
+		                                   .build();
+		StoredAccount acc2 = StoredAccount.builder()
+		                                   .name("k2").provider("KIRO")
+		                                   .authType("KIRO_DESKTOP").accessToken("second-token")
+		                                   .build();
+		when(store.findAllByProvider("KIRO")).thenReturn(List.of(acc1, acc2));
+		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc1, acc2);
+		when(authManager.getAccessToken(acc1)).thenReturn("old-token");
+		when(authManager.forceRefresh(acc1)).thenReturn("refreshed-token");
+		when(authManager.getAccessToken(acc2)).thenReturn("second-token");
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("old-token"), any(), anyBoolean()))
+				.thenReturn(new KiroResponse(403, new ByteArrayInputStream(new byte[0]), "application/json"));
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("refreshed-token"), any(), anyBoolean()))
+				.thenReturn(new KiroResponse(403, new ByteArrayInputStream(new byte[0]), "application/json"));
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("second-token"), any(), anyBoolean()))
+				.thenReturn(new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()), "text/event-stream"));
+
+		InternalRequest request = InternalRequest.builder().model("claude-sonnet-4-20250514").messages(List.of()).build();
+		KiroUpstreamDispatcher.DispatchResult result = dispatcher.dispatch(request, true);
+
+		assertEquals("k2", result.accountId());
+		verify(authManager).forceRefresh(acc1);
+		verify(authManager, never()).forceRefresh();
+		verify(kiroClient, times(3)).request(anyString(), anyString(), anyString(), anyBoolean(), eq("old-token"), any(), anyBoolean());
+		verify(kiroClient, times(3)).request(anyString(), anyString(), anyString(), anyBoolean(), eq("refreshed-token"), any(), anyBoolean());
+		ArgumentCaptor<List<StoredAccount>> candidates = ArgumentCaptor.forClass(List.class);
+		verify(rotator, times(2)).next(eq("KIRO"), candidates.capture());
+		assertEquals(List.of(acc1, acc2), candidates.getAllValues().get(0));
+		assertEquals(List.of(acc2), candidates.getAllValues().get(1));
+	}
+
+	@Test
+	void dispatch_duplicateAccounts_attemptsEachUniqueAccountOnlyOnce() throws Exception {
+		StoredAccount acc1 = StoredAccount.builder()
+		                                   .name("k1").provider("KIRO")
+		                                   .authType("KIRO_DESKTOP").accessToken("first-token")
+		                                   .build();
+		StoredAccount duplicate = StoredAccount.builder()
+		                                        .name("k1").provider("KIRO")
+		                                        .authType("KIRO_DESKTOP").accessToken("first-token")
+		                                        .build();
+		StoredAccount acc2 = StoredAccount.builder()
+		                                   .name("k2").provider("KIRO")
+		                                   .authType("KIRO_DESKTOP").accessToken("second-token")
+		                                   .build();
+		when(store.findAllByProvider("KIRO")).thenReturn(List.of(acc1, duplicate, acc2));
+		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc1, acc2);
+		when(authManager.getAccessToken(acc1)).thenReturn("first-token");
+		when(authManager.getAccessToken(acc2)).thenReturn("second-token");
+		when(authManager.forceRefresh(acc1)).thenReturn("first-token-refreshed");
+		when(authManager.forceRefresh(acc2)).thenReturn("second-token-refreshed");
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), anyString(), any(), anyBoolean()))
+				.thenReturn(new KiroResponse(403, new ByteArrayInputStream(new byte[0]), "application/json"));
+
+		InternalRequest request = InternalRequest.builder().model("claude-sonnet-4-20250514").messages(List.of()).build();
+
+		assertThrows(RuntimeException.class, () -> dispatcher.dispatch(request, true));
+		verify(authManager).forceRefresh(acc1);
+		verify(authManager).forceRefresh(acc2);
+		verify(authManager, times(2)).forceRefresh(any(StoredAccount.class));
+		verify(rotator, times(2)).next(eq("KIRO"), anyList());
+	}
+
+	@Test
 	void dispatch_allAccountsExhausted_throws() throws Exception {
 		StoredAccount acc1 = StoredAccount.builder()
 		                                   .name("k1").provider("KIRO")
@@ -196,7 +266,7 @@ class KiroUpstreamDispatcherTest {
 		                                   .build();
 
 		when(store.findAllByProvider("KIRO")).thenReturn(List.of(acc1, acc1));
-		when(rotator.next("KIRO")).thenReturn(acc1);
+		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc1);
 		when(authManager.getAccessToken(acc1)).thenReturn("api-key-1");
 
 		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), any(), anyBoolean()))

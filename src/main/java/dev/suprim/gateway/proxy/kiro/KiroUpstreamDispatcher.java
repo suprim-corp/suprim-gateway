@@ -19,9 +19,12 @@ import org.springframework.stereotype.Component;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -75,9 +78,9 @@ public class KiroUpstreamDispatcher {
 						KiroResponse.builder()
 						            .status(400)
 						            .body(new ByteArrayInputStream(
-								            "{\"message\":\"Invalid model. Please select a different model to continue.\",\"reason\":\"INVALID_MODEL_ID\"}"
-									            .getBytes(StandardCharsets.UTF_8)
-						            )
+										            "{\"message\":\"Invalid model. Please select a different model to continue.\",\"reason\":\"INVALID_MODEL_ID\"}"
+												            .getBytes(StandardCharsets.UTF_8)
+								            )
 						            )
 						            .contentType("application/json")
 						            .build(),
@@ -96,14 +99,27 @@ public class KiroUpstreamDispatcher {
 			List<StoredAccount> accounts
 	) throws Exception {
 		String payload = payloadBuilder.buildOpenAiPayload(request, auth);
-		int maxAttempts = accounts.size();
+		List<StoredAccount> remainingAccounts = new ArrayList<>(
+				accounts.stream()
+				        .collect(
+						        Collectors.toMap(
+								        KiroAccountModelAvailability::accountKey,
+								        account -> account,
+								        (first, ignored) -> first,
+								        LinkedHashMap::new
+						        )
+				        )
+				        .values()
+		);
+		int maxAttempts = remainingAccounts.size();
 		DispatchResult invalidModelResult = null;
 
-		for (int attempt = 0; attempt < maxAttempts; attempt++) {
+		for (int attempt = 0; !remainingAccounts.isEmpty(); attempt++) {
 			StoredAccount account = accountRotator.next(
 					Provider.KIRO.name(),
-					accounts
+					List.copyOf(remainingAccounts)
 			);
+			remainingAccounts.remove(account);
 			String accessToken;
 			try {
 				accessToken = auth.getAccessToken(account);
@@ -123,7 +139,12 @@ public class KiroUpstreamDispatcher {
 
 			KiroResponse response;
 			try {
-				response = tryAllEndpoints(payload, stream, accessToken, account);
+				response = tryAllEndpoints(
+						payload,
+						stream,
+						accessToken,
+						account
+				);
 			} catch (Exception e) {
 				log.error(
 						LogTag.KIRO + "Request failed for {}: {}",
@@ -169,8 +190,7 @@ public class KiroUpstreamDispatcher {
 					account.name()
 			);
 			try {
-				auth.forceRefresh();
-				accessToken = auth.getAccessToken(account);
+				accessToken = auth.forceRefresh(account);
 			} catch (Exception e) {
 				log.warn(
 						LogTag.KIRO + "Refresh failed for {}: {}",
@@ -205,9 +225,9 @@ public class KiroUpstreamDispatcher {
 		boolean isApiKey = "api_key".equalsIgnoreCase(account.authType());
 		String accountKey = Optional.ofNullable(account.name())
 		                            .orElseGet(() ->
-					                            account.accessToken()
-					                                   .substring(0, 8)
-			                            );
+				                            account.accessToken()
+				                                   .substring(0, 8)
+		                            );
 		Integer preferred = preferredEndpoint.get(accountKey);
 
 		if (preferred != null) {
