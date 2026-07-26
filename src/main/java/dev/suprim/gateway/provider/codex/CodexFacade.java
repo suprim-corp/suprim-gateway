@@ -262,22 +262,10 @@ public class CodexFacade {
 				return;
 			}
 
-			httpRes.setCharacterEncoding("UTF-8");
-			httpRes.setContentType("text/event-stream; charset=utf-8");
-			httpRes.setHeader("Cache-Control", "no-cache");
-			PrintWriter writer = httpRes.getWriter();
-
 			boolean thinkingEnabled =
 					format != Format.ANTHROPIC || requestThinkingEnabled;
 			StreamConverter converter = new StreamConverter();
-			StreamingEventWriter eventWriter = new StreamingEventWriter(
-					writer,
-					converter,
-					format,
-					model,
-					thinkingEnabled,
-					inputTokens
-			);
+			StreamingEventWriter eventWriter = null;
 
 			Long firstTokenMs = null;
 			int outputTokens = 0;
@@ -288,6 +276,15 @@ public class CodexFacade {
 				JsonNode node = MAPPER.readTree(data);
 				String upstreamType = node.path("type").asString("unknown");
 				upstreamEventCount++;
+				Optional<String> failure = CodexSseMapper.failureMessage(node);
+				if (failure.isPresent()) {
+					log.error(LogTag.CODEX + "SSE stream failed: {}", failure.get());
+					if (eventWriter == null) {
+						handleStreamFailure(httpRes, format);
+						return;
+					}
+					break;
+				}
 				Optional<KiroEvent> event = CodexSseMapper.toEvent(node);
 				if (event.isPresent()) {
 					mappedEventCount++;
@@ -295,6 +292,15 @@ public class CodexFacade {
 							LogTag.CODEX + "SSE event type={} mapped={}",
 							upstreamType, event.get().type()
 					);
+					if (eventWriter == null) {
+						httpRes.setCharacterEncoding("UTF-8");
+						httpRes.setContentType("text/event-stream; charset=utf-8");
+						httpRes.setHeader("Cache-Control", "no-cache");
+						eventWriter = new StreamingEventWriter(
+								httpRes.getWriter(), converter, format, model,
+								thinkingEnabled, inputTokens
+						);
+					}
 					if (firstTokenMs == null) {
 						firstTokenMs = System.currentTimeMillis() - startTime;
 					}
@@ -312,6 +318,11 @@ public class CodexFacade {
 				}
 			} while ((data = readFirstData(reader)) != null);
 
+			if (eventWriter == null) {
+				log.error(LogTag.CODEX + "SSE stream completed without usable output");
+				handleStreamFailure(httpRes, format);
+				return;
+			}
 			log.info(
 					LogTag.CODEX + "SSE summary: upstreamEvents={} mappedEvents={} hasOutput={} hasContent={} outputTokens={}",
 					upstreamEventCount,
@@ -341,6 +352,27 @@ public class CodexFacade {
 					               .streaming(true)
 					               .clientIp(clientIp)
 					               .build()
+			);
+		}
+	}
+
+	private void handleStreamFailure(
+			HttpServletResponse httpRes,
+			Format format
+	) throws IOException {
+		if (format == Format.ANTHROPIC) {
+			ErrorResponse.anthropic(
+					httpRes,
+					502,
+					"Codex upstream stream failed",
+					"api_error"
+			);
+		} else {
+			ErrorResponse.openAi(
+					httpRes,
+					502,
+					"Codex upstream stream failed",
+					"upstream_error"
 			);
 		}
 	}
@@ -380,7 +412,7 @@ public class CodexFacade {
 	) throws IOException {
 		int latency = (int) (System.currentTimeMillis() - startTime);
 		String message = "Codex upstream returned an empty SSE stream";
-		log.error(LogTag.CODEX + message);
+		log.error(LogTag.CODEX + "{}", message);
 		logPublisher.publish(
 				RequestLogEvent.builder()
 				               .virtualKeyId(keyId)

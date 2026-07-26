@@ -94,6 +94,28 @@ class CodexFacadeRetryTest {
 	}
 
 	@Test
+	void handle_returnsAnthropicErrorForFailedSseBeforeOutput() throws Exception {
+		StoredAccount account = account("failed", "token");
+		when(store.findAllByProvider("CODEX")).thenReturn(List.of(account));
+		when(rotator.next("CODEX")).thenReturn(account);
+		when(authManager.getAccessToken(account)).thenReturn("token");
+
+		String failedStream = "data: {\"type\":\"error\",\"error\":{\"code\":\"server_error\",\"message\":\"upstream failed\"}}\n\n"
+				+ "data: {\"type\":\"response.failed\"}\n\n";
+		try (MockedStatic<CodexHttpClient> mocked = mockStatic(CodexHttpClient.class)) {
+			mocked.when(() -> CodexHttpClient.call(anyString(), eq("token"), any(ProxyChain.class)))
+			      .thenAnswer(ignored -> response(200, failedStream));
+
+			MockHttpServletResponse httpResponse = new MockHttpServletResponse();
+			facade.handle(request(), "gpt-5", true, 10, "key", "127.0.0.1", Format.ANTHROPIC, httpResponse);
+
+			assertEquals(502, httpResponse.getStatus());
+			assertTrue(httpResponse.getContentAsString().contains("Codex upstream stream failed"));
+			assertTrue(httpResponse.getContentAsString().contains("\"type\":\"error\""));
+		}
+	}
+
+	@Test
 	void handle_coolsAccountAfter503() throws Exception {
 		StoredAccount account = account("unavailable", "token");
 		when(store.findAllByProvider("CODEX")).thenReturn(List.of(account));

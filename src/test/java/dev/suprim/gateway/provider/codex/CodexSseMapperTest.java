@@ -58,6 +58,23 @@ class CodexSseMapperTest {
 	}
 
 	@Test
+	void failedResponseIncludesUpstreamError() {
+		ObjectNode error = MAPPER.createObjectNode();
+		error.put("code", "context_length_exceeded");
+		error.put("message", "Input exceeds the context window");
+		ObjectNode response = MAPPER.createObjectNode();
+		response.set("error", error);
+		ObjectNode node = MAPPER.createObjectNode();
+		node.put("type", "response.failed");
+		node.set("response", response);
+
+		assertEquals(
+				Optional.of("context_length_exceeded: Input exceeds the context window"),
+				CodexSseMapper.failureMessage(node)
+		);
+	}
+
+	@Test
 	void completedUsage() {
 		ObjectNode usage = MAPPER.createObjectNode();
 		usage.put("input_tokens", 11);

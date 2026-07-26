@@ -26,6 +26,23 @@ final class CodexSseMapper {
 		};
 	}
 
+	static Optional<String> failureMessage(JsonNode node) {
+		if (node == null || (!"error".equals(nodePathType(node)) &&
+		                     !"response.failed".equals(nodePathType(node)))) {
+			return Optional.empty();
+		}
+		JsonNode error = node.get("error");
+		if (error == null && node.has("response")) {
+			error = node.get("response").get("error");
+		}
+		if (error == null) {
+			return Optional.of("Codex upstream stream failed");
+		}
+		String code = error.path("code").asString();
+		String message = error.path("message").asString("Codex upstream stream failed");
+		return Optional.of(code.isEmpty() ? message : code + ": " + message);
+	}
+
 	static Optional<Integer> usageOutputTokens(JsonNode node) {
 		if (node == null || !"response.completed".equals(nodePathType(node))) {
 			return Optional.empty();
