@@ -2,11 +2,16 @@ package dev.suprim.gateway.utils;
 
 import java.util.Arrays;
 
+/**
+ * Prices are USD per million tokens. Claude pricing source:
+ * <a href="https://platform.claude.com/docs/en/about-claude/pricing">Anthropic API pricing</a>.
+ */
 public enum ModelPricing {
 
     // Kiro
     KIRO_AUTO("auto", PricingTier.FLAT, 3, 15),
-    KIRO_CLAUDE_SONNET_5("claude-sonnet-5", PricingTier.FLAT, 3, 15),
+    KIRO_CLAUDE_OPUS_5("claude-opus-5", PricingTier.FLAT, 5, 25),
+    KIRO_CLAUDE_SONNET_5("claude-sonnet-5", PricingTier.FLAT, 2, 10),
     KIRO_CLAUDE_OPUS_4_8("claude-opus-4-8", PricingTier.FLAT, 5, 25),
     KIRO_CLAUDE_OPUS_4_7("claude-opus-4-7", PricingTier.FLAT, 5, 25),
     KIRO_CLAUDE_OPUS_4_6("claude-opus-4-6", PricingTier.FLAT, 5, 25),

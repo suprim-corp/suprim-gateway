@@ -281,15 +281,26 @@ public class CodexFacade {
 
 			Long firstTokenMs = null;
 			int outputTokens = 0;
+			int upstreamEventCount = 0;
+			int mappedEventCount = 0;
 			String data = firstData;
 			do {
 				JsonNode node = MAPPER.readTree(data);
+				String upstreamType = node.path("type").asString("unknown");
+				upstreamEventCount++;
 				Optional<KiroEvent> event = CodexSseMapper.toEvent(node);
 				if (event.isPresent()) {
+					mappedEventCount++;
+					log.debug(
+							LogTag.CODEX + "SSE event type={} mapped={}",
+							upstreamType, event.get().type()
+					);
 					if (firstTokenMs == null) {
 						firstTokenMs = System.currentTimeMillis() - startTime;
 					}
 					eventWriter.write(event.get());
+				} else {
+					log.debug(LogTag.CODEX + "SSE event type={} ignored", upstreamType);
 				}
 				Optional<Integer> outTok = CodexSseMapper.usageOutputTokens(node);
 				if (outTok.isPresent()) {
@@ -301,6 +312,14 @@ public class CodexFacade {
 				}
 			} while ((data = readFirstData(reader)) != null);
 
+			log.info(
+					LogTag.CODEX + "SSE summary: upstreamEvents={} mappedEvents={} hasOutput={} hasContent={} outputTokens={}",
+					upstreamEventCount,
+					mappedEventCount,
+					eventWriter.hasOutput(),
+					eventWriter.hasContent(),
+					outputTokens
+			);
 			eventWriter.finish(outputTokens);
 
 			int latency = (int) (System.currentTimeMillis() - startTime);
