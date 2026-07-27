@@ -387,46 +387,5 @@ public class KiroUpstreamDispatcher {
 		}
 	}
 
-	private KiroResponse dispatchSingle(
-			InternalRequest request,
-			boolean stream
-	) throws Exception {
-		// Sends the connected account's token, so it is that account's ARN that belongs here.
-		String payload = payloadBuilder.buildOpenAiPayload(
-				request,
-				auth.isApiKeyAuth() ? null : auth.getProfileArn()
-		);
-		String accessToken = auth.getAccessToken();
-		log.debug(
-				LogTag.KIRO + "Streaming payload (first 500): {}",
-				payload.substring(0, Math.min(500, payload.length()))
-		);
-
-		for (KiroEndpoint ep : ENDPOINTS) {
-			KiroResponse response = kiroClient.request(
-					"POST",
-					ep.url(),
-					payload,
-					stream,
-					accessToken,
-					ep.amzTarget().isEmpty() ? null : ep.amzTarget()
-			);
-			if (response.status() == 200) {
-				return response;
-			}
-			if (response.status() == 403) {
-				log.warn(
-						LogTag.KIRO + "403 from {} ({}): {}",
-						ep.name(),
-						ep.url(),
-						readBody(response)
-				);
-				continue;
-			}
-			return response;
-		}
-		throw new RuntimeException("All Kiro endpoints failed");
-	}
-
 	private record KiroEndpoint(String url, String amzTarget, String name) {}
 }
