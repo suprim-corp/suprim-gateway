@@ -78,7 +78,10 @@ public class CodexFacade {
 			payloadNode.put("temperature", request.temperature());
 		}
 		if (request.maxTokens() != null) {
-			payloadNode.put("max_tokens", request.maxTokens());
+			log.warn(
+					LogTag.CODEX + "Ignoring output limit {}: Codex does not support an output cap",
+					request.maxTokens()
+			);
 		}
 		mapSamplingToReasoning(payloadNode);
 		String payload = MAPPER.writeValueAsString(payloadNode);
