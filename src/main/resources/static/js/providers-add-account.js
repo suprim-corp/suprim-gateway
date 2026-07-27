@@ -1,0 +1,228 @@
+// Add-account dialog: provider form switching, Kiro SSO device flow, and OAuth
+// completion polling.
+
+const titles = {
+    kiro: 'Add Kiro Account',
+    antigravity: 'Add Antigravity Account',
+    codex: 'Add Codex Account',
+    xai: 'Add xAI Account'
+}
+const forms = ['kiroForm', 'antigravityForm', 'codexForm', 'xaiForm']
+
+function showProviderForm(provider) {
+    document.getElementById('providerChoices').classList.add('hidden')
+    document.getElementById('dialogTitle').textContent = titles[provider]
+    document.getElementById(provider + 'Form').classList.remove('hidden')
+
+    switch (provider) {
+        case 'xai':
+            initXaiForm()
+            break
+        case 'antigravity':
+            initAntigravityForm()
+            break
+        case 'codex':
+            initCodexForm()
+            break
+    }
+}
+
+function showChoices() {
+    forms.forEach(id => {
+        document.getElementById(id).classList.add('hidden')
+    })
+    document.getElementById('providerChoices').classList.remove('hidden')
+    document.getElementById('dialogTitle').textContent = 'Add Account'
+}
+
+document.getElementById('addAccountDialog').addEventListener('close', () => {
+    showChoices()
+    document.getElementById('kiroFileList').innerHTML = ''
+    document.getElementById('kiroFileList').classList.add('hidden')
+    cancelKiroSso()
+    stopOAuthPoll()
+    showKiroTab('sso')
+})
+
+document.getElementById('kiroFileInput').addEventListener('change', function () {
+    const list = document.getElementById('kiroFileList')
+    list.innerHTML = ''
+    if (this.files.length === 0) {
+        list.classList.add('hidden')
+        return
+    }
+    list.classList.remove('hidden')
+    for (let i = 0; i < this.files.length; i++) {
+        const f = this.files[i]
+        const ext = f.name.split('.').pop().toUpperCase()
+        const size = f.size < 1024 ? f.size + ' B' : (f.size / 1024).toFixed(1) + ' KB'
+        const row = document.createElement('div')
+        row.className = 'flex items-center gap-3 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs'
+        row.innerHTML = '<svg class="size-4 shrink-0 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>' +
+            '<span class="text-zinc-100 truncate flex-1">' + f.name + '</span>' +
+            '<span class="text-[10px] text-zinc-500 shrink-0 uppercase">' + ext + '</span>' +
+            '<span class="text-[10px] text-zinc-500 shrink-0">' + size + '</span>'
+        list.appendChild(row)
+    }
+})
+
+// Kiro SSO
+let kiroSsoPollTimer = null
+
+function showKiroTab(tab) {
+    document.getElementById('kiroSsoTab').classList.toggle('hidden', tab !== 'sso')
+    document.getElementById('kiroApikeyTab').classList.toggle('hidden', tab !== 'apikey')
+    document.getElementById('kiroImportTab').classList.toggle('hidden', tab !== 'import')
+    document.getElementById('kiroTabSso').classList.toggle('border-neon-purple', tab === 'sso')
+    document.getElementById('kiroTabSso').classList.toggle('text-zinc-100', tab === 'sso')
+    document.getElementById('kiroTabSso').classList.toggle('border-transparent', tab !== 'sso')
+    document.getElementById('kiroTabSso').classList.toggle('text-zinc-500', tab !== 'sso')
+    document.getElementById('kiroTabApikey').classList.toggle('border-neon-purple', tab === 'apikey')
+    document.getElementById('kiroTabApikey').classList.toggle('text-zinc-100', tab === 'apikey')
+    document.getElementById('kiroTabApikey').classList.toggle('border-transparent', tab !== 'apikey')
+    document.getElementById('kiroTabApikey').classList.toggle('text-zinc-500', tab !== 'apikey')
+    document.getElementById('kiroTabImport').classList.toggle('border-neon-purple', tab === 'import')
+    document.getElementById('kiroTabImport').classList.toggle('text-zinc-100', tab === 'import')
+    document.getElementById('kiroTabImport').classList.toggle('border-transparent', tab !== 'import')
+    document.getElementById('kiroTabImport').classList.toggle('text-zinc-500', tab !== 'import')
+}
+
+function startKiroSso() {
+    const startUrl = document.getElementById('kiroSsoStartUrl').value.trim()
+    const region = document.getElementById('kiroSsoRegion').value
+
+    if (!startUrl) {
+        toast('Start URL is required', 'error')
+        return
+    }
+
+    fetch('/auth/kiro/sso/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({startUrl, region})
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                toast(data.error, 'error')
+                return
+            }
+            document.getElementById('kiroSsoForm').classList.add('hidden')
+            document.getElementById('kiroSsoVerification').classList.remove('hidden')
+            document.getElementById('kiroSsoUserCode').textContent = data.userCode
+            const link = document.getElementById('kiroSsoLink')
+            const uri = data.verificationUriComplete || data.verificationUri
+            link.href = uri
+            link.textContent = uri
+            document.getElementById('kiroSsoError').classList.add('hidden')
+
+            const interval = (data.interval || 5) * 1000
+            kiroSsoPollTimer = setInterval(() => {
+                pollKiroSso(data.sessionId)
+            }, interval)
+        })
+        .catch(err => {
+            toast('Failed to start SSO: ' + err.message, 'error')
+        })
+}
+
+function pollKiroSso(sessionId) {
+    fetch('/auth/kiro/sso/poll?session=' + encodeURIComponent(sessionId))
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                clearInterval(kiroSsoPollTimer)
+                kiroSsoPollTimer = null
+                toast('Kiro account connected', 'success')
+                document.getElementById('addAccountDialog').close()
+                location.reload()
+            } else if (data.status === 'expired' || data.status === 'error') {
+                clearInterval(kiroSsoPollTimer)
+                kiroSsoPollTimer = null
+                const errorEl = document.getElementById('kiroSsoError')
+                errorEl.textContent = data.message || 'Session expired'
+                errorEl.classList.remove('hidden')
+            }
+        })
+        .catch(() => {})
+}
+
+function cancelKiroSso() {
+    if (kiroSsoPollTimer) {
+        clearInterval(kiroSsoPollTimer)
+        kiroSsoPollTimer = null
+    }
+    document.getElementById('kiroSsoForm').classList.remove('hidden')
+    document.getElementById('kiroSsoVerification').classList.add('hidden')
+    document.getElementById('kiroSsoError').classList.add('hidden')
+}
+
+// OAuth polling — detect when a new account is added
+let oauthPollTimer = null
+let oauthBaseCount = null
+
+function startOAuthPoll() {
+    fetch('/providers/count').then(r => r.json()).then(d => {
+        oauthBaseCount = d.count
+        oauthPollTimer = setInterval(() => {
+            fetch('/providers/count').then(r => r.json()).then(d => {
+                if (d.count > oauthBaseCount) {
+                    stopOAuthPoll()
+                    toast('Account connected', 'success')
+                    document.getElementById('addAccountDialog').close()
+                    location.reload()
+                }
+            }).catch(() => {})
+        }, 500)
+    })
+}
+
+function stopOAuthPoll() {
+    if (oauthPollTimer) {
+        clearInterval(oauthPollTimer)
+        oauthPollTimer = null
+    }
+    oauthBaseCount = null
+}
+
+function initAntigravityForm() {
+    const base = location.origin
+    document.getElementById('agCommand').textContent = 'curl -sL "' + base + '/auth/antigravity/agent" | bash'
+    startOAuthPoll()
+}
+
+function initCodexForm() {
+    const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+    if (isLocal) {
+        document.getElementById('codexLocal').classList.remove('hidden')
+        document.getElementById('codexRemote').classList.add('hidden')
+    } else {
+        document.getElementById('codexLocal').classList.add('hidden')
+        document.getElementById('codexRemote').classList.remove('hidden')
+        fetch('/auth/codex/state', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                const base = location.origin
+                document.getElementById('codexCommand').textContent = 'curl -sL "' + base + '/auth/codex/agent?state=' + data.state + '" | bash'
+            })
+    }
+    startOAuthPoll()
+}
+
+function initXaiForm() {
+    const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+    if (isLocal) {
+        document.getElementById('xaiLocal').classList.remove('hidden')
+        document.getElementById('xaiRemote').classList.add('hidden')
+    } else {
+        document.getElementById('xaiLocal').classList.add('hidden')
+        document.getElementById('xaiRemote').classList.remove('hidden')
+        fetch('/auth/xai/state', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                const base = location.origin
+                document.getElementById('xaiCommand').textContent = 'curl -sL "' + base + '/auth/xai/agent?state=' + data.state + '" | bash'
+            })
+    }
+    startOAuthPoll()
+}

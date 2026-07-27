@@ -16,6 +16,10 @@
     <th:block th:replace="~{fragments/providers/models-dialog :: modelsDialog}"/>
     <th:block th:replace="~{fragments/providers/add-account-dialog :: addAccountDialog}"/>
 
-    <script src="/js/providers.js"></script>
+    <!--/* providers-usage.js first: the others call summarizeUsage/quotaColor. */-->
+    <script src="/js/providers-usage.js"></script>
+    <script src="/js/providers-models-dialog.js"></script>
+    <script src="/js/providers-cards.js"></script>
+    <script src="/js/providers-add-account.js"></script>
 </th:block>
 </html>

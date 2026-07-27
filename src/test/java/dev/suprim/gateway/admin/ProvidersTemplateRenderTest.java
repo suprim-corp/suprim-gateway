@@ -119,6 +119,23 @@ class ProvidersTemplateRenderTest {
 	}
 
 	@Test
+	void providersPage_loadsUsageHelpersBeforeTheirCallers() throws Exception {
+		String html = renderProvidersPage(List.of());
+
+		int usage = html.indexOf("/js/providers-usage.js");
+		int dialog = html.indexOf("/js/providers-models-dialog.js");
+		int cards = html.indexOf("/js/providers-cards.js");
+		int addAccount = html.indexOf("/js/providers-add-account.js");
+
+		assertTrue(usage >= 0, "providers-usage.js not loaded");
+		assertTrue(dialog >= 0, "providers-models-dialog.js not loaded");
+		assertTrue(cards >= 0, "providers-cards.js not loaded");
+		assertTrue(addAccount >= 0, "providers-add-account.js not loaded");
+		assertTrue(usage < dialog && usage < cards,
+				"providers-usage.js must load before the files calling summarizeUsage");
+	}
+
+	@Test
 	void providersPage_rendersOneCardPerAccountInAGrid() throws Exception {
 		StoredAccount kiro = StoredAccount.builder()
 				.provider(KIRO)
