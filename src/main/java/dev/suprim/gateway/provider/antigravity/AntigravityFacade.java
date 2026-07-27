@@ -3,7 +3,6 @@ package dev.suprim.gateway.provider.antigravity;
 import dev.suprim.gateway.logging.LogTag;
 import dev.suprim.gateway.logging.RequestLogEvent;
 import dev.suprim.gateway.logging.RequestLogPublisher;
-import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
@@ -13,21 +12,15 @@ import dev.suprim.gateway.proxy.kiro.KiroEvent;
 import dev.suprim.gateway.proxy.StreamConverter;
 import dev.suprim.gateway.utils.ErrorResponse;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.Builder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -37,16 +30,51 @@ import tools.jackson.databind.json.JsonMapper;
 public class AntigravityFacade {
 
 	private static final JsonMapper MAPPER = new JsonMapper();
+
+	/**
+	 * Signatures the upstream attached to tool calls, keyed by call id. The upstream only
+	 * accepts a tool result back when the call is replayed with the signature it came with,
+	 * and the client returns the results on a later request, so these outlive one request.
+	 */
 	private static final Map<String, String> THOUGHT_SIGNATURES = new ConcurrentHashMap<>();
-	private static final Set<Integer> RATE_LIMIT_STATUSES = Set.of(429, 503);
-	private static final Set<Integer> COOLDOWN_STATUSES = Set.of(429, 503, 403);
-	private static final Set<Integer> ROTATE_ONLY_STATUSES = Set.of(401);
-	private final AntigravityAuthManager authManager;
+
 	private final RequestLogPublisher logPublisher;
 	private final StreamConverter streamConverter;
-	private final AccountRotator accountRotator;
 	private final CredentialStore credentialStore;
-	private final AntigravityAccountCooldown accountCooldown;
+	private final AntigravityAccountAttempts accountAttempts;
+
+	/**
+	 * What every stage of one request needs to know about it: the wire format to answer in,
+	 * and the details each outcome is logged with. Passed around instead of six parameters
+	 * repeated on every handler.
+	 */
+	@Builder
+	private record Call(
+			String model,
+			int inputTokens,
+			String keyId,
+			String clientIp,
+			Format format,
+			long startTime,
+			HttpServletResponse httpRes
+	) {
+
+		int latencyMs() {
+			return (int) (System.currentTimeMillis() - startTime);
+		}
+
+		/** A log event with everything this request already knows filled in. */
+		RequestLogEvent.RequestLogEventBuilder log(String accountName, int status) {
+			return RequestLogEvent.builder()
+			                      .virtualKeyId(keyId)
+			                      .accountId(accountName)
+			                      .model(model)
+			                      .requestedModel(model)
+			                      .status(status)
+			                      .latencyMs(latencyMs())
+			                      .clientIp(clientIp);
+		}
+	}
 
 	public void handle(
 			InternalRequest request,
@@ -71,122 +99,59 @@ public class AntigravityFacade {
 			return;
 		}
 
-		long startTime = System.currentTimeMillis();
-		int maxAttempts = accounts.size();
+		Call call = Call.builder()
+		                .model(model)
+		                .inputTokens(inputTokens)
+		                .keyId(keyId)
+		                .clientIp(clientIp)
+		                .format(format)
+		                .startTime(System.currentTimeMillis())
+		                .httpRes(httpRes)
+		                .build();
 
 		// One id for the whole client request, reused across account rotations and the
 		// transport-level retries inside them, so the upstream sees the retries of a
 		// single request rather than a burst of unrelated ones.
 		String requestId = UUID.randomUUID().toString();
 
-		int lastErrorStatus = 0;
-		String lastErrorBody = null;
-		String lastErrorAccount = null;
-		Set<String> attemptedAccounts = new HashSet<>();
-		for (int attempt = 0; attempt < maxAttempts; attempt++) {
-			StoredAccount account = accountRotator.next(Provider.ANTIGRAVITY.name());
-			String accountKey = accountCooldown.accountKey(account);
-			if (!attemptedAccounts.add(accountKey) || accountCooldown.isCoolingDown(account)) {
-				continue;
-			}
-			String accessToken;
-			try {
-				accessToken = authManager.getAccessToken(account);
-			} catch (Exception e) {
-				log.error(
-						LogTag.ANTIGRAVITY + "Auth failed for {}: {}",
-						account.name(),
-						e.getMessage()
-				);
-				continue;
-			}
-			String projectId = authManager.getProjectId(account);
-
-			log.info(
-					LogTag.ANTIGRAVITY + "Using account: {} (attempt {}/{})",
-					account.name(), attempt + 1, maxAttempts
-			);
-
-			String payload = AntigravityPayloadBuilder.build(
-					request, model, projectId, THOUGHT_SIGNATURES, requestId
-			);
-
-			AntigravityHttpClient.AntigravityResponse response =
-					AntigravityHttpClient.streamGenerateContent(
-							model, payload, accessToken
-					);
-
-			if (response.status() != 200) {
-				String body;
-				try (InputStream is = response.body()) {
-					body = new String(is.readAllBytes());
-				}
-				if (!isRateLimitFailure(response.status())) {
-					lastErrorStatus = response.status();
-					lastErrorBody = body;
-					lastErrorAccount = account.name();
-				}
-
-				if (isCooldownFailure(response.status())) {
-					accountCooldown.coolDown(account);
-					log.warn(
-							LogTag.ANTIGRAVITY + "Account {} got {}, cooling down for 1h: {}",
-							account.name(), response.status(), body
-					);
-					continue;
-				}
-
-				if (ROTATE_ONLY_STATUSES.contains(response.status())) {
-					log.warn(
-							LogTag.ANTIGRAVITY + "Account {} unauthorized, trying next account: {}",
-							account.name(), body
-					);
-					continue;
-				}
-
-				handleError(
-						response.status(), body, account.name(), model, inputTokens,
-						keyId, clientIp, startTime, httpRes
-				);
-				return;
-			}
-
-			if (stream) {
-				handleStream(
-						response, account.name(), model, inputTokens,
-						keyId, clientIp, startTime, format, httpRes
-				);
-			} else {
-				handleNonStream(
-						response, account.name(), model, inputTokens,
-						keyId, clientIp, startTime, format, httpRes
-				);
-			}
-			return;
-		}
-
-		if (lastErrorStatus != 0) {
-			handleError(
-					lastErrorStatus, lastErrorBody, lastErrorAccount, model, inputTokens,
-					keyId, clientIp, startTime, httpRes
-			);
-			return;
-		}
-
-		ErrorResponse.openAi(
-				httpRes,
-				429,
-				"All accounts rate-limited",
-				"rate_limit_exhausted"
+		AntigravityAccountAttempts.Outcome outcome = accountAttempts.run(
+				accounts,
+				model,
+				projectId -> AntigravityPayloadBuilder.build(
+						request, model, projectId, THOUGHT_SIGNATURES, requestId
+				)
 		);
+
+		if (!outcome.succeeded()) {
+			reportFailure(outcome.failure(), call);
+			return;
+		}
+
+		if (stream) {
+			handleStream(outcome.response(), outcome.accountName(), call);
+		} else {
+			handleNonStream(outcome.response(), outcome.accountName(), call);
+		}
 	}
 
-	private static boolean isRateLimitFailure(int status) {
-		return RATE_LIMIT_STATUSES.contains(status);
-	}
-
-	private static boolean isCooldownFailure(int status) {
-		return COOLDOWN_STATUSES.contains(status);
+	/**
+	 * Reports the rotation's failure. A null {@code failure} means every account was
+	 * rate-limited, which has no specific error to relay.
+	 */
+	private void reportFailure(
+			AntigravityAccountAttempts.Failure failure,
+			Call call
+	) throws Exception {
+		if (failure == null) {
+			ErrorResponse.openAi(
+					call.httpRes(),
+					429,
+					"All accounts rate-limited",
+					"rate_limit_exhausted"
+			);
+			return;
+		}
+		handleError(failure, call);
 	}
 
 	private static String truncate(String value, int max) {
@@ -197,40 +162,26 @@ public class AntigravityFacade {
 	}
 
 	private void handleError(
-			int status,
-			String body,
-			String accountName,
-			String model,
-			int inputTokens,
-			String keyId,
-			String clientIp,
-			long startTime,
-			HttpServletResponse httpRes
+			AntigravityAccountAttempts.Failure failure,
+			Call call
 	) throws Exception {
 		log.error(
-				LogTag.ANTIGRAVITY + "Upstream {} body: {}", status,
-				body == null ? "" : body
+				LogTag.ANTIGRAVITY + "Upstream {} body: {}",
+				failure.status(),
+				failure.body() == null ? "" : failure.body()
 		);
 
-		int latency = (int) (System.currentTimeMillis() - startTime);
 		logPublisher.publish(
-				RequestLogEvent.builder()
-				               .virtualKeyId(keyId)
-				               .accountId(accountName)
-				               .model(model)
-				               .requestedModel(model)
-				               .status(status)
-				               .promptTokens(inputTokens)
-				               .latencyMs(latency)
-				               .streaming(false)
-				               .clientIp(clientIp)
-				               .errorMessage(truncate(body, 200))
-				               .build()
+				call.log(failure.accountName(), failure.status())
+				    .promptTokens(call.inputTokens())
+				    .streaming(false)
+				    .errorMessage(truncate(failure.body(), 200))
+				    .build()
 		);
 
 		ErrorResponse.openAi(
-				httpRes,
-				status,
+				call.httpRes(),
+				failure.status(),
 				"Antigravity upstream error",
 				"upstream_error"
 		);
@@ -239,353 +190,193 @@ public class AntigravityFacade {
 	private void handleStream(
 			AntigravityHttpClient.AntigravityResponse response,
 			String accountName,
-			String model,
-			int inputTokens,
-			String keyId,
-			String clientIp,
-			long startTime,
-			Format format,
-			HttpServletResponse httpRes
+			Call call
 	) throws Exception {
+		HttpServletResponse httpRes = call.httpRes();
 		httpRes.setCharacterEncoding("UTF-8");
 		httpRes.setContentType("text/event-stream; charset=utf-8");
 		httpRes.setHeader("Cache-Control", "no-cache");
-		PrintWriter writer = httpRes.getWriter();
 
-		String id = generateId(format);
-		int outputTokens = 0;
-		Long firstTokenMs = null;
-		boolean hasToolUse = false;
-		int toolIndex = 0;
-		StringBuilder fullContent = new StringBuilder();
-		// Counts are cumulative per request and arrive on the later chunks only, so the
-		// last one seen is the total. Kept separate from the chunk tally above so the
-		// reported figure wins without disturbing the streaming logic.
-		AntigravityStreamConverter.Usage usage = null;
-		double consumedCredits = 0;
+		AntigravityResponseWriter out = new AntigravityResponseWriter(
+				streamConverter,
+				httpRes.getWriter(),
+				call.format(),
+				generateId(call.format()),
+				call.model()
+		);
+		out.preamble(call.inputTokens());
 
-		if (format == Format.ANTHROPIC) {
-			writer.write(
-					streamConverter.toAnthropicPreamble(
-							id,
-							model,
-							inputTokens
-					)
-			);
-			writer.flush();
-		} else if (format == Format.RESPONSES) {
-			writer.write(streamConverter.toResponsesCreated(id, model)
-			             + streamConverter.toResponsesOutputItemAdded(id)
-			             + streamConverter.toResponsesContentPartAdded()
-			);
-			writer.flush();
-		}
-
-		try (
-				BufferedReader reader = new BufferedReader(
-						new InputStreamReader(
-								response.body()
-						)
-				)
-		) {
-			String line;
-			while ((line = reader.readLine()) != null) {
-				if (!line.startsWith("data: ")) {
-					continue;
-				}
-				String data = line.substring(6).trim();
-				if (data.isEmpty()) {
-					continue;
-				}
-
-				AntigravityStreamConverter.ParsedChunk parsed =
-						AntigravityStreamConverter.parseChunk(data);
-				if (parsed == null) {
-					continue;
-				}
-
-				if (parsed.usage() != null) {
-					usage = parsed.usage();
-				}
-				if (parsed.consumedCredits() != null) {
-					consumedCredits = parsed.consumedCredits();
-				}
-
-				if (parsed.text() != null && !parsed.text().isEmpty()) {
-					if (firstTokenMs == null) {
-						firstTokenMs = System.currentTimeMillis() - startTime;
-					}
-					fullContent.append(parsed.text());
-
-					String chunk = switch (format) {
-						case ANTHROPIC -> streamConverter.toAnthropicDelta(
-								parsed.text()
-						);
-						case COMPLETION ->
-								AntigravityStreamConverter.buildChunkPublic(
-										id,
-										model,
-										parsed.text()
-								);
-						case RESPONSES -> streamConverter.toResponsesTextDelta(
-								parsed.text()
-						);
-					};
-					writer.write(chunk);
-					writer.flush();
-					outputTokens++;
-				}
-
-				if (parsed.functionCall() != null) {
-					hasToolUse = true;
-					if (firstTokenMs == null) {
-						firstTokenMs = System.currentTimeMillis() - startTime;
-					}
-					toolIndex++;
-
-					String toolCallId;
-
-					if (parsed.functionCall().id() != null) {
-						toolCallId = parsed.functionCall().id();
-					} else {
-						String randomId = UUID.randomUUID()
-						                      .toString()
-						                      .replace(
-								                      "-",
-								                      ""
-						                      )
-						                      .substring(0, 20);
-						toolCallId = "call_" + randomId;
-					}
-
-					if (parsed.thoughtSignature() != null) {
-						THOUGHT_SIGNATURES.put(
-								toolCallId,
-								parsed.thoughtSignature()
-						);
-					}
-					KiroEvent event = KiroEvent.toolUse(
-							parsed.functionCall().name(),
-							parsed.functionCall().args(),
-							toolCallId
-					);
-					String chunk = switch (format) {
-						case ANTHROPIC -> streamConverter.toAnthropicToolUse(
-								event,
-								toolIndex
-						);
-						case COMPLETION -> streamConverter.toOpenAiChunk(
-								event,
-								model,
-								id
-						);
-						case RESPONSES -> streamConverter.toResponsesToolCall(
-								event,
-								toolIndex
-						);
-					};
-					if (chunk != null) {
-						writer.write(chunk);
-						writer.flush();
-					}
-					outputTokens++;
-				}
-			}
-		}
+		StreamState state = new StreamState();
+		AntigravitySseReader.Totals totals = AntigravitySseReader.read(
+				response.body(),
+				parsed -> relayChunk(parsed, out, state, call.startTime())
+		);
 
 		// The upstream's own counts when it reported them, the local tally otherwise: the
 		// tally counts stream chunks rather than tokens, so it is only ever an estimate.
-		int reportedInput = reportedOr(usage, AntigravityStreamConverter.Usage::promptTokens, inputTokens);
-		int reportedOutput = reportedOr(usage, AntigravityStreamConverter.Usage::completionTokens, outputTokens);
+		int reportedInput = AntigravitySseReader.reportedOr(
+				totals.usage(),
+				AntigravityStreamConverter.Usage::promptTokens,
+				call.inputTokens()
+		);
+		int reportedOutput = AntigravitySseReader.reportedOr(
+				totals.usage(),
+				AntigravityStreamConverter.Usage::completionTokens,
+				state.outputTokens
+		);
 
-		String finale = switch (format) {
-			case ANTHROPIC -> streamConverter.toAnthropicFinale(
-					reportedOutput,
-					hasToolUse
-			);
-			case COMPLETION -> {
-				if (hasToolUse) {
-					yield AntigravityStreamConverter.buildDoneEvent();
-				} else {
-					yield AntigravityStreamConverter.buildStopChunk(model, id)
-					      + AntigravityStreamConverter.buildDoneEvent();
-				}
-			}
-			case RESPONSES -> {
-				String text = fullContent.toString();
-				if (hasToolUse) {
-					yield streamConverter.toResponsesCompleted(
-							id,
-							model,
-							text,
-							List.of(),
-							reportedInput,
-							reportedOutput
-					);
-				} else {
-					yield streamConverter.toResponsesTextDone(text, id)
-					      + streamConverter.toResponsesCompleted(
-							id,
-							model,
-							text,
-							List.of(),
-							reportedInput,
-							reportedOutput
-					);
-				}
-			}
-		};
-		writer.write(finale);
-		writer.flush();
+		out.finale(
+				state.fullContent.toString(), state.hasToolUse, reportedInput, reportedOutput
+		);
 
 		log.debug(
 				LogTag.ANTIGRAVITY +
 				"Stream done: textChunks={}, toolCalls={}, hasToolUse={}, usage={}",
-				outputTokens - toolIndex,
-				toolIndex,
-				hasToolUse,
-				usage
+				state.outputTokens - state.toolIndex,
+				state.toolIndex,
+				state.hasToolUse,
+				totals.usage()
 		);
 
-		int latency = (int) (System.currentTimeMillis() - startTime);
 		logPublisher.publish(
-				RequestLogEvent.builder()
-				               .virtualKeyId(keyId)
-				               .accountId(accountName)
-				               .model(model)
-				               .requestedModel(model)
-				               .status(200)
-				               .promptTokens(reportedInput)
-				               .completionTokens(
-						               reportedOutput > 0 ? reportedOutput : null
-				               )
-				               .latencyMs(latency)
-				               .firstTokenMs(
-						               firstTokenMs !=
-						               null ? firstTokenMs.intValue() : null
-				               )
-				               .streaming(true)
-				               .clientIp(clientIp)
-				               .credits(consumedCredits > 0 ? consumedCredits : null)
-				               .build()
+				call.log(accountName, 200)
+				    .promptTokens(reportedInput)
+				    .completionTokens(reportedOutput > 0 ? reportedOutput : null)
+				    .firstTokenMs(
+						    state.firstTokenMs != null
+								    ? state.firstTokenMs.intValue()
+								    : null
+				    )
+				    .streaming(true)
+				    .credits(billedCredits(totals))
+				    .build()
 		);
 	}
 
+	/** Credits the upstream billed, or null when it billed none or reported nothing. */
+	private static Double billedCredits(AntigravitySseReader.Totals totals) {
+		Double credits = totals.consumedCredits();
+		return credits != null && credits > 0 ? credits : null;
+	}
+
 	/**
-	 * The count the upstream reported, or {@code fallback} when it reported none. A
-	 * reported zero is taken at face value: the upstream billed nothing for that side of
-	 * the request.
+	 * What one stream accumulates as it is relayed. Mutable so the per-chunk callback can
+	 * add to it; confined to a single {@link #handleStream} call, never shared.
 	 */
-	private static int reportedOr(
-			AntigravityStreamConverter.Usage usage,
-			Function<AntigravityStreamConverter.Usage, Integer> field,
-			int fallback
-	) {
-		if (usage == null) {
-			return fallback;
+	private static final class StreamState {
+
+		private final StringBuilder fullContent = new StringBuilder();
+		private int outputTokens;
+		private int toolIndex;
+		private boolean hasToolUse;
+		private Long firstTokenMs;
+
+		void markFirstToken(long startTime) {
+			if (firstTokenMs == null) {
+				firstTokenMs = System.currentTimeMillis() - startTime;
+			}
 		}
-		Integer reported = field.apply(usage);
-		return reported != null ? reported : fallback;
+	}
+
+	/** Relays one parsed chunk to the client and folds it into {@code state}. */
+	private void relayChunk(
+			AntigravityStreamConverter.ParsedChunk parsed,
+			AntigravityResponseWriter out,
+			StreamState state,
+			long startTime
+	) throws Exception {
+		if (parsed.text() != null && !parsed.text().isEmpty()) {
+			state.markFirstToken(startTime);
+			state.fullContent.append(parsed.text());
+			out.textDelta(parsed.text());
+			state.outputTokens++;
+		}
+
+		if (parsed.functionCall() != null) {
+			state.hasToolUse = true;
+			state.markFirstToken(startTime);
+			state.toolIndex++;
+
+			String toolCallId = parsed.functionCall().id() != null
+					? parsed.functionCall().id()
+					: "call_" + UUID.randomUUID()
+					                .toString()
+					                .replace("-", "")
+					                .substring(0, 20);
+
+			// The upstream will only accept the tool result back if the call is replayed
+			// with the signature it came with, so keep them keyed by call id.
+			if (parsed.thoughtSignature() != null) {
+				THOUGHT_SIGNATURES.put(toolCallId, parsed.thoughtSignature());
+			}
+
+			out.toolCall(
+					KiroEvent.toolUse(
+							parsed.functionCall().name(),
+							parsed.functionCall().args(),
+							toolCallId
+					),
+					state.toolIndex
+			);
+			state.outputTokens++;
+		}
 	}
 
 	private void handleNonStream(
 			AntigravityHttpClient.AntigravityResponse response,
 			String accountName,
-			String model,
-			int inputTokens,
-			String keyId,
-			String clientIp,
-			long startTime,
-			Format format,
-			HttpServletResponse httpRes
+			Call call
 	) throws Exception {
 		StringBuilder content = new StringBuilder();
-		AntigravityStreamConverter.Usage usage = null;
-		double consumedCredits = 0;
-
-		try (
-				BufferedReader reader = new BufferedReader(
-						new InputStreamReader(
-								response.body()
-						)
-				)
-		) {
-			String line;
-			while ((line = reader.readLine()) != null) {
-				if (!line.startsWith("data: ")) {
-					continue;
+		AntigravitySseReader.Totals totals = AntigravitySseReader.read(
+				response.body(),
+				parsed -> {
+					if (parsed.text() != null && !parsed.text().isEmpty()) {
+						content.append(parsed.text());
+					}
 				}
-				String data = line.substring(6).trim();
-				if (data.isEmpty()) {
-					continue;
-				}
-
-				AntigravityStreamConverter.ParsedChunk parsed =
-						AntigravityStreamConverter.parseChunk(data);
-				if (parsed == null) {
-					continue;
-				}
-				if (parsed.usage() != null) {
-					usage = parsed.usage();
-				}
-				if (parsed.consumedCredits() != null) {
-					consumedCredits = parsed.consumedCredits();
-				}
-				if (parsed.text() != null && !parsed.text().isEmpty()) {
-					content.append(parsed.text());
-				}
-			}
-		}
+		);
 
 		String text = content.toString();
-		String id = generateId(format);
+		String id = generateId(call.format());
+		String model = call.model();
 		// Four characters per token is a rough stand-in; the upstream's own count replaces
 		// it whenever the response carries one.
-		int reportedInput = reportedOr(
-				usage, AntigravityStreamConverter.Usage::promptTokens, inputTokens
+		int reportedInput = AntigravitySseReader.reportedOr(
+				totals.usage(),
+				AntigravityStreamConverter.Usage::promptTokens,
+				call.inputTokens()
 		);
-		int outputTokens = reportedOr(
-				usage, AntigravityStreamConverter.Usage::completionTokens, text.length() / 4
+		int outputTokens = AntigravitySseReader.reportedOr(
+				totals.usage(),
+				AntigravityStreamConverter.Usage::completionTokens,
+				text.length() / 4
 		);
 
+		HttpServletResponse httpRes = call.httpRes();
 		httpRes.setCharacterEncoding("UTF-8");
 		httpRes.setContentType("application/json; charset=utf-8");
 
-		Object responseBody = switch (format) {
-			case ANTHROPIC -> streamConverter.toAnthropicNonStreaming(
-					id, model, text, null, reportedInput, outputTokens
-			);
-			case COMPLETION -> streamConverter.toOpenAiNonStreaming(
-					List.of(KiroEvent.content(text)),
-					model,
-					null,
-					reportedInput,
-					outputTokens
-			);
-			case RESPONSES -> streamConverter.toResponsesNonStreaming(
-					id, model, text, null, reportedInput, outputTokens
-			);
-		};
-		MAPPER.writeValue(httpRes.getWriter(), responseBody);
+		MAPPER.writeValue(
+				httpRes.getWriter(),
+				AntigravityResponseWriter.nonStreamingBody(
+						streamConverter,
+						call.format(),
+						id,
+						model,
+						text,
+						reportedInput,
+						outputTokens
+				)
+		);
 
-		int latency = (int) (System.currentTimeMillis() - startTime);
 		logPublisher.publish(
-				RequestLogEvent.builder()
-				               .virtualKeyId(keyId)
-				               .accountId(accountName)
-				               .model(model)
-				               .requestedModel(model)
-				               .status(200)
-				               .promptTokens(reportedInput)
-				               .completionTokens(
-						               outputTokens >
-						               0 ? outputTokens : null
-				               )
-				               .latencyMs(latency)
-				               .streaming(false)
-				               .clientIp(clientIp)
-				               .credits(consumedCredits > 0 ? consumedCredits : null)
-				               .build()
+				call.log(accountName, 200)
+				    .promptTokens(reportedInput)
+				    .completionTokens(outputTokens > 0 ? outputTokens : null)
+				    .streaming(false)
+				    .credits(billedCredits(totals))
+				    .build()
 		);
 	}
 

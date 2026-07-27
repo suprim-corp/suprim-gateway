@@ -35,9 +35,11 @@ class AntigravityFacadeRetryTest {
 		ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
 		RequestLogPublisher logPublisher = new RequestLogPublisher(eventPublisher);
 		StreamConverter streamConverter = new StreamConverter();
+		AntigravityAccountAttempts accountAttempts = new AntigravityAccountAttempts(
+				authManager, rotator, new AntigravityAccountCooldown()
+		);
 		facade = new AntigravityFacade(
-				authManager, logPublisher, streamConverter, rotator, store,
-				new AntigravityAccountCooldown()
+				logPublisher, streamConverter, store, accountAttempts
 		);
 	}
 
