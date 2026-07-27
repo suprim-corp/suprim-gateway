@@ -1,6 +1,7 @@
 package dev.suprim.gateway.proxy.kiro;
 
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
+import dev.suprim.gateway.provider.kiro.KiroUserAgent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -11,10 +12,6 @@ import java.util.UUID;
 @Component
 @RequiredArgsConstructor
 class KiroHeaders {
-
-	private static final String FINGERPRINT = UUID.randomUUID()
-	                                              .toString()
-	                                              .substring(0, 8);
 
 	private final KiroAuthManager authManager;
 
@@ -35,15 +32,8 @@ class KiroHeaders {
 				"x-amz-target",
 				"AmazonCodeWhispererStreamingService.GenerateAssistantResponse"
 		);
-		headers.put(
-				"User-Agent",
-				"aws-sdk-js/1.0.34 ua/2.1 os/darwin lang/js md/nodejs#22.0.0 api/codewhispererstreaming#1.0.34 m/E KiroIDE-0.7.45-" +
-				FINGERPRINT
-		);
-		headers.put(
-				"x-amz-user-agent",
-				"aws-sdk-js/1.0.34 KiroIDE-0.7.45-" + FINGERPRINT
-		);
+		headers.put("User-Agent", KiroUserAgent.streaming());
+		headers.put("x-amz-user-agent", KiroUserAgent.amzStreaming());
 		headers.put("x-amzn-codewhisperer-optout", "true");
 		headers.put("x-amzn-kiro-agent-mode", "vibe");
 		headers.put("amz-sdk-invocation-id", UUID.randomUUID().toString());

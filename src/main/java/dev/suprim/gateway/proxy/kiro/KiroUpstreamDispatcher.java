@@ -98,7 +98,6 @@ public class KiroUpstreamDispatcher {
 			String model,
 			List<StoredAccount> accounts
 	) throws Exception {
-		String payload = payloadBuilder.buildOpenAiPayload(request, auth);
 		List<StoredAccount> remainingAccounts = new ArrayList<>(
 				accounts.stream()
 				        .collect(
@@ -135,6 +134,13 @@ public class KiroUpstreamDispatcher {
 			log.info(
 					LogTag.KIRO + "Using account: {} (attempt {}/{})",
 					account.name(), attempt + 1, maxAttempts
+			);
+
+			// Rebuilt per account: the payload carries that account's own profile ARN, and an
+			// ARN from a different account makes the upstream reject the bearer token.
+			String payload = payloadBuilder.buildOpenAiPayload(
+					request,
+					profileArnFor(account)
 			);
 
 			EndpointAttempt endpointAttempt;
@@ -244,6 +250,19 @@ public class KiroUpstreamDispatcher {
 		}
 	}
 
+	/**
+	 * The profile ARN to send as one account, or null when it needs none.
+	 * <p>
+	 * An API-key account is already scoped by its key and must not send one. Every other account
+	 * sends its own stored ARN — never the connected account's, since an ARN belonging to a
+	 * different account makes the upstream reject the token.
+	 */
+	private static String profileArnFor(StoredAccount account) {
+		return "api_key".equalsIgnoreCase(account.authType())
+				? null
+				: account.profileArn();
+	}
+
 	private EndpointAttempt tryAllEndpoints(
 			String payload,
 			boolean stream,
@@ -309,8 +328,10 @@ public class KiroUpstreamDispatcher {
 			}
 			if (response.status() == 403) {
 				log.warn(
-						LogTag.KIRO + "403 from {}, trying next endpoint",
-						ep.name()
+						LogTag.KIRO + "403 from {} ({}): {}",
+						ep.name(),
+						ep.url(),
+						readBody(response)
 				);
 				continue;
 			}
@@ -353,11 +374,28 @@ public class KiroUpstreamDispatcher {
 		}
 	}
 
+	/**
+	 * Reads and closes an error body so it can be logged. Returns a placeholder rather than
+	 * throwing: this only runs on a path that is already failing, and losing the reason to a
+	 * secondary failure is worse than an imprecise log line.
+	 */
+	private String readBody(KiroResponse response) {
+		try (InputStream body = response.body()) {
+			return new String(body.readAllBytes(), StandardCharsets.UTF_8);
+		} catch (Exception e) {
+			return "<unreadable: " + e.getMessage() + ">";
+		}
+	}
+
 	private KiroResponse dispatchSingle(
 			InternalRequest request,
 			boolean stream
 	) throws Exception {
-		String payload = payloadBuilder.buildOpenAiPayload(request, auth);
+		// Sends the connected account's token, so it is that account's ARN that belongs here.
+		String payload = payloadBuilder.buildOpenAiPayload(
+				request,
+				auth.isApiKeyAuth() ? null : auth.getProfileArn()
+		);
 		String accessToken = auth.getAccessToken();
 		log.debug(
 				LogTag.KIRO + "Streaming payload (first 500): {}",
@@ -378,8 +416,10 @@ public class KiroUpstreamDispatcher {
 			}
 			if (response.status() == 403) {
 				log.warn(
-						LogTag.KIRO + "403 from {}, trying next endpoint",
-						ep.name()
+						LogTag.KIRO + "403 from {} ({}): {}",
+						ep.name(),
+						ep.url(),
+						readBody(response)
 				);
 				continue;
 			}

@@ -1,7 +1,6 @@
 package dev.suprim.gateway.provider.kiro.payload;
 
 import dev.suprim.gateway.api.request.MessagesRequest;
-import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.model.ModelResolver;
 import dev.suprim.gateway.provider.kiro.utils.ToolConverter;
 import dev.suprim.gateway.proxy.ContentExtractor;
@@ -30,9 +29,15 @@ public class PayloadBuilder {
 	private final ObjectMapper mapper = new ObjectMapper();
 	private final ModelResolver modelResolver;
 
+	/**
+	 * @param profileArn the ARN of the account this payload will be sent as, or null for an
+	 *                   API-key account. It must belong to the same account as the bearer token,
+	 *                   or the upstream rejects the token — so it is passed per request rather
+	 *                   than read from the connected account.
+	 */
 	public String buildOpenAiPayload(
 			InternalRequest request,
-			KiroAuthManager auth
+			String profileArn
 	) throws Exception {
 		List<Message> messages = request.messages() != null
 				? new ArrayList<>(request.messages())
@@ -40,14 +45,14 @@ public class PayloadBuilder {
 		String model = request.model();
 		List<Tool> tools = request.tools();
 
-		return buildKiroPayload(messages, model, tools, auth);
+		return buildKiroPayload(messages, model, tools, profileArn);
 	}
 
 	private String buildKiroPayload(
 			List<Message> messages,
 			String model,
 			List<Tool> tools,
-			KiroAuthManager auth
+			String profileArn
 	) throws Exception {
 		String modelId = modelResolver.resolve(model);
 
@@ -100,7 +105,7 @@ public class PayloadBuilder {
 				history, modelId, currentContent,
 				historyResult.currentImages(),
 				historyResult.currentToolResults(),
-				tools, auth, systemPrompt
+				tools, profileArn, systemPrompt
 		);
 
 		return truncatePayload(root, history, systemPrompt);
@@ -113,7 +118,7 @@ public class PayloadBuilder {
 			List<ContentExtractor.KiroImage> currentImages,
 			List<Message> currentToolResults,
 			List<Tool> tools,
-			KiroAuthManager auth,
+			String profileArn,
 			String systemPrompt
 	) {
 		ObjectNode root = mapper.createObjectNode();
@@ -135,8 +140,8 @@ public class PayloadBuilder {
 			conversationState.set("history", history);
 		}
 
-		if (!auth.isApiKeyAuth() && auth.getProfileArn() != null) {
-			root.put("profileArn", auth.getProfileArn());
+		if (profileArn != null && !profileArn.isBlank()) {
+			root.put("profileArn", profileArn);
 		}
 
 		return root;
@@ -201,8 +206,11 @@ public class PayloadBuilder {
 		                         null;
 
 		log.debug(
-				"[Payload] size={}, history={}, hasTools={}, hasToolResults={}",
-				json.length(), history.size(), hasTools, hasToolResults
+				"[Payload] size={}, history={}, hasTools={}, hasToolResults={}, profileArn={}",
+				json.length(), history.size(), hasTools, hasToolResults,
+				root.get("profileArn") == null
+						? "<absent>"
+						: root.get("profileArn").asString()
 		);
 
 		validateToolUseMismatch(history);

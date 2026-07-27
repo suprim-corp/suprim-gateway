@@ -116,6 +116,21 @@ public class KiroHttpClient {
 		for (int attempt = 0; attempt < maxRetries; attempt++) {
 			try {
 				Map<String, String> headers = kiroHeaders.build(accessToken, isApiKey);
+				if (log.isDebugEnabled()) {
+					log.debug(
+							"[Kiro] {} isApiKey={} tokenLen={} tokenPrefix={} headers={}",
+							url,
+							isApiKey,
+							accessToken == null ? -1 : accessToken.length(),
+							accessToken == null
+									? "null"
+									: accessToken.substring(
+											0,
+											Math.min(12, accessToken.length())
+									),
+							headers.keySet()
+					);
+				}
 
 				HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
 				                                            .uri(URI.create(url));
