@@ -1,6 +1,7 @@
 package dev.suprim.gateway.provider.antigravity;
 
 import dev.suprim.gateway.logging.LogTag;
+import dev.suprim.gateway.provider.AccountCooldown;
 import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
@@ -33,7 +34,7 @@ class AntigravityAccountAttempts {
 
 	private final AntigravityAuthManager authManager;
 	private final AccountRotator accountRotator;
-	private final AntigravityAccountCooldown accountCooldown;
+	private final AccountCooldown accountCooldown;
 
 	/**
 	 * How the rotation ended. Exactly one of {@code response} or {@code failure} is set:
@@ -53,7 +54,9 @@ class AntigravityAccountAttempts {
 		}
 	}
 
-	/** An upstream error, kept with the account that produced it for the request log. */
+	/**
+	 * An upstream error, kept with the account that produced it for the request log.
+	 */
 	@Builder
 	record Failure(int status, String body, String accountName) {}
 
@@ -124,33 +127,39 @@ class AntigravityAccountAttempts {
 			if (COOLDOWN_STATUSES.contains(status)) {
 				accountCooldown.coolDown(account);
 				log.warn(
-						LogTag.ANTIGRAVITY + "Account {} got {}, cooling down for 1h: {}",
-						account.name(), status, body
+						LogTag.ANTIGRAVITY +
+						"Account {} got {}, cooling down for {}: {}",
+						account.name(), status, AccountCooldown.duration(), body
 				);
 				continue;
 			}
 
 			if (ROTATE_ONLY_STATUSES.contains(status)) {
 				log.warn(
-						LogTag.ANTIGRAVITY + "Account {} unauthorized, trying next account: {}",
+						LogTag.ANTIGRAVITY +
+						"Account {} unauthorized, trying next account: {}",
 						account.name(), body
 				);
 				continue;
 			}
 
 			return Outcome.builder()
-			              .failure(Failure.builder()
-			                              .status(status)
-			                              .body(body)
-			                              .accountName(account.name())
-			                              .build())
+			              .failure(
+					              Failure.builder()
+					                     .status(status)
+					                     .body(body)
+					                     .accountName(account.name())
+					                     .build()
+			              )
 			              .build();
 		}
 
 		return Outcome.builder().failure(lastFailure).build();
 	}
 
-	/** Builds the request body for the account whose project id is passed in. */
+	/**
+	 * Builds the request body for the account whose project id is passed in.
+	 */
 	@FunctionalInterface
 	interface PayloadFactory {
 

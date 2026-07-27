@@ -3,6 +3,7 @@ package dev.suprim.gateway.provider.codex;
 import dev.suprim.gateway.logging.LogTag;
 import dev.suprim.gateway.logging.RequestLogEvent;
 import dev.suprim.gateway.logging.RequestLogPublisher;
+import dev.suprim.gateway.provider.AccountCooldown;
 import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.Provider;
@@ -40,7 +41,7 @@ public class CodexFacade {
 	private final AccountRotator accountRotator;
 	private final CredentialStore credentialStore;
 	private final ProxyChain proxyChain;
-	private final CodexAccountCooldown accountCooldown;
+	private final AccountCooldown accountCooldown;
 
 	public void handle(
 			InternalRequest request,
@@ -138,8 +139,8 @@ public class CodexFacade {
 			if (response.status() == 429 || response.status() == 503) {
 				accountCooldown.coolDown(account);
 				log.warn(
-						LogTag.CODEX + "Account {} got {}, cooling down for 6h",
-						account.name(), response.status()
+						LogTag.CODEX + "Account {} got {}, cooling down for {}",
+						account.name(), response.status(), AccountCooldown.duration()
 				);
 				try (InputStream is = response.body()) {
 					is.readAllBytes();

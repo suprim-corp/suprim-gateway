@@ -1,6 +1,7 @@
 package dev.suprim.gateway.provider.antigravity;
 
 import dev.suprim.gateway.logging.RequestLogPublisher;
+import dev.suprim.gateway.provider.AccountCooldown;
 import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
@@ -36,7 +37,7 @@ class AntigravityFacadeRetryTest {
 		RequestLogPublisher logPublisher = new RequestLogPublisher(eventPublisher);
 		StreamConverter streamConverter = new StreamConverter();
 		AntigravityAccountAttempts accountAttempts = new AntigravityAccountAttempts(
-				authManager, rotator, new AntigravityAccountCooldown()
+				authManager, rotator, new AccountCooldown()
 		);
 		facade = new AntigravityFacade(
 				logPublisher, streamConverter, store, accountAttempts

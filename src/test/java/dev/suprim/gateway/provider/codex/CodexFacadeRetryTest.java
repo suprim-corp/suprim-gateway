@@ -1,6 +1,7 @@
 package dev.suprim.gateway.provider.codex;
 
 import dev.suprim.gateway.logging.RequestLogPublisher;
+import dev.suprim.gateway.provider.AccountCooldown;
 import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
@@ -44,7 +45,7 @@ class CodexFacadeRetryTest {
 		ProxyChain proxyChain = mock(ProxyChain.class);
 		facade = new CodexFacade(
 				authManager, logPublisher, rotator, store, proxyChain,
-				new CodexAccountCooldown()
+				new AccountCooldown()
 		);
 	}
 
