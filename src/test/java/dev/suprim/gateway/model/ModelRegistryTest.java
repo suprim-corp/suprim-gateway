@@ -1,6 +1,5 @@
 package dev.suprim.gateway.model;
 
-import dev.suprim.gateway.config.AppConfig;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
@@ -26,8 +25,6 @@ import static org.mockito.Mockito.*;
 class ModelRegistryTest {
 
 	@Mock
-	private AppConfig config;
-	@Mock
 	private CredentialStore credentialStore;
 	@Mock
 	private KiroAccountModelAvailability kiroModelAvailability;
@@ -43,12 +40,19 @@ class ModelRegistryTest {
 	@BeforeEach
 	void setUp() {
 		registry = new ModelRegistry(
-				config,
-				credentialStore,
-				kiroModelAvailability,
-				antigravityAuthManager,
-				xaiAuthManager,
-				codexAuthManager
+				new ModelListingCollector(
+						credentialStore,
+						kiroModelAvailability,
+						antigravityAuthManager,
+						xaiAuthManager,
+						codexAuthManager
+				),
+				new ProviderModelCatalog(
+						kiroModelAvailability,
+						antigravityAuthManager,
+						xaiAuthManager,
+						codexAuthManager
+				)
 		);
 	}
 
@@ -75,7 +79,7 @@ class ModelRegistryTest {
 
 		assertDoesNotThrow(() -> registry.refreshCache());
 
-		List<ModelRegistry.ModelForListingApi> models = registry.getAllModelsForApi();
+		List<ModelForListingApi> models = registry.getAllModelsForApi();
 		assertEquals(2, models.size());
 		assertEquals("ag/gemini-2.5-pro", models.get(0).id());
 		assertEquals("Antigravity | gemini-2.5-pro", models.get(0).displayName());
@@ -102,7 +106,7 @@ class ModelRegistryTest {
 
 		registry.refreshCache();
 
-		assertEquals(List.of("ag/gemini-2.5-pro"), registry.getAllModelsForApi().stream().map(ModelRegistry.ModelForListingApi::id).toList());
+		assertEquals(List.of("ag/gemini-2.5-pro"), registry.getAllModelsForApi().stream().map(ModelForListingApi::id).toList());
 	}
 
 	@Test
