@@ -110,6 +110,25 @@ class ModelRegistryTest {
 	}
 
 	@Test
+	void testRefreshCache_skipsAccountsWithNullOrUnknownProvider() {
+		StoredAccount noProvider = StoredAccount.builder()
+		                                        .name("legacy")
+		                                        .build();
+		StoredAccount unknownProvider = StoredAccount.builder()
+		                                             .provider("SOME_FUTURE_PROVIDER")
+		                                             .name("future")
+		                                             .build();
+
+		when(kiroModelAvailability.availableModels()).thenReturn(Set.of());
+		when(credentialStore.load()).thenReturn(
+				List.of(noProvider, unknownProvider)
+		);
+
+		assertDoesNotThrow(() -> registry.refreshCache());
+		assertTrue(registry.getAllModelsForApi().isEmpty());
+	}
+
+	@Test
 	void testGetModelsForProvider_AntigravityWithoutDisplayName_returnsModels() throws Exception {
 		StoredAccount agAccount = StoredAccount.builder()
 		                                       .provider(Provider.ANTIGRAVITY.name())
