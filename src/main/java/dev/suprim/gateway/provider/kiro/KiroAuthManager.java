@@ -329,9 +329,10 @@ public class KiroAuthManager implements ProviderAuthManager {
 					: account.region() != null ? account.region()
 					  : config.apiRegion();
 		}
-		String baseUrl = "us-east-1".equals(region)
-				? "https://codewhisperer.us-east-1.amazonaws.com"
-				: "https://q." + region + ".amazonaws.com";
+		String serviceRegion = Kiro.serviceRegion(region);
+		String baseUrl = Kiro.DEFAULT_SERVICE_REGION.equals(serviceRegion)
+				? Kiro.CODEWHISPERER_HOST
+				: Kiro.qHost(serviceRegion);
 		String url =
 				baseUrl + "/ListAvailableModels?origin=AI_EDITOR&maxResults=50";
 		if (!isApiKey && account.profileArn() != null) {
@@ -460,8 +461,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 			                        .or(() -> Optional.ofNullable(account.apiRegion()))
 			                        .or(() -> Optional.ofNullable(account.region()))
 			                        .orElse(config.apiRegion());
-			String url = String.format(Kiro.Q_HOST_TEMPLATE, region) +
-			             Kiro.USAGE_LIMITS_PATH;
+			String url = Kiro.qHost(region) + Kiro.USAGE_LIMITS_PATH;
 			if (!isApiKey && account.profileArn() != null) {
 				url += "&profileArn=" + URLEncoder.encode(
 						account.profileArn(),

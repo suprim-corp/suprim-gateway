@@ -8,6 +8,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import org.mockito.ArgumentCaptor;
+
+import java.net.http.HttpRequest;
 import java.nio.file.Path;
 import java.time.Instant;
 
@@ -101,6 +104,32 @@ class KiroAuthManagerMultiAccountTest {
 				authManager.getUsageLimits(account).get("error")
 		);
 		verify(proxyChain).send(any());
+	}
+
+	@Test
+	void getUsageLimits_targetsAResolvableHostForLoginOnlyRegion()
+			throws Exception {
+		StoredAccount account = StoredAccount.builder()
+		                                     .name("sso-acc")
+		                                     .provider("KIRO")
+		                                     .authType("AWS_SSO_OIDC")
+		                                     .accessToken("valid-sso-token")
+		                                     .refreshToken("refresh-1")
+		                                     .expiresAt(Instant.now().plusSeconds(3600))
+		                                     .apiRegion("us-east-2")
+		                                     .region("us-east-2")
+		                                     .build();
+		when(proxyChain.send(any())).thenThrow(new RuntimeException("no route"));
+
+		authManager.getUsageLimits(account);
+
+		ArgumentCaptor<HttpRequest> captor =
+				ArgumentCaptor.forClass(HttpRequest.class);
+		verify(proxyChain).send(captor.capture());
+		assertEquals(
+				"q.us-east-1.amazonaws.com",
+				captor.getValue().uri().getHost()
+		);
 	}
 
 	@Test

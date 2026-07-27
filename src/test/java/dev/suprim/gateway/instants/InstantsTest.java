@@ -47,6 +47,25 @@ class InstantsTest {
 	}
 
 	@Test
+	void kiro_serviceRegion_keepsRegionsThatServeTheDataPlane() {
+		assertEquals("us-east-1", Kiro.serviceRegion("us-east-1"));
+		assertEquals("eu-central-1", Kiro.serviceRegion("eu-central-1"));
+	}
+
+	@Test
+	void kiro_serviceRegion_fallsBackForLoginOnlyRegions() {
+		assertEquals("us-east-1", Kiro.serviceRegion("us-east-2"));
+		assertEquals("us-east-1", Kiro.serviceRegion("us-west-2"));
+		assertEquals("us-east-1", Kiro.serviceRegion(null));
+	}
+
+	@Test
+	void kiro_qHost_neverTargetsARegionWithoutAQEndpoint() {
+		assertEquals("https://q.us-east-1.amazonaws.com", Kiro.qHost("us-east-2"));
+		assertEquals("https://q.eu-central-1.amazonaws.com", Kiro.qHost("eu-central-1"));
+	}
+
+	@Test
 	void codex_constantsNotNull() {
 		assertNotNull(Codex.PROVIDER);
 		assertNotNull(Codex.API_BASE);

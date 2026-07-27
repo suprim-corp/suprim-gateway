@@ -242,14 +242,7 @@ public final class SsoDeviceFlowService {
 			String region,
 			ProxyChain proxyChain
 	) {
-		String regionalHost = String.format(Kiro.Q_HOST_TEMPLATE, region);
-		String email = fetchEmailFrom(regionalHost, accessToken, proxyChain);
-		if (email != null || regionalHost.equals(Kiro.Q_HOST)) {
-			return email;
-		}
-		// several regions have no Q host at all, so the email only resolves
-		// against us-east-1
-		return fetchEmailFrom(Kiro.Q_HOST, accessToken, proxyChain);
+		return fetchEmailFrom(Kiro.qHost(region), accessToken, proxyChain);
 	}
 
 	private static String fetchEmailFrom(
