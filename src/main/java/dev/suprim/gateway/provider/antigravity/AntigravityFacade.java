@@ -37,6 +37,9 @@ public class AntigravityFacade {
 
 	private static final JsonMapper MAPPER = new JsonMapper();
 	private static final Map<String, String> THOUGHT_SIGNATURES = new ConcurrentHashMap<>();
+	private static final Set<Integer> RATE_LIMIT_STATUSES = Set.of(429, 503);
+	private static final Set<Integer> COOLDOWN_STATUSES = Set.of(429, 503, 403);
+	private static final Set<Integer> ROTATE_ONLY_STATUSES = Set.of(401);
 	private final AntigravityAuthManager authManager;
 	private final RequestLogPublisher logPublisher;
 	private final StreamConverter streamConverter;
@@ -70,6 +73,9 @@ public class AntigravityFacade {
 		long startTime = System.currentTimeMillis();
 		int maxAttempts = accounts.size();
 
+		int lastErrorStatus = 0;
+		String lastErrorBody = null;
+		String lastErrorAccount = null;
 		Set<String> attemptedAccounts = new HashSet<>();
 		for (int attempt = 0; attempt < maxAttempts; attempt++) {
 			StoredAccount account = accountRotator.next(Provider.ANTIGRAVITY.name());
@@ -103,21 +109,36 @@ public class AntigravityFacade {
 					model, payload, accessToken
 			);
 
-			if (response.status() == 429 || response.status() == 503) {
-				accountCooldown.coolDown(account);
-				log.warn(
-						LogTag.ANTIGRAVITY + "Account {} got {}, cooling down for 1h",
-						account.name(), response.status()
-				);
-				try (InputStream is = response.body()) {
-					is.readAllBytes();
-				}
-				continue;
-			}
-
 			if (response.status() != 200) {
+				String body;
+				try (InputStream is = response.body()) {
+					body = new String(is.readAllBytes());
+				}
+				if (!isRateLimitFailure(response.status())) {
+					lastErrorStatus = response.status();
+					lastErrorBody = body;
+					lastErrorAccount = account.name();
+				}
+
+				if (isCooldownFailure(response.status())) {
+					accountCooldown.coolDown(account);
+					log.warn(
+							LogTag.ANTIGRAVITY + "Account {} got {}, cooling down for 1h: {}",
+							account.name(), response.status(), truncate(body, 200)
+					);
+					continue;
+				}
+
+				if (ROTATE_ONLY_STATUSES.contains(response.status())) {
+					log.warn(
+							LogTag.ANTIGRAVITY + "Account {} unauthorized, trying next account: {}",
+							account.name(), truncate(body, 200)
+					);
+					continue;
+				}
+
 				handleError(
-						response, account.name(), model, inputTokens,
+						response.status(), body, account.name(), model, inputTokens,
 						keyId, clientIp, startTime, httpRes
 				);
 				return;
@@ -137,6 +158,14 @@ public class AntigravityFacade {
 			return;
 		}
 
+		if (lastErrorStatus != 0) {
+			handleError(
+					lastErrorStatus, lastErrorBody, lastErrorAccount, model, inputTokens,
+					keyId, clientIp, startTime, httpRes
+			);
+			return;
+		}
+
 		ErrorResponse.openAi(
 				httpRes,
 				429,
@@ -145,8 +174,24 @@ public class AntigravityFacade {
 		);
 	}
 
+	private static boolean isRateLimitFailure(int status) {
+		return RATE_LIMIT_STATUSES.contains(status);
+	}
+
+	private static boolean isCooldownFailure(int status) {
+		return COOLDOWN_STATUSES.contains(status);
+	}
+
+	private static String truncate(String value, int max) {
+		if (value == null) {
+			return "";
+		}
+		return value.length() > max ? value.substring(0, max) : value;
+	}
+
 	private void handleError(
-			AntigravityHttpClient.AntigravityResponse response,
+			int status,
+			String body,
 			String accountName,
 			String model,
 			int inputTokens,
@@ -155,13 +200,9 @@ public class AntigravityFacade {
 			long startTime,
 			HttpServletResponse httpRes
 	) throws Exception {
-		String body;
-		try (InputStream is = response.body()) {
-			body = new String(is.readAllBytes());
-		}
 		log.error(
-				LogTag.ANTIGRAVITY + "Upstream {} body: {}", response.status(),
-				body.length() > 500 ? body.substring(0, 500) : body
+				LogTag.ANTIGRAVITY + "Upstream {} body: {}", status,
+				truncate(body, 500)
 		);
 
 		int latency = (int) (System.currentTimeMillis() - startTime);
@@ -171,22 +212,18 @@ public class AntigravityFacade {
 				               .accountId(accountName)
 				               .model(model)
 				               .requestedModel(model)
-				               .status(response.status())
+				               .status(status)
 				               .promptTokens(inputTokens)
 				               .latencyMs(latency)
 				               .streaming(false)
 				               .clientIp(clientIp)
-				               .errorMessage(body.length() >
-				                             200 ? body.substring(
-						               0,
-						               200
-				               ) : body)
+				               .errorMessage(truncate(body, 200))
 				               .build()
 		);
 
 		ErrorResponse.openAi(
 				httpRes,
-				response.status(),
+				status,
 				"Antigravity upstream error",
 				"upstream_error"
 		);

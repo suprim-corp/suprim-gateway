@@ -195,6 +195,125 @@ class AntigravityFacadeRetryTest {
 	}
 
 	@Test
+	void handle_retriesNextAccountOn403() throws Exception {
+		StoredAccount unverified = StoredAccount.builder()
+		                                   .name("unverified").provider("ANTIGRAVITY")
+		                                   .accessToken("tok1").refreshToken("ref1")
+		                                   .projectId("proj1")
+		                                   .expiresAt(Instant.now().plusSeconds(3600))
+		                                   .build();
+		StoredAccount healthy = StoredAccount.builder()
+		                                   .name("healthy").provider("ANTIGRAVITY")
+		                                   .accessToken("tok2").refreshToken("ref2")
+		                                   .projectId("proj2")
+		                                   .expiresAt(Instant.now().plusSeconds(3600))
+		                                   .build();
+
+		when(store.findAllByProvider("ANTIGRAVITY")).thenReturn(List.of(unverified, healthy));
+		when(rotator.next("ANTIGRAVITY")).thenReturn(unverified, healthy, unverified, healthy);
+		when(authManager.getAccessToken(unverified)).thenReturn("tok1");
+		when(authManager.getAccessToken(healthy)).thenReturn("tok2");
+		when(authManager.getProjectId(unverified)).thenReturn("proj1");
+		when(authManager.getProjectId(healthy)).thenReturn("proj2");
+
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("gemini-2.5-pro")
+		                                         .messages(List.of())
+		                                         .stream(false)
+		                                         .build();
+
+		try (MockedStatic<AntigravityHttpClient> mocked = mockStatic(AntigravityHttpClient.class)) {
+			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
+			      .thenAnswer(ignored -> new AntigravityHttpClient.AntigravityResponse(403, new ByteArrayInputStream("{\"error\":{\"status\":\"PERMISSION_DENIED\",\"message\":\"Verify your account to continue.\"}}".getBytes())));
+			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok2")))
+			      .thenAnswer(ignored -> new AntigravityHttpClient.AntigravityResponse(200, new ByteArrayInputStream("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hi\"}]}}]}\n".getBytes())));
+
+			MockHttpServletResponse firstResponse = new MockHttpServletResponse();
+			facade.handle(request, "gemini-2.5-pro", false, 10, "key1", "127.0.0.1", Format.COMPLETION, firstResponse);
+			MockHttpServletResponse secondResponse = new MockHttpServletResponse();
+			facade.handle(request, "gemini-2.5-pro", false, 10, "key1", "127.0.0.1", Format.COMPLETION, secondResponse);
+
+			assertEquals(200, firstResponse.getStatus());
+			assertEquals(200, secondResponse.getStatus());
+			mocked.verify(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok1")), times(1));
+			mocked.verify(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok2")), times(2));
+		}
+	}
+
+	@Test
+	void handle_allAccounts403_surfacesUpstreamStatus() throws Exception {
+		StoredAccount acc1 = StoredAccount.builder()
+		                                   .name("acc1").provider("ANTIGRAVITY")
+		                                   .accessToken("tok1").refreshToken("ref1")
+		                                   .projectId("proj1")
+		                                   .expiresAt(Instant.now().plusSeconds(3600))
+		                                   .build();
+
+		when(store.findAllByProvider("ANTIGRAVITY")).thenReturn(List.of(acc1));
+		when(rotator.next("ANTIGRAVITY")).thenReturn(acc1);
+		when(authManager.getAccessToken(acc1)).thenReturn("tok1");
+		when(authManager.getProjectId(acc1)).thenReturn("proj1");
+
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("gemini-2.5-pro")
+		                                         .messages(List.of())
+		                                         .stream(false)
+		                                         .build();
+
+		try (MockedStatic<AntigravityHttpClient> mocked = mockStatic(AntigravityHttpClient.class)) {
+			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
+			      .thenReturn(new AntigravityHttpClient.AntigravityResponse(403, new ByteArrayInputStream("{\"error\":{\"status\":\"PERMISSION_DENIED\"}}".getBytes())));
+
+			MockHttpServletResponse httpRes = new MockHttpServletResponse();
+			facade.handle(request, "gemini-2.5-pro", false, 10, "key1", "127.0.0.1", Format.COMPLETION, httpRes);
+
+			assertEquals(403, httpRes.getStatus());
+			assertTrue(httpRes.getContentAsString().contains("upstream_error"));
+		}
+	}
+
+	@Test
+	void handle_retriesNextAccountOn401() throws Exception {
+		StoredAccount stale = StoredAccount.builder()
+		                                   .name("stale").provider("ANTIGRAVITY")
+		                                   .accessToken("tok1").refreshToken("ref1")
+		                                   .projectId("proj1")
+		                                   .expiresAt(Instant.now().plusSeconds(3600))
+		                                   .build();
+		StoredAccount healthy = StoredAccount.builder()
+		                                   .name("healthy").provider("ANTIGRAVITY")
+		                                   .accessToken("tok2").refreshToken("ref2")
+		                                   .projectId("proj2")
+		                                   .expiresAt(Instant.now().plusSeconds(3600))
+		                                   .build();
+
+		when(store.findAllByProvider("ANTIGRAVITY")).thenReturn(List.of(stale, healthy));
+		when(rotator.next("ANTIGRAVITY")).thenReturn(stale, healthy);
+		when(authManager.getAccessToken(stale)).thenReturn("tok1");
+		when(authManager.getAccessToken(healthy)).thenReturn("tok2");
+		when(authManager.getProjectId(stale)).thenReturn("proj1");
+		when(authManager.getProjectId(healthy)).thenReturn("proj2");
+
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("gemini-2.5-pro")
+		                                         .messages(List.of())
+		                                         .stream(false)
+		                                         .build();
+
+		try (MockedStatic<AntigravityHttpClient> mocked = mockStatic(AntigravityHttpClient.class)) {
+			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
+			      .thenReturn(new AntigravityHttpClient.AntigravityResponse(401, new ByteArrayInputStream("unauthorized".getBytes())));
+			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok2")))
+			      .thenReturn(new AntigravityHttpClient.AntigravityResponse(200, new ByteArrayInputStream("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hi\"}]}}]}\n".getBytes())));
+
+			MockHttpServletResponse httpRes = new MockHttpServletResponse();
+			facade.handle(request, "gemini-2.5-pro", false, 10, "key1", "127.0.0.1", Format.COMPLETION, httpRes);
+
+			assertEquals(200, httpRes.getStatus());
+		}
+	}
+
+	@Test
 	void handle_noAccounts_returns401() throws Exception {
 		when(store.findAllByProvider("ANTIGRAVITY")).thenReturn(List.of());
 
