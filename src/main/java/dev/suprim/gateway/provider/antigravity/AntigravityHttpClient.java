@@ -46,7 +46,9 @@ class AntigravityHttpClient {
 	@Builder
 	record AntigravityResponse(int status, InputStream body) {}
 
-	/** Streaming endpoint. {@code alt=sse} is what makes the upstream answer with SSE. */
+	/**
+	 * Streaming endpoint. {@code alt=sse} is what makes the upstream answer with SSE.
+	 */
 	static String buildUrl() {
 		return Antigravity.CLOUDCODE_BASE +
 		       "/v1internal:streamGenerateContent?alt=sse";
@@ -150,14 +152,20 @@ class AntigravityHttpClient {
 
 	/**
 	 * Normalizes a quota response into {@code buckets} — one entry per quota window, each
-	 * with {@code group}, {@code label}, {@code quota} (percent remaining), and, when
-	 * reported, {@code resetTime} and {@code description}.
+	 * with {@code group}, {@code label}, and, when reported, {@code resetTime} and
+	 * {@code description}. What is left is reported as {@code quota} (percent remaining)
+	 * for windows that give a fraction, and as {@code remaining} (an absolute count) for
+	 * windows that give a unit count instead; a bucket carries one or the other, never
+	 * both.
 	 * <p>
-	 * Top-level {@code quota}/{@code resetTime} mirror the <em>most constrained</em> bucket,
-	 * since that is the one that will actually stop a request. A response with no groups
-	 * falls back to searching by field name, which covers the flatter shape some endpoints
-	 * return. Fractions outside 0..1 are treated as unusable, and an unparseable response
-	 * yields an empty map rather than an error.
+	 * Top-level {@code quota}/{@code resetTime} mirror the <em>most constrained</em>
+	 * percent-based bucket, since that is the one that will actually stop a request.
+	 * Count-based buckets are deliberately left out of that comparison: the upstream does
+	 * not report the window's total, so a count cannot be ranked against a percent.
+	 * <p>
+	 * A response with no groups falls back to searching by field name, which covers the
+	 * flatter shape some endpoints return. Fractions outside 0..1 are treated as unusable,
+	 * and an unparseable response yields an empty map rather than an error.
 	 */
 	static Map<String, Object> parseQuotaSummary(String json) {
 		try {
@@ -170,14 +178,16 @@ class AntigravityHttpClient {
 			}
 
 			Map<String, Object> quota = new LinkedHashMap<>();
-			Map<String, Object> tightest = buckets.stream()
-			                                      .min(Comparator.comparingInt(
-					                                      b -> (int) b.get("quota")))
-			                                      .orElseThrow();
-			quota.put("quota", tightest.get("quota"));
-			if (tightest.get("resetTime") != null) {
-				quota.put("resetTime", tightest.get("resetTime"));
-			}
+			buckets.stream()
+			       .filter(b -> b.get("quota") != null)
+			       .min(Comparator.comparingInt(b -> (int) b.get("quota")))
+			       .ifPresent(tightest -> {
+						       quota.put("quota", tightest.get("quota"));
+						       if (tightest.get("resetTime") != null) {
+							       quota.put("resetTime", tightest.get("resetTime"));
+						       }
+					       }
+			       );
 			quota.put("buckets", buckets);
 			return quota;
 		} catch (Exception ignored) {
@@ -195,13 +205,17 @@ class AntigravityHttpClient {
 				continue;
 			}
 			for (UserQuota.Summary.Bucket bucket : group.buckets()) {
-				if (!bucket.hasUsableFraction()) {
+				if (!bucket.hasUsableFraction() && !bucket.hasUsableAmount()) {
 					continue;
 				}
 				Map<String, Object> entry = new LinkedHashMap<>();
 				entry.put("group", group.displayName());
 				entry.put("label", bucket.displayName());
-				entry.put("quota", bucket.remainingPercent());
+				if (bucket.hasUsableFraction()) {
+					entry.put("quota", bucket.remainingPercent());
+				} else {
+					entry.put("remaining", bucket.remainingAmount());
+				}
 				if (bucket.resetTime() != null) {
 					entry.put("resetTime", bucket.resetTime());
 				}
@@ -214,19 +228,26 @@ class AntigravityHttpClient {
 		return buckets;
 	}
 
-	/** Fallback for responses that carry a single fraction rather than grouped buckets. */
+	/**
+	 * Fallback for responses that carry a single fraction rather than grouped buckets.
+	 */
 	private static Map<String, Object> parseFlatQuota(String json) {
 		try {
 			JsonNode root = new JsonMapper().readTree(json);
 			JsonNode fraction = root.findValue("remainingFraction");
-			if (fraction == null || !fraction.isNumber()) return Map.of();
+			if (fraction == null || !fraction.isNumber()) {
+				return Map.of();
+			}
 			double value = fraction.asDouble();
-			if (value < 0 || value > 1) return Map.of();
+			if (value < 0 || value > 1) {
+				return Map.of();
+			}
 			Map<String, Object> quota = new LinkedHashMap<>();
 			quota.put("quota", (int) Math.round(value * 100));
 			JsonNode resetTime = root.findValue("resetTime");
-			if (resetTime != null && resetTime.isString())
+			if (resetTime != null && resetTime.isString()) {
 				quota.put("resetTime", resetTime.asString());
+			}
 			return quota;
 		} catch (Exception ignored) {
 			return Map.of();
@@ -259,7 +280,9 @@ class AntigravityHttpClient {
 				for (Map.Entry<String, JsonNode> entry : available.properties()) {
 					String key = entry.getKey();
 					String modelId = key.startsWith("models/") ? key.substring(7) : key;
-					if (modelId.isEmpty() || modelId.contains(" ")) continue;
+					if (modelId.isEmpty() || modelId.contains(" ")) {
+						continue;
+					}
 
 					JsonNode value = entry.getValue();
 					int quotaPct = -1;
@@ -322,8 +345,8 @@ class AntigravityHttpClient {
 	 * Calls {@code streamGenerateContent} and hands back the still-open SSE body for the
 	 * caller to read. The caller owns the stream and must close it.
 	 *
-	 * @param model  the requested model; carried for logging and test stubbing only, as the
-	 *               model is named inside {@code payload} rather than in the URL
+	 * @param model   the requested model; carried for logging and test stubbing only, as the
+	 *                model is named inside {@code payload} rather than in the URL
 	 * @param payload the serialized request body
 	 */
 	static AntigravityResponse streamGenerateContent(
@@ -331,7 +354,12 @@ class AntigravityHttpClient {
 			String payload,
 			String accessToken
 	) throws IOException {
-		return postWithRetry(buildUrl(), payload, accessToken, BASE_RETRY_DELAY);
+		return postWithRetry(
+				buildUrl(),
+				payload,
+				accessToken,
+				BASE_RETRY_DELAY
+		);
 	}
 
 	/**
@@ -434,7 +462,9 @@ class AntigravityHttpClient {
 		} catch (IOException ignored) {}
 	}
 
-	/** Backoff pause, surfacing an interrupt as {@link IOException} like {@link #send}. */
+	/**
+	 * Backoff pause, surfacing an interrupt as {@link IOException} like {@link #send}.
+	 */
 	private static void sleep(long delay) throws IOException {
 		try {
 			Thread.sleep(delay);

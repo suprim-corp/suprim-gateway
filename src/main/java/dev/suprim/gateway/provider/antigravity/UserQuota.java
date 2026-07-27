@@ -26,8 +26,14 @@ final class UserQuota {
 		) {}
 
 		/**
-		 * One quota window. {@code remainingFraction} is what is left, not what was used,
-		 * and is absent rather than zero when the upstream does not report it.
+		 * One quota window. Both remaining figures describe what is left, not what was
+		 * used, and are absent rather than zero when the upstream does not report them.
+		 * <p>
+		 * {@code remainingFraction} and {@code remainingAmount} are the two arms of a
+		 * {@code oneof}: a bucket reports either a fraction of its window or an absolute
+		 * count of remaining units, never both. An amount cannot be turned into a percent
+		 * because the window's total is not reported, so callers must handle the two
+		 * shapes separately.
 		 */
 		@JsonIgnoreProperties(ignoreUnknown = true)
 		record Bucket(
@@ -36,13 +42,18 @@ final class UserQuota {
 				String window,
 				String resetTime,
 				String description,
-				Double remainingFraction
+				Double remainingFraction,
+				Long remainingAmount
 		) {
 
 			boolean hasUsableFraction() {
 				return remainingFraction != null
 				       && remainingFraction >= 0
 				       && remainingFraction <= 1;
+			}
+
+			boolean hasUsableAmount() {
+				return remainingAmount != null && remainingAmount >= 0;
 			}
 
 			int remainingPercent() {

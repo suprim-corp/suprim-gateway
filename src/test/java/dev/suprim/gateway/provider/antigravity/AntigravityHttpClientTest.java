@@ -95,6 +95,71 @@ class AntigravityHttpClientTest {
 		assertEquals(50, quota.get("quota"));
 	}
 
+	@Test
+	@SuppressWarnings("unchecked")
+	void parseQuotaSummary_keepsBucketsReportingAnAbsoluteCount() {
+		Map<String, Object> quota = AntigravityHttpClient.parseQuotaSummary("""
+				{"groups":[{"displayName":"Gemini Models","buckets":[
+				{"bucketId":"a","displayName":"Weekly Limit","remainingFraction":0.5},
+				{"bucketId":"b","displayName":"Credits","remainingAmount":"120",
+				 "resetTime":"2026-08-03T15:16:28Z"}]}]}
+				""");
+
+		List<Map<String, Object>> buckets =
+				(List<Map<String, Object>>) quota.get("buckets");
+		assertEquals(2, buckets.size());
+
+		Map<String, Object> counted = buckets.get(1);
+		assertEquals("Credits", counted.get("label"));
+		assertEquals(120L, counted.get("remaining"));
+		assertNull(counted.get("quota"));
+		assertEquals("2026-08-03T15:16:28Z", counted.get("resetTime"));
+	}
+
+	@Test
+	void parseQuotaSummary_headlineIgnoresCountBasedBuckets() {
+		Map<String, Object> quota = AntigravityHttpClient.parseQuotaSummary("""
+				{"groups":[{"displayName":"Gemini Models","buckets":[
+				{"bucketId":"a","displayName":"Weekly Limit","remainingFraction":0.5,
+				 "resetTime":"2026-08-03T15:16:28Z"},
+				{"bucketId":"b","displayName":"Credits","remainingAmount":"3"}]}]}
+				""");
+
+		assertEquals(50, quota.get("quota"));
+		assertEquals("2026-08-03T15:16:28Z", quota.get("resetTime"));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void parseQuotaSummary_omitsHeadlineWhenEveryBucketIsCountBased() {
+		Map<String, Object> quota = AntigravityHttpClient.parseQuotaSummary("""
+				{"groups":[{"displayName":"Gemini Models","buckets":[
+				{"bucketId":"b","displayName":"Credits","remainingAmount":"7"}]}]}
+				""");
+
+		assertNull(quota.get("quota"));
+		assertNull(quota.get("resetTime"));
+		List<Map<String, Object>> buckets =
+				(List<Map<String, Object>>) quota.get("buckets");
+		assertEquals(1, buckets.size());
+		assertEquals(7L, buckets.getFirst().get("remaining"));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void parseQuotaSummary_skipsNegativeCounts() {
+		Map<String, Object> quota = AntigravityHttpClient.parseQuotaSummary("""
+				{"groups":[{"displayName":"Gemini Models","buckets":[
+				{"bucketId":"a","displayName":"Weekly Limit","remainingFraction":0.5},
+				{"bucketId":"b","displayName":"Broken","remainingAmount":"-1"}]}]}
+				""");
+
+		List<Map<String, Object>> buckets =
+				(List<Map<String, Object>>) quota.get("buckets");
+		assertEquals(1, buckets.size());
+		assertEquals("Weekly Limit", buckets.getFirst().get("label"));
+	}
+
 	/** Shape captured from a live {@code retrieveUserQuotaSummary} response. */
 	private static final String GROUPED_QUOTA = """
 			{"groups":[

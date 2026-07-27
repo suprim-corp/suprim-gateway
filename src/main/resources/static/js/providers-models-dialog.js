@@ -110,22 +110,28 @@ function renderQuotaBuckets(buckets) {
         name.textContent = [bucket.group, bucket.label].filter(Boolean).join(' · ')
         header.appendChild(name)
 
+        const hasPercent = bucket.quota !== undefined && bucket.quota !== null
+
         const value = document.createElement('span')
         value.className = 'text-zinc-400'
-        const detail = [bucket.quota + '%']
+        const detail = [hasPercent ? bucket.quota + '%' : bucket.remaining + ' left']
         if (bucket.resetTime) detail.push(formatResetTime(bucket.resetTime))
         value.textContent = detail.join(' · ')
         header.appendChild(value)
 
         row.appendChild(header)
 
-        const track = document.createElement('div')
-        track.className = 'mt-1 h-1 bg-zinc-800 rounded-full overflow-hidden'
-        const fill = document.createElement('div')
-        fill.className = 'h-full rounded-full transition-all ' + quotaColor(bucket.quota)
-        fill.style.width = bucket.quota + '%'
-        track.appendChild(fill)
-        row.appendChild(track)
+        // A count-based window reports what is left but not the total, so there is no
+        // ratio to fill a bar with. The number alone carries the information.
+        if (hasPercent) {
+            const track = document.createElement('div')
+            track.className = 'mt-1 h-1 bg-zinc-800 rounded-full overflow-hidden'
+            const fill = document.createElement('div')
+            fill.className = 'h-full rounded-full transition-all ' + quotaColor(bucket.quota)
+            fill.style.width = bucket.quota + '%'
+            track.appendChild(fill)
+            row.appendChild(track)
+        }
 
         if (bucket.description) row.title = bucket.description
 

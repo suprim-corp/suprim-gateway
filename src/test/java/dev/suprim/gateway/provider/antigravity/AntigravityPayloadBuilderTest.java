@@ -5,6 +5,7 @@ import dev.suprim.gateway.proxy.Message;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,6 +27,38 @@ class AntigravityPayloadBuilderTest {
 		assertTrue(json.contains("\"project\":\"projects/test-123\""));
 		assertTrue(json.contains("\"model\":\"gemini-2.5-flash\""));
 		assertTrue(json.contains("\"userAgent\":\"antigravity\""));
+	}
+
+	@Test
+	void build_carriesRequestIdWhenGiven() {
+		InternalRequest request = InternalRequest.builder()
+				.model("gemini-2.5-flash")
+				.messages(List.of(Message.of("user", "Hello")))
+				.build();
+
+		String json = AntigravityPayloadBuilder.build(
+				request, "gemini-2.5-flash", "projects/p1", Map.of(), "req-abc"
+		);
+
+		assertTrue(json.contains("\"requestId\":\"req-abc\""));
+	}
+
+	@Test
+	void build_omitsRequestIdWhenAbsent() {
+		InternalRequest request = InternalRequest.builder()
+				.model("gemini-2.5-flash")
+				.messages(List.of(Message.of("user", "Hello")))
+				.build();
+
+		assertFalse(
+				AntigravityPayloadBuilder.build(request, "gemini-2.5-flash", "projects/p1")
+				                         .contains("requestId")
+		);
+		assertFalse(
+				AntigravityPayloadBuilder.build(
+						request, "gemini-2.5-flash", "projects/p1", Map.of(), ""
+				).contains("requestId")
+		);
 	}
 
 	@Test

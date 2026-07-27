@@ -29,14 +29,20 @@ class AntigravityPayloadBuilder {
 			String model,
 			String projectId
 	) {
-		return build(request, model, projectId, Map.of());
+		return build(request, model, projectId, Map.of(), null);
 	}
 
+	/**
+	 * @param requestId identifies this logical request upstream. Pass the same value for
+	 *                  every retry of one client request so the backend can recognize the
+	 *                  repeats; omitting it (null) simply leaves the field out.
+	 */
 	static String build(
 			InternalRequest request,
 			String model,
 			String projectId,
-			Map<String, String> thoughtSignatures
+			Map<String, String> thoughtSignatures,
+			String requestId
 	) {
 		List<Message> messages = request.messages() != null
 				? request.messages()
@@ -46,6 +52,9 @@ class AntigravityPayloadBuilder {
 		root.put("model", model);
 		root.put("project", projectId);
 		root.put("userAgent", "antigravity");
+		if (requestId != null && !requestId.isEmpty()) {
+			root.put("requestId", requestId);
+		}
 
 		ObjectNode reqNode = root.putObject("request");
 		ArrayNode contents = reqNode.putArray("contents");

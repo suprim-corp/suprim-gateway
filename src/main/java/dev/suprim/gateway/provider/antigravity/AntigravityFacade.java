@@ -73,6 +73,11 @@ public class AntigravityFacade {
 		long startTime = System.currentTimeMillis();
 		int maxAttempts = accounts.size();
 
+		// One id for the whole client request, reused across account rotations and the
+		// transport-level retries inside them, so the upstream sees the retries of a
+		// single request rather than a burst of unrelated ones.
+		String requestId = UUID.randomUUID().toString();
+
 		int lastErrorStatus = 0;
 		String lastErrorBody = null;
 		String lastErrorAccount = null;
@@ -102,7 +107,7 @@ public class AntigravityFacade {
 			);
 
 			String payload = AntigravityPayloadBuilder.build(
-					request, model, projectId, THOUGHT_SIGNATURES
+					request, model, projectId, THOUGHT_SIGNATURES, requestId
 			);
 
 			AntigravityHttpClient.AntigravityResponse response =
