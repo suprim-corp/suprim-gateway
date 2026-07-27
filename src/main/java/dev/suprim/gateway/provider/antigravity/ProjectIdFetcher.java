@@ -34,7 +34,7 @@ class ProjectIdFetcher {
 	 */
 	private static final IdeType[] IDE_TYPES = {
 			IdeType.VSCODE,
-			IdeType.JETBRAINS,
+			IdeType.INTELLIJ,
 			IdeType.CLOUD_SHELL,
 			IdeType.IDE_UNSPECIFIED
 	};

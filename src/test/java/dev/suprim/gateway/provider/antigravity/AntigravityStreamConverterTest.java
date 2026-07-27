@@ -87,6 +87,91 @@ class AntigravityStreamConverterTest {
 	}
 
 	@Test
+	void parseChunk_readsUsageAlongsideText() {
+		String geminiData = """
+				{"response":{"candidates":[{"content":{"parts":[{"text":"Hi"}],"role":"model"}}],
+				"usageMetadata":{"promptTokenCount":1234,"candidatesTokenCount":56,
+				"totalTokenCount":1290,"thoughtsTokenCount":40}}}""";
+
+		AntigravityStreamConverter.ParsedChunk parsed =
+				AntigravityStreamConverter.parseChunk(geminiData);
+
+		assertNotNull(parsed);
+		assertEquals("Hi", parsed.text());
+		assertEquals(1234, parsed.usage().promptTokens());
+		assertEquals(56, parsed.usage().completionTokens());
+		assertEquals(1290, parsed.usage().totalTokens());
+		assertEquals(40, parsed.usage().thoughtsTokens());
+	}
+
+	@Test
+	void parseChunk_readsUsageFromFinalChunkWithoutCandidates() {
+		String geminiData = """
+				{"response":{"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":2}}}""";
+
+		AntigravityStreamConverter.ParsedChunk parsed =
+				AntigravityStreamConverter.parseChunk(geminiData);
+
+		assertNotNull(parsed);
+		assertNull(parsed.text());
+		assertEquals(10, parsed.usage().promptTokens());
+		assertEquals(2, parsed.usage().completionTokens());
+	}
+
+	@Test
+	void parseChunk_keepsUsageOnFinishedChunk() {
+		String geminiData = """
+				{"response":{"candidates":[{"content":{"parts":[]},"finishReason":"STOP"}],
+				"usageMetadata":{"candidatesTokenCount":7}}}""";
+
+		AntigravityStreamConverter.ParsedChunk parsed =
+				AntigravityStreamConverter.parseChunk(geminiData);
+
+		assertNotNull(parsed);
+		assertTrue(parsed.finished());
+		assertEquals(7, parsed.usage().completionTokens());
+	}
+
+	@Test
+	void parseChunk_readsConsumedCreditsFromWrapper() {
+		String geminiData = """
+				{"consumedCredits":{"creditType":"GOOGLE_ONE_AI","creditAmount":"3"},
+				"response":{"candidates":[{"content":{"parts":[{"text":"Hi"}],"role":"model"}}]}}""";
+
+		AntigravityStreamConverter.ParsedChunk parsed =
+				AntigravityStreamConverter.parseChunk(geminiData);
+
+		assertNotNull(parsed);
+		assertEquals(3.0, parsed.consumedCredits());
+	}
+
+	@Test
+	void parseChunk_leavesUsageAndCreditsNullWhenNotReported() {
+		String geminiData = """
+				{"response":{"candidates":[{"content":{"parts":[{"text":"Hi"}],"role":"model"}}]}}""";
+
+		AntigravityStreamConverter.ParsedChunk parsed =
+				AntigravityStreamConverter.parseChunk(geminiData);
+
+		assertNotNull(parsed);
+		assertNull(parsed.usage());
+		assertNull(parsed.consumedCredits());
+	}
+
+	@Test
+	void parseChunk_ignoresUsageMetadataWithNoCounts() {
+		String geminiData = """
+				{"response":{"candidates":[{"content":{"parts":[{"text":"Hi"}],"role":"model"}}],
+				"usageMetadata":{"trafficType":"ON_DEMAND"}}}""";
+
+		AntigravityStreamConverter.ParsedChunk parsed =
+				AntigravityStreamConverter.parseChunk(geminiData);
+
+		assertNotNull(parsed);
+		assertNull(parsed.usage());
+	}
+
+	@Test
 	void buildChunkPublic_correctFormat() {
 		String chunk = AntigravityStreamConverter.buildChunkPublic("chatcmpl-123", "gemini-2.5-flash", "Hello");
 

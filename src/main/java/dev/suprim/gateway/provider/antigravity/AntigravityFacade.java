@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -257,6 +258,11 @@ public class AntigravityFacade {
 		boolean hasToolUse = false;
 		int toolIndex = 0;
 		StringBuilder fullContent = new StringBuilder();
+		// Counts are cumulative per request and arrive on the later chunks only, so the
+		// last one seen is the total. Kept separate from the chunk tally above so the
+		// reported figure wins without disturbing the streaming logic.
+		AntigravityStreamConverter.Usage usage = null;
+		double consumedCredits = 0;
 
 		if (format == Format.ANTHROPIC) {
 			writer.write(
@@ -296,6 +302,13 @@ public class AntigravityFacade {
 						AntigravityStreamConverter.parseChunk(data);
 				if (parsed == null) {
 					continue;
+				}
+
+				if (parsed.usage() != null) {
+					usage = parsed.usage();
+				}
+				if (parsed.consumedCredits() != null) {
+					consumedCredits = parsed.consumedCredits();
 				}
 
 				if (parsed.text() != null && !parsed.text().isEmpty()) {
@@ -380,9 +393,14 @@ public class AntigravityFacade {
 			}
 		}
 
+		// The upstream's own counts when it reported them, the local tally otherwise: the
+		// tally counts stream chunks rather than tokens, so it is only ever an estimate.
+		int reportedInput = reportedOr(usage, AntigravityStreamConverter.Usage::promptTokens, inputTokens);
+		int reportedOutput = reportedOr(usage, AntigravityStreamConverter.Usage::completionTokens, outputTokens);
+
 		String finale = switch (format) {
 			case ANTHROPIC -> streamConverter.toAnthropicFinale(
-					outputTokens,
+					reportedOutput,
 					hasToolUse
 			);
 			case COMPLETION -> {
@@ -401,8 +419,8 @@ public class AntigravityFacade {
 							model,
 							text,
 							List.of(),
-							inputTokens,
-							outputTokens
+							reportedInput,
+							reportedOutput
 					);
 				} else {
 					yield streamConverter.toResponsesTextDone(text, id)
@@ -411,8 +429,8 @@ public class AntigravityFacade {
 							model,
 							text,
 							List.of(),
-							inputTokens,
-							outputTokens
+							reportedInput,
+							reportedOutput
 					);
 				}
 			}
@@ -421,10 +439,12 @@ public class AntigravityFacade {
 		writer.flush();
 
 		log.debug(
-				LogTag.ANTIGRAVITY + "Stream done: textChunks={}, toolCalls={}, hasToolUse={}",
+				LogTag.ANTIGRAVITY +
+				"Stream done: textChunks={}, toolCalls={}, hasToolUse={}, usage={}",
 				outputTokens - toolIndex,
 				toolIndex,
-				hasToolUse
+				hasToolUse,
+				usage
 		);
 
 		int latency = (int) (System.currentTimeMillis() - startTime);
@@ -435,10 +455,9 @@ public class AntigravityFacade {
 				               .model(model)
 				               .requestedModel(model)
 				               .status(200)
-				               .promptTokens(inputTokens)
+				               .promptTokens(reportedInput)
 				               .completionTokens(
-						               outputTokens >
-						               0 ? outputTokens : null
+						               reportedOutput > 0 ? reportedOutput : null
 				               )
 				               .latencyMs(latency)
 				               .firstTokenMs(
@@ -447,8 +466,26 @@ public class AntigravityFacade {
 				               )
 				               .streaming(true)
 				               .clientIp(clientIp)
+				               .credits(consumedCredits > 0 ? consumedCredits : null)
 				               .build()
 		);
+	}
+
+	/**
+	 * The count the upstream reported, or {@code fallback} when it reported none. A
+	 * reported zero is taken at face value: the upstream billed nothing for that side of
+	 * the request.
+	 */
+	private static int reportedOr(
+			AntigravityStreamConverter.Usage usage,
+			Function<AntigravityStreamConverter.Usage, Integer> field,
+			int fallback
+	) {
+		if (usage == null) {
+			return fallback;
+		}
+		Integer reported = field.apply(usage);
+		return reported != null ? reported : fallback;
 	}
 
 	private void handleNonStream(
@@ -463,6 +500,8 @@ public class AntigravityFacade {
 			HttpServletResponse httpRes
 	) throws Exception {
 		StringBuilder content = new StringBuilder();
+		AntigravityStreamConverter.Usage usage = null;
+		double consumedCredits = 0;
 
 		try (
 				BufferedReader reader = new BufferedReader(
@@ -481,33 +520,50 @@ public class AntigravityFacade {
 					continue;
 				}
 
-				String text = AntigravityStreamConverter.extractText(data);
-				if (text != null && !text.isEmpty()) {
-					content.append(text);
+				AntigravityStreamConverter.ParsedChunk parsed =
+						AntigravityStreamConverter.parseChunk(data);
+				if (parsed == null) {
+					continue;
+				}
+				if (parsed.usage() != null) {
+					usage = parsed.usage();
+				}
+				if (parsed.consumedCredits() != null) {
+					consumedCredits = parsed.consumedCredits();
+				}
+				if (parsed.text() != null && !parsed.text().isEmpty()) {
+					content.append(parsed.text());
 				}
 			}
 		}
 
 		String text = content.toString();
 		String id = generateId(format);
-		int outputTokens = text.length() / 4;
+		// Four characters per token is a rough stand-in; the upstream's own count replaces
+		// it whenever the response carries one.
+		int reportedInput = reportedOr(
+				usage, AntigravityStreamConverter.Usage::promptTokens, inputTokens
+		);
+		int outputTokens = reportedOr(
+				usage, AntigravityStreamConverter.Usage::completionTokens, text.length() / 4
+		);
 
 		httpRes.setCharacterEncoding("UTF-8");
 		httpRes.setContentType("application/json; charset=utf-8");
 
 		Object responseBody = switch (format) {
 			case ANTHROPIC -> streamConverter.toAnthropicNonStreaming(
-					id, model, text, null, inputTokens, outputTokens
+					id, model, text, null, reportedInput, outputTokens
 			);
 			case COMPLETION -> streamConverter.toOpenAiNonStreaming(
 					List.of(KiroEvent.content(text)),
 					model,
 					null,
-					inputTokens,
+					reportedInput,
 					outputTokens
 			);
 			case RESPONSES -> streamConverter.toResponsesNonStreaming(
-					id, model, text, null, inputTokens, outputTokens
+					id, model, text, null, reportedInput, outputTokens
 			);
 		};
 		MAPPER.writeValue(httpRes.getWriter(), responseBody);
@@ -520,7 +576,7 @@ public class AntigravityFacade {
 				               .model(model)
 				               .requestedModel(model)
 				               .status(200)
-				               .promptTokens(inputTokens)
+				               .promptTokens(reportedInput)
 				               .completionTokens(
 						               outputTokens >
 						               0 ? outputTokens : null
@@ -528,6 +584,7 @@ public class AntigravityFacade {
 				               .latencyMs(latency)
 				               .streaming(false)
 				               .clientIp(clientIp)
+				               .credits(consumedCredits > 0 ? consumedCredits : null)
 				               .build()
 		);
 	}

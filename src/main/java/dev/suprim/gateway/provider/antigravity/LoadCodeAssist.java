@@ -42,38 +42,54 @@ final class LoadCodeAssist {
 		}
 
 		/**
-		 * {@code ClientMetadata.IdeType}, trimmed to the values the gateway sends. The
-		 * backend gates subscription data on this field: {@code ANTIGRAVITY} is treated as
-		 * a current client, while {@code VSCODE} and the other IDE identities are answered
-		 * as legacy Gemini Code Assist clients.
+		 * {@code ClientMetadata.IdeType}, in the upstream's declaration order. The backend
+		 * gates subscription data on this field: {@code ANTIGRAVITY} is treated as a
+		 * current client, while {@code VSCODE} and the other IDE identities are answered as
+		 * legacy Gemini Code Assist clients.
+		 * <p>
+		 * Names must match the upstream enum exactly — the value is serialized by name, and
+		 * one the backend does not know is rejected rather than ignored.
 		 */
 		enum IdeType {
 			IDE_UNSPECIFIED,
 			VSCODE,
-			JETBRAINS,
+			INTELLIJ,
+			VSCODE_CLOUD_WORKSTATION,
+			INTELLIJ_CLOUD_WORKSTATION,
 			CLOUD_SHELL,
-			ANTIGRAVITY
+			CIDER,
+			CLOUD_RUN,
+			ANDROID_STUDIO,
+			ANTIGRAVITY,
+			JETSKI,
+			COLAB,
+			FIREBASE,
+			CHROME_DEVTOOLS,
+			GEMINI_CLI
 		}
 
 		/**
-		 * {@code ClientMetadata.Platform}.
+		 * {@code ClientMetadata.Platform}, in the upstream's declaration order.
 		 */
 		enum Platform {
 			PLATFORM_UNSPECIFIED,
-			DARWIN_ARM64,
 			DARWIN_AMD64,
-			LINUX_ARM64,
+			DARWIN_ARM64,
 			LINUX_AMD64,
+			LINUX_ARM64,
 			WINDOWS_AMD64
 		}
 
 		/**
-		 * {@code ClientMetadata.PluginType}.
+		 * {@code ClientMetadata.PluginType}, in the upstream's declaration order.
 		 */
 		enum PluginType {
 			PLUGIN_UNSPECIFIED,
 			CLOUD_CODE,
-			GEMINI
+			GEMINI,
+			AIPLUGIN_INTELLIJ,
+			AIPLUGIN_STUDIO,
+			PANTHEON
 		}
 	}
 
