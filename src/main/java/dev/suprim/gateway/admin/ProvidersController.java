@@ -5,7 +5,6 @@ import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.codex.CodexAuthManager;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
-import dev.suprim.gateway.model.ModelInfo;
 import dev.suprim.gateway.model.ModelRegistry;
 import dev.suprim.gateway.provider.antigravity.AntigravityAuthManager;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +20,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RequiredArgsConstructor
 @Controller
@@ -129,7 +129,11 @@ class ProvidersController {
 		try {
 			return modelRegistry.getModelsForProvider(account);
 		} catch (Exception e) {
-			return Map.of("error", e.getMessage());
+			return Map.of(
+					"error",
+					Optional.ofNullable(e.getMessage())
+					        .orElseGet(() -> e.getClass().getSimpleName())
+			);
 		}
 	}
 

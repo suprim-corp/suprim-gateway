@@ -17,10 +17,7 @@ import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
@@ -69,7 +66,7 @@ public class KiroAccountModelAvailability {
 					               .map(model -> (String) model.get(
 							               "id")
 					               )
-					               .filter(java.util.Objects::nonNull)
+					               .filter(Objects::nonNull)
 					               .map(modelResolver::canonicalize)
 					               .collect(Collectors.toUnmodifiableSet());
 			modelsByAccount.put(key, models);
@@ -129,6 +126,29 @@ public class KiroAccountModelAvailability {
 		return modelsByAccount.getOrDefault(accountKey(account), Set.of());
 	}
 
+	/**
+	 * Models for one account, fetching upstream when the periodic refresh has
+	 * not populated the cache yet or produced nothing. Surfaces the upstream
+	 * failure instead of reporting an account as having no models at all.
+	 */
+	public Set<String> modelsForAccountOrFetch(StoredAccount account)
+			throws Exception {
+		Set<String> cached = modelsForAccount(account);
+		if (!cached.isEmpty()) {
+			return cached;
+		}
+		Set<String> models = kiroAuthManager.listModels(account)
+		                                    .stream()
+		                                    .map(model -> (String) model.get("id"))
+		                                    .filter(Objects::nonNull)
+		                                    .map(modelResolver::canonicalize)
+		                                    .collect(Collectors.toUnmodifiableSet());
+		String key = accountKey(account);
+		modelsByAccount.put(key, models);
+		completedAccounts.add(key);
+		return models;
+	}
+
 	public static String accountKey(StoredAccount account) {
 		if (account.profileArn() != null && !account.profileArn().isBlank()) {
 			return "arn:" + account.profileArn();
@@ -153,7 +173,7 @@ public class KiroAccountModelAvailability {
 							                                     StandardCharsets.UTF_8
 					                                     )
 			                             );
-			return java.util.HexFormat.of().formatHex(digest);
+			return HexFormat.of().formatHex(digest);
 		} catch (Exception e) {
 			throw new IllegalStateException(
 					"Cannot hash Kiro account identity",

@@ -124,7 +124,7 @@ public class AntigravityFacade {
 					accountCooldown.coolDown(account);
 					log.warn(
 							LogTag.ANTIGRAVITY + "Account {} got {}, cooling down for 1h: {}",
-							account.name(), response.status(), truncate(body, 200)
+							account.name(), response.status(), body
 					);
 					continue;
 				}
@@ -132,7 +132,7 @@ public class AntigravityFacade {
 				if (ROTATE_ONLY_STATUSES.contains(response.status())) {
 					log.warn(
 							LogTag.ANTIGRAVITY + "Account {} unauthorized, trying next account: {}",
-							account.name(), truncate(body, 200)
+							account.name(), body
 					);
 					continue;
 				}
@@ -202,7 +202,7 @@ public class AntigravityFacade {
 	) throws Exception {
 		log.error(
 				LogTag.ANTIGRAVITY + "Upstream {} body: {}", status,
-				truncate(body, 500)
+				body == null ? "" : body
 		);
 
 		int latency = (int) (System.currentTimeMillis() - startTime);

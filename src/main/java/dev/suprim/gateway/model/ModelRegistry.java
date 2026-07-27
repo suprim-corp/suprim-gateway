@@ -237,7 +237,7 @@ public class ModelRegistry {
 
 	public List<ModelInfo> getModelsForProvider(StoredAccount account) throws Exception {
 		return switch (Provider.valueOf(account.provider())) {
-			case KIRO -> kiroModelAvailability.modelsForAccount(account)
+			case KIRO -> kiroModelAvailability.modelsForAccountOrFetch(account)
 			                                  .stream()
 			                                  .map(id -> ModelInfo.of(
 					                                  Provider.KIRO.getPrefix() +
