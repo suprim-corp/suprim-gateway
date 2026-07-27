@@ -137,9 +137,9 @@ public class KiroUpstreamDispatcher {
 					account.name(), attempt + 1, maxAttempts
 			);
 
-			KiroResponse response;
+			EndpointAttempt endpointAttempt;
 			try {
-				response = tryAllEndpoints(
+				endpointAttempt = tryAllEndpoints(
 						payload,
 						stream,
 						accessToken,
@@ -154,6 +154,7 @@ public class KiroUpstreamDispatcher {
 				continue;
 			}
 
+			KiroResponse response = endpointAttempt.response();
 			if (response != null) {
 				KiroResponse invalidModel = copyInvalidModelResponse(response);
 				if (invalidModel != null) {
@@ -184,6 +185,11 @@ public class KiroUpstreamDispatcher {
 				return new DispatchResult(response, account.name());
 			}
 
+			// a rate-limited account needs a different account, not a new token
+			if (!endpointAttempt.tokenRejected()) {
+				continue;
+			}
+
 			// all endpoints 403 → refresh token and retry once
 			log.info(
 					LogTag.KIRO + "All endpoints 403 for {}, refreshing token",
@@ -200,7 +206,8 @@ public class KiroUpstreamDispatcher {
 				continue;
 			}
 
-			response = tryAllEndpoints(payload, stream, accessToken, account);
+			response = tryAllEndpoints(payload, stream, accessToken, account)
+					.response();
 			if (response != null) {
 				log.info(
 						LogTag.KIRO +
@@ -216,7 +223,28 @@ public class KiroUpstreamDispatcher {
 		throw new RuntimeException("All Kiro accounts exhausted");
 	}
 
-	private KiroResponse tryAllEndpoints(
+	/**
+	 * Outcome of trying the Kiro endpoints for one account. A missing response
+	 * means the account produced no usable answer; {@code tokenRejected} tells
+	 * whether refreshing its token is worth trying, as opposed to the account
+	 * being rate limited and needing rotation.
+	 */
+	private record EndpointAttempt(KiroResponse response, boolean tokenRejected) {
+
+		static EndpointAttempt served(KiroResponse response) {
+			return new EndpointAttempt(response, false);
+		}
+
+		static EndpointAttempt rateLimited() {
+			return new EndpointAttempt(null, false);
+		}
+
+		static EndpointAttempt rejectedToken() {
+			return new EndpointAttempt(null, true);
+		}
+	}
+
+	private EndpointAttempt tryAllEndpoints(
 			String payload,
 			boolean stream,
 			String accessToken,
@@ -243,7 +271,7 @@ public class KiroUpstreamDispatcher {
 					isApiKey
 			);
 			if (response.status() == 200) {
-				return response;
+				return EndpointAttempt.served(response);
 			}
 			if (response.status() == 429 || response.status() == 503) {
 				log.warn(
@@ -252,7 +280,7 @@ public class KiroUpstreamDispatcher {
 						account.name(), response.status(), ep.name()
 				);
 				drain(response.body());
-				return null;
+				return EndpointAttempt.rateLimited();
 			}
 			log.warn(
 					LogTag.KIRO +
@@ -277,7 +305,7 @@ public class KiroUpstreamDispatcher {
 			);
 			if (response.status() == 200) {
 				preferredEndpoint.put(accountKey, i);
-				return response;
+				return EndpointAttempt.served(response);
 			}
 			if (response.status() == 403) {
 				log.warn(
@@ -293,11 +321,11 @@ public class KiroUpstreamDispatcher {
 						account.name(), response.status(), ep.name()
 				);
 				drain(response.body());
-				return null;
+				return EndpointAttempt.rateLimited();
 			}
-			return response;
+			return EndpointAttempt.served(response);
 		}
-		return null;
+		return EndpointAttempt.rejectedToken();
 	}
 
 	private KiroResponse copyInvalidModelResponse(KiroResponse response) throws Exception {

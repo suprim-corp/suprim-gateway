@@ -1,6 +1,8 @@
 package dev.suprim.gateway.provider.kiro;
 
+import dev.suprim.gateway.instants.Kiro;
 import dev.suprim.gateway.provider.CredentialStore;
+import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
 
 import dev.suprim.gateway.provider.kiro.refresher.DesktopTokenRefresher;
@@ -60,7 +62,6 @@ public final class KiroAccountImporter {
 		if (effectiveProfileArn == null) {
 			effectiveProfileArn = fetchProfileArn(
 					result.accessToken(),
-					region,
 					httpClient
 			);
 		}
@@ -76,6 +77,7 @@ public final class KiroAccountImporter {
 		                                     .scopes(null)
 		                                     .region(region)
 		                                     .apiRegion(region)
+		                                     .provider(Provider.KIRO.name())
 		                                     .build();
 
 		List<StoredAccount> before = credentialStore.load();
@@ -113,12 +115,12 @@ public final class KiroAccountImporter {
 
 	private static String fetchProfileArn(
 			String accessToken,
-			String region,
 			HttpClient httpClient
 	) {
+		// ListAvailableProfiles is only served from us-east-1; regional
+		// codewhisperer hosts do not resolve
 		try {
-			String url = "https://codewhisperer." + region +
-			             ".amazonaws.com/ListAvailableProfiles";
+			String url = Kiro.CODEWHISPERER_HOST + "/ListAvailableProfiles";
 			HttpRequest request =
 					HttpRequest.newBuilder()
 					           .uri(URI.create(url))

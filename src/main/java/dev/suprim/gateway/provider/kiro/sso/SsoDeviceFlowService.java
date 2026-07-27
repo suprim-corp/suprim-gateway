@@ -203,12 +203,31 @@ public final class SsoDeviceFlowService {
 		}
 
 		JsonNode json = MAPPER.readTree(response.body());
-		String accessToken = json.has("accessToken") ? json.get("accessToken")
-		                                                   .asString() : null;
-		String refreshToken = json.has("refreshToken") ? json.get("refreshToken")
-		                                                     .asString() : null;
-		int expiresIn = json.has("expiresIn") ? json.get("expiresIn")
-		                                            .asInt() : 3600;
+
+		String accessToken;
+		String refreshToken;
+		int expiresIn;
+
+		if (json.has("accessToken")) {
+			accessToken = json.get("accessToken")
+			                  .asString();
+		} else {
+			accessToken = null;
+		}
+
+		if (json.has("refreshToken")) {
+			refreshToken = json.get("refreshToken")
+			                   .asString();
+		} else {
+			refreshToken = null;
+		}
+
+		if (json.has("expiresIn")) {
+			expiresIn =json.get("expiresIn")
+			               .asInt();
+		} else {
+			expiresIn =3600;
+		}
 
 		return Map.of(
 				"status", "ok",
@@ -223,11 +242,27 @@ public final class SsoDeviceFlowService {
 			String region,
 			ProxyChain proxyChain
 	) {
+		String regionalHost = String.format(Kiro.Q_HOST_TEMPLATE, region);
+		String email = fetchEmailFrom(regionalHost, accessToken, proxyChain);
+		if (email != null || regionalHost.equals(Kiro.Q_HOST)) {
+			return email;
+		}
+		// several regions have no Q host at all, so the email only resolves
+		// against us-east-1
+		return fetchEmailFrom(Kiro.Q_HOST, accessToken, proxyChain);
+	}
+
+	private static String fetchEmailFrom(
+			String host,
+			String accessToken,
+			ProxyChain proxyChain
+	) {
 		try {
-			String url = String.format(Kiro.Q_HOST_TEMPLATE, region) +
-			             Kiro.USAGE_LIMITS_PATH;
 			HttpRequest request = HttpRequest.newBuilder()
-			                                 .uri(URI.create(url))
+			                                 .uri(URI.create(
+					                                 host +
+					                                 Kiro.USAGE_LIMITS_PATH
+			                                 ))
 			                                 .header(
 					                                 "Authorization",
 					                                 "Bearer " + accessToken

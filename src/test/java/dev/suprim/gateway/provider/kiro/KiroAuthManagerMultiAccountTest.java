@@ -66,6 +66,7 @@ class KiroAuthManagerMultiAccountTest {
 	@Test
 	void getUsageLimits_returnsErrorWhenFailureHasNoMessage() throws Exception {
 		StoredAccount account = StoredAccount.builder()
+		                                     .name("sso-acc")
 		                                     .authType("AWS_SSO_OIDC")
 		                                     .accessToken("valid-sso-token")
 		                                     .expiresAt(Instant.now().plusSeconds(3600))
@@ -78,6 +79,42 @@ class KiroAuthManagerMultiAccountTest {
 				"Unknown error",
 				authManager.getUsageLimits(account).get("error")
 		);
+		verify(proxyChain).send(any());
+	}
+
+	@Test
+	void getUsageLimits_reachesUpstreamWhenAccountHasNoNameOrProfileArn()
+			throws Exception {
+		StoredAccount account = StoredAccount.builder()
+		                                     .provider("KIRO")
+		                                     .authType("AWS_SSO_OIDC")
+		                                     .accessToken("valid-sso-token")
+		                                     .refreshToken("refresh-1")
+		                                     .expiresAt(Instant.now().plusSeconds(3600))
+		                                     .apiRegion("us-east-2")
+		                                     .region("us-east-2")
+		                                     .build();
+		when(proxyChain.send(any())).thenThrow(new RuntimeException("upstream down"));
+
+		assertEquals(
+				"upstream down",
+				authManager.getUsageLimits(account).get("error")
+		);
+		verify(proxyChain).send(any());
+	}
+
+	@Test
+	void getAccessToken_cachesAccountWithoutNameOrProfileArn() throws Exception {
+		StoredAccount account = StoredAccount.builder()
+		                                     .provider("KIRO")
+		                                     .authType("AWS_SSO_OIDC")
+		                                     .accessToken("valid-sso-token")
+		                                     .refreshToken("refresh-1")
+		                                     .expiresAt(Instant.now().plusSeconds(3600))
+		                                     .build();
+
+		assertEquals("valid-sso-token", authManager.getAccessToken(account));
+		assertEquals("valid-sso-token", authManager.getAccessToken(account));
 	}
 
 	@Test

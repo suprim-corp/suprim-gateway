@@ -656,7 +656,7 @@ public class KiroAuthManager implements ProviderAuthManager {
 	}
 
 	private String accountKey(StoredAccount account) {
-		return Optional.ofNullable(account.name()).orElse(account.profileArn());
+		return KiroAccountModelAvailability.accountKey(account);
 	}
 
 	private StoredAccount refreshAccountToken(StoredAccount account) {
