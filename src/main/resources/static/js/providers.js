@@ -264,7 +264,7 @@ function showKiroTab(tab) {
 
 function startKiroSso() {
     const startUrl = document.getElementById('kiroSsoStartUrl').value.trim()
-    const region = document.getElementById('kiroSsoRegion').value.trim() || 'us-east-1'
+    const region = document.getElementById('kiroSsoRegion').value
 
     if (!startUrl) {
         toast('Start URL is required', 'error')
