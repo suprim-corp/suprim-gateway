@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -115,5 +116,56 @@ class ProvidersTemplateRenderTest {
 		String html = renderProvidersPage(List.of());
 
 		assertTrue(html.contains("No accounts configured"), "Empty state missing");
+	}
+
+	@Test
+	void providersPage_rendersOneCardPerAccountInAGrid() throws Exception {
+		StoredAccount kiro = StoredAccount.builder()
+				.provider(KIRO)
+				.name("primary")
+				.accessToken("token")
+				.expiresAt(Instant.now().plusSeconds(3600))
+				.build();
+		StoredAccount antigravity = StoredAccount.builder()
+				.provider("ANTIGRAVITY")
+				.name("alviss")
+				.accessToken("token")
+				.build();
+
+		String html = renderProvidersPage(List.of(kiro, antigravity));
+
+		assertTrue(html.contains("md:grid-cols-2"), "Grid columns missing");
+		assertEquals(2, countOccurrences(html, "account-card"), "Expected one card per account");
+		assertTrue(html.contains("data-index=\"0\""), "First card index missing");
+		assertTrue(html.contains("data-index=\"1\""), "Second card index missing");
+		assertTrue(html.contains("/providers/1/delete"), "Second card delete action missing");
+	}
+
+	@Test
+	void providersPage_marksDisconnectedCardUsageAsSkipped() throws Exception {
+		StoredAccount disconnected = StoredAccount.builder()
+				.provider("CODEX")
+				.name("stale")
+				.build();
+
+		String html = renderProvidersPage(List.of(disconnected));
+
+		assertTrue(html.contains("Disconnected"), "Disconnected status missing");
+		assertTrue(html.contains("card-usage mt-3 min-h-[2.25rem] invisible"),
+				"Disconnected account should not reserve a usage slot to fetch");
+		assertTrue(html.contains("/auth/codex"), "Codex reconnect link missing");
+	}
+
+	private static int countOccurrences(String haystack, String needle) {
+		int count = 0;
+		int from = 0;
+		while (true) {
+			int at = haystack.indexOf(needle, from);
+			if (at < 0) {
+				return count;
+			}
+			count++;
+			from = at + needle.length();
+		}
 	}
 }

@@ -20,68 +20,20 @@ function showModels(index) {
     fetch('/providers/' + index + '/usage')
         .then(res => res.ok ? res.json() : null)
         .then(data => {
-            if (!data || data.error) return
+            const usage = summarizeUsage(data)
+            if (!usage) return
 
-            // Antigravity format: {tier, quota, resetTime, buckets}
-            // quota is percent REMAINING and mirrors the most constrained bucket.
-            if (data.tier || data.quota !== undefined) {
-                document.getElementById('usageLabel').textContent = data.tier || 'Antigravity'
-                const remaining = data.quota
-                const parts = []
-                if (remaining !== undefined && remaining !== null) parts.push(remaining + '% remaining')
-                if (data.resetTime) parts.push('resets ' + formatResetTime(data.resetTime))
-                document.getElementById('usageText').textContent = parts.join(' · ')
-                const bar = document.getElementById('usageBar')
-                if (remaining !== undefined && remaining !== null) {
-                    bar.parentElement.classList.remove('hidden')
-                    bar.style.width = remaining + '%'
-                    bar.className = 'h-full rounded-full transition-all ' + quotaColor(remaining)
-                } else {
-                    bar.parentElement.classList.add('hidden')
-                }
-                renderQuotaBuckets(data.buckets)
-                usageBanner.classList.remove('hidden')
-                return
-            }
-
-            // Codex format: {plan, session, weekly, limitReached, resetCredits}
-            if (data.session || data.weekly) {
-                const session = data.session || {}
-                const weekly = data.weekly || {}
-                const sessionPct = session.usedPercent ?? 0
-                const weeklyPct = weekly.usedPercent ?? 0
-                const usedPct = Math.max(sessionPct, weeklyPct)
-                const remaining = Math.max(0, 100 - usedPct)
-                const planMap = {free: 'Free', go: 'Go', plus: 'Plus', pro: 'Pro', business: 'Business', enterprise: 'Enterprise'}
-                const planLabel = planMap[data.plan] || data.plan || 'Codex'
-                const limitTag = data.limitReached ? ' — LIMIT REACHED' : ''
-                document.getElementById('usageLabel').textContent = 'ChatGPT ' + planLabel + limitTag
-                let usageText = 'Session ' + sessionPct + '% · Weekly ' + weeklyPct + '%'
-                if (data.resetCredits > 0) usageText += ' · ' + data.resetCredits + ' reset credits'
-                document.getElementById('usageText').textContent = usageText
-                const bar = document.getElementById('usageBar')
-                bar.style.width = remaining + '%'
-                bar.className = 'h-full rounded-full transition-all ' +
-                    (remaining > 50 ? 'bg-green-400' : remaining > 20 ? 'bg-yellow-400' : 'bg-red-400')
-                usageBanner.classList.remove('hidden')
-                return
-            }
-
-            // Kiro format: {usageBreakdownList, subscriptionInfo}
-            if (!data.usageBreakdownList || !data.usageBreakdownList.length) return
-            const breakdown = data.usageBreakdownList[0]
-            const used = breakdown.currentUsageWithPrecision ?? breakdown.currentUsage ?? 0
-            const limit = breakdown.usageLimit || 0
-            const remaining = Math.max(0, limit - used)
-            const pct = limit > 0 ? Math.round((remaining / limit) * 100) : 0
-            const sub = data.subscriptionInfo
-            const planName = (sub && (sub.subscriptionTitle || sub.subscriptionName || sub.subscriptionType)) || ''
-            document.getElementById('usageLabel').textContent = planName ? planName + ' — Credits' : 'Credits'
-            document.getElementById('usageText').textContent = used.toFixed(2) + ' / ' + limit.toFixed(0) + ' used'
+            document.getElementById('usageLabel').textContent = usage.label
+            document.getElementById('usageText').textContent = usage.detail
             const bar = document.getElementById('usageBar')
-            bar.style.width = pct + '%'
-            bar.className = 'h-full rounded-full transition-all ' +
-                (pct > 50 ? 'bg-green-400' : pct > 20 ? 'bg-yellow-400' : 'bg-red-400')
+            if (usage.percent === null) {
+                bar.parentElement.classList.add('hidden')
+            } else {
+                bar.parentElement.classList.remove('hidden')
+                bar.style.width = usage.percent + '%'
+                bar.className = 'h-full rounded-full transition-all ' + quotaColor(usage.percent)
+            }
+            renderQuotaBuckets(data.buckets)
             usageBanner.classList.remove('hidden')
         })
         .catch(() => {})
@@ -149,6 +101,61 @@ function quotaColor(remaining) {
     return remaining > 20 ? 'bg-yellow-400' : 'bg-red-400'
 }
 
+// Each provider reports usage in its own shape. Reduce them all to
+// {label, detail, percent} so the dialog banner and the account cards can share
+// one renderer. percent is always REMAINING, or null when the provider gives no
+// figure to draw a bar from. Returns null when there is nothing to show at all.
+function summarizeUsage(data) {
+    if (!data || data.error) return null
+
+    // Antigravity: {tier, quota, resetTime, buckets} — quota mirrors the most
+    // constrained bucket, since that is what will actually block a request.
+    if (data.tier || data.quota !== undefined) {
+        const remaining = data.quota ?? null
+        const detail = []
+        if (remaining !== null) detail.push(remaining + '% remaining')
+        if (data.resetTime) detail.push('resets ' + formatResetTime(data.resetTime))
+        return {
+            label: data.tier || 'Antigravity',
+            detail: detail.join(' · '),
+            percent: remaining
+        }
+    }
+
+    // Codex: {plan, session, weekly, limitReached, resetCredits} — percentages are
+    // USED, and the tighter of the two windows governs.
+    if (data.session || data.weekly) {
+        const sessionPct = data.session?.usedPercent ?? 0
+        const weeklyPct = data.weekly?.usedPercent ?? 0
+        const remaining = Math.max(0, 100 - Math.max(sessionPct, weeklyPct))
+        const planMap = {
+            free: 'Free', go: 'Go', plus: 'Plus',
+            pro: 'Pro', business: 'Business', enterprise: 'Enterprise'
+        }
+        const detail = ['Session ' + sessionPct + '% · Weekly ' + weeklyPct + '%']
+        if (data.resetCredits > 0) detail.push(data.resetCredits + ' reset credits')
+        return {
+            label: 'ChatGPT ' + (planMap[data.plan] || data.plan || 'Codex') +
+                (data.limitReached ? ' — LIMIT REACHED' : ''),
+            detail: detail.join(' · '),
+            percent: remaining
+        }
+    }
+
+    // Kiro: {usageBreakdownList, subscriptionInfo} — absolute credits, not percent.
+    const breakdown = data.usageBreakdownList?.[0]
+    if (!breakdown) return null
+    const used = breakdown.currentUsageWithPrecision ?? breakdown.currentUsage ?? 0
+    const limit = breakdown.usageLimit || 0
+    const sub = data.subscriptionInfo
+    const planName = (sub && (sub.subscriptionTitle || sub.subscriptionName || sub.subscriptionType)) || ''
+    return {
+        label: planName ? planName + ' — Credits' : 'Credits',
+        detail: used.toFixed(2) + ' / ' + limit.toFixed(0) + ' used',
+        percent: limit > 0 ? Math.round(((limit - used) / limit) * 100) : 0
+    }
+}
+
 // Antigravity reports quota per window: each model group has a weekly and a rolling
 // 5-hour limit that refill independently, so one bar cannot represent them all.
 function renderQuotaBuckets(buckets) {
@@ -192,6 +199,59 @@ function renderQuotaBuckets(buckets) {
         list.appendChild(row)
     })
     list.classList.remove('hidden')
+}
+
+// Usage is fetched per card only once the card is on screen: the Antigravity
+// endpoint takes a couple of seconds, so requesting every account up front would
+// stall the page for accounts the user may never scroll to.
+function loadCardUsage(card) {
+    const label = card.querySelector('.card-usage-label')
+    const value = card.querySelector('.card-usage-value')
+    const track = card.querySelector('.card-usage-track')
+    const bar = card.querySelector('.card-usage-bar')
+
+    value.textContent = '…'
+
+    fetch('/providers/' + card.dataset.index + '/usage')
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+            const usage = summarizeUsage(data)
+            if (!usage) {
+                label.innerHTML = '&nbsp;'
+                value.textContent = ''
+                return
+            }
+            label.textContent = usage.label
+            value.textContent = usage.detail
+            if (usage.percent !== null) {
+                track.classList.remove('hidden')
+                bar.style.width = usage.percent + '%'
+                bar.className = 'card-usage-bar h-full rounded-full transition-all ' + quotaColor(usage.percent)
+            }
+        })
+        .catch(() => {
+            label.innerHTML = '&nbsp;'
+            value.textContent = ''
+        })
+}
+
+// Cards without a token never report usage, so they are left as-is.
+const pendingUsageCards = Array.from(document.querySelectorAll('.account-card'))
+    .filter(card => !card.querySelector('.card-usage').classList.contains('invisible'))
+
+if (pendingUsageCards.length) {
+    if ('IntersectionObserver' in window) {
+        const observer = new IntersectionObserver((entries, obs) => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) return
+                obs.unobserve(entry.target)
+                loadCardUsage(entry.target)
+            })
+        }, {rootMargin: '100px'})
+        pendingUsageCards.forEach(card => observer.observe(card))
+    } else {
+        pendingUsageCards.forEach(loadCardUsage)
+    }
 }
 
 document.querySelectorAll('.inline-edit-name').forEach(span => {

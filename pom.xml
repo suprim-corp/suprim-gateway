@@ -82,6 +82,14 @@
 			<version>4.12.0</version>
 			<scope>test</scope>
 		</dependency>
+		<!-- Thymeleaf evaluates th:* expressions through OGNL when rendered outside a
+		     Spring context, as the template render tests do. -->
+		<dependency>
+			<groupId>ognl</groupId>
+			<artifactId>ognl</artifactId>
+			<version>3.4.7</version>
+			<scope>test</scope>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-cache</artifactId>
