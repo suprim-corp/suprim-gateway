@@ -35,6 +35,15 @@ public final class OAuthPkce {
 		return randomToken(VERIFIER_BYTES);
 	}
 
+	/**
+	 * Verifier with an explicit entropy size, for providers already issuing a
+	 * shorter one. Both lengths satisfy RFC 7636; this exists so adopting the
+	 * shared helper does not silently change a live provider's verifier.
+	 */
+	public static String codeVerifier(int bytes) {
+		return randomToken(bytes);
+	}
+
 	/** Opaque value for the {@code state} and {@code nonce} parameters. */
 	public static String state() {
 		return randomToken(STATE_BYTES);

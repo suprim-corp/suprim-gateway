@@ -8,6 +8,8 @@ public final class Xai {
 	public static final String CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
 	public static final String AUTH_URL = "https://auth.x.ai/oauth2/authorize";
 	public static final String TOKEN_URL = "https://auth.x.ai/oauth2/token";
+	/** Device-code endpoint, used by the remote setup script. */
+	public static final String DEVICE_CODE_URL = "https://auth.x.ai/oauth2/device/code";
 	public static final String API_BASE = "https://api.x.ai/v1";
 	public static final String SCOPE = "openid profile email offline_access grok-cli:access api:access";
 	public static final String CALLBACK_PATH = "/callback/xai";

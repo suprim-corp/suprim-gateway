@@ -10,6 +10,8 @@ public class Antigravity {
 	public static final String OAUTH_SCOPE = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/cclog https://www.googleapis.com/auth/experimentsandconfigs";
 	public static final String USER_AGENT = "antigravity/ide/2.1.1 darwin/arm64";
 	public static final String REDIRECT_URI = "http://localhost:51121/oauth-callback";
+	/** Loopback port Google redirects the browser back to. */
+	public static final int LOOPBACK_PORT = 51121;
 	public static final String USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 	public static final String CLIENT_ID = rot("1071006060591-gzuffva2u21yper235igbybwu4t403rc.nccf.tbbtyrhfrepbagrag.pbz");
 	public static final String CLIENT_SECRET = rot("TBPFCK-X58SJE486YqYW1zYO8fKP4m6dQNs");

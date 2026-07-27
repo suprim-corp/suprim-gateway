@@ -1,6 +1,7 @@
 package dev.suprim.gateway.provider.xai;
 
 import dev.suprim.gateway.instants.Xai;
+import dev.suprim.gateway.provider.OAuthPkce;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -11,12 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseBody;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -25,233 +21,84 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class XaiOAuthController {
 
+	/** xAI device-flow tokens are long-lived; used when the response omits it. */
+	private static final int DEFAULT_EXPIRES_IN = 604800;
+
 	private final XaiAuthManager authManager;
 	private final XaiLoopbackServer loopbackServer;
 
+	/**
+	 * Verifiers awaiting their authorization code, keyed by state.
+	 * <p>
+	 * The remote flow splits one login across two requests from two different
+	 * machines, so the verifier cannot live on the client.
+	 */
 	private final ConcurrentHashMap<String, String> pendingVerifiers = new ConcurrentHashMap<>();
-	private final ConcurrentHashMap<String, String> pendingAuthUrls = new ConcurrentHashMap<>();
 
 	@GetMapping("/auth/xai")
 	String initiateOAuth(HttpServletRequest httpReq) {
-		String host = httpReq.getServerName();
-		boolean isLocal = "localhost".equals(host) || "127.0.0.1".equals(host);
-
-		if (!isLocal) {
-			String state = generateRandom();
-			String codeVerifier = generateCodeVerifier();
-			pendingVerifiers.put(state, codeVerifier);
-			return "redirect:/auth/xai/remote?state=" + encode(state);
+		if (!OAuthPkce.isLoopback(httpReq)) {
+			return "redirect:/auth/xai/remote?state=" + OAuthPkce.encode(newPendingState());
 		}
 
-		String codeVerifier = generateCodeVerifier();
-		String codeChallenge = generateCodeChallenge(codeVerifier);
-		String state = generateRandom();
-		String nonce = generateRandom();
+		String codeVerifier = OAuthPkce.codeVerifier();
+		String state = OAuthPkce.state();
 
-		String gatewayBase = buildGatewayBase(httpReq);
 		loopbackServer.start(
-				codeVerifier, state, gatewayBase, (code) -> {
-					try {
-						XaiTokenResponse tokenResponse = XaiTokenRefresher.exchangeCode(
-								code,
-								codeVerifier,
-								Xai.REDIRECT_URI
-						);
-						String email = XaiTokenRefresher.decodeIdTokenEmail(
-								tokenResponse.idToken()
-						);
-						Instant expiresAt = Instant.now().plusSeconds(
-								tokenResponse.expiresIn()
-						);
-						authManager.saveCredentials(
-								tokenResponse.accessToken(),
-								tokenResponse.refreshToken(),
-								expiresAt,
-								email
-						);
-						log.info(
-								"[xAI] OAuth complete (local), email={}",
-								email
-						);
-					} catch (Exception e) {
-						log.error(
-								"[xAI] Token exchange failed: {}",
-								e.getMessage()
-						);
-						throw new RuntimeException(e);
-					}
-				}
+				codeVerifier,
+				state,
+				OAuthPkce.gatewayBase(httpReq),
+				code -> completeLocalLogin(code, codeVerifier)
 		);
 
-		String url = Xai.AUTH_URL
-		             + "?response_type=code"
-		             + "&client_id=" + encode(Xai.CLIENT_ID)
-		             + "&redirect_uri=" + encode(Xai.REDIRECT_URI)
-		             + "&scope=" + encode(Xai.SCOPE)
-		             + "&code_challenge=" + encode(codeChallenge)
-		             + "&code_challenge_method=S256"
-		             + "&state=" + encode(state)
-		             + "&nonce=" + encode(nonce)
-		             + "&plan=generic"
-		             + "&referrer=cli-proxy-api";
-
-		return "redirect:" + url;
+		return "redirect:" + XaiAuthUrl.build(
+				OAuthPkce.codeChallenge(codeVerifier),
+				state,
+				OAuthPkce.state()
+		);
 	}
 
 	@GetMapping("/auth/xai/remote")
 	@ResponseBody
 	String remotePage(String state, HttpServletRequest httpReq) {
-		String gatewayBase = buildGatewayBase(httpReq);
-		return """
-				<!DOCTYPE html>
-				<html><head><title>xAI Connect</title>
-				<style>body{font-family:system-ui;background:#0a0a0a;color:#e4e4e7;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-				.card{text-align:center;padding:2rem;border:1px solid #27272a;border-radius:8px;background:#18181b;max-width:600px}
-				h1{font-size:1.25rem;margin:0 0 1rem}p{color:#a1a1aa;font-size:0.875rem;margin:0 0 1rem}
-				pre{background:#09090b;border:1px solid #27272a;border-radius:4px;padding:1rem;text-align:left;font-size:0.75rem;overflow-x:auto;color:#a1a1aa}
-				code{color:#c084fc}</style></head>
-				<body><div class="card">
-				<h1>xAI OAuth (Remote Setup)</h1>
-				<p>xAI requires localhost callback. Run this on your local machine:</p>
-				<pre><code>curl -sL "%s/auth/xai/agent?state=%s" | bash</code></pre>
-				<p>After login, token will be sent back to this gateway automatically.</p>
-				</div></body></html>
-				""".formatted(gatewayBase, state);
+		return XaiRemoteSetupPages.instructionPage(
+				OAuthPkce.gatewayBase(httpReq),
+				state
+		);
 	}
 
 	@GetMapping(value = "/auth/xai/agent", produces = "text/plain")
 	@ResponseBody
 	String agentScript(String state, HttpServletRequest httpReq) {
-		String codeVerifier = pendingVerifiers.get(state);
-		if (codeVerifier == null) {
+		if (pendingVerifiers.get(state) == null) {
 			return "echo 'Error: invalid or expired state'";
 		}
-		String gatewayBase = buildGatewayBase(httpReq);
-
-		return "#!/bin/bash\n"
-		       + "GATEWAY='" + gatewayBase + "'\n"
-		       + "STATE='" + state + "'\n"
-		       + "CLIENT_ID='" + Xai.CLIENT_ID + "'\n"
-		       + "SCOPE='" + Xai.SCOPE + "'\n"
-		       + "echo 'Starting xAI device code flow...'\n"
-		       +
-		       "DEVICE_RESP=$(curl -s -X POST 'https://auth.x.ai/oauth2/device/code' \\\n"
-		       + "  -H 'Content-Type: application/x-www-form-urlencoded' \\\n"
-		       + "  -d \"client_id=$CLIENT_ID&scope=$SCOPE\")\n"
-		       +
-		       "DEVICE_CODE=$(echo \"$DEVICE_RESP\" | grep -o '\"device_code\":\"[^\"]*\"' | cut -d'\"' -f4)\n"
-		       +
-		       "USER_CODE=$(echo \"$DEVICE_RESP\" | grep -o '\"user_code\":\"[^\"]*\"' | cut -d'\"' -f4)\n"
-		       +
-		       "VERIFY_URI=$(echo \"$DEVICE_RESP\" | grep -o '\"verification_uri\":\"[^\"]*\"' | cut -d'\"' -f4)\n"
-		       +
-		       "INTERVAL=$(echo \"$DEVICE_RESP\" | grep -o '\"interval\":[0-9]*' | cut -d: -f2)\n"
-		       + "[ -z \"$INTERVAL\" ] && INTERVAL=5\n"
-		       +
-		       "if [ -z \"$DEVICE_CODE\" ]; then echo \"Error: $DEVICE_RESP\"; exit 1; fi\n"
-		       + "echo ''\n"
-		       + "printf '\\033[1;35m  xAI Device Authorization\\033[0m\\n'\n"
-		       + "echo ''\n"
-		       + "printf '  Open this URL and enter the code below:\\n'\n"
-		       + "echo ''\n"
-		       + "printf '  \\033[4;36m%s\\033[0m\\n' \"$VERIFY_URI\"\n"
-		       + "echo ''\n"
-		       + "printf '  Code: \\033[1;33m%s\\033[0m\\n' \"$USER_CODE\"\n"
-		       + "echo ''\n"
-		       + "open_url() {\n"
-		       + "  if [ \"$(uname)\" = 'Darwin' ]; then\n"
-		       + "    BROWSERS=()\n"
-		       + "    for app in /Applications/*.app; do\n"
-		       + "      if plutil -extract CFBundleURLTypes json -o - \"$app/Contents/Info.plist\" 2>/dev/null | grep -q '\"https\"'; then\n"
-		       + "        if plutil -extract CFBundleDocumentTypes json -o - \"$app/Contents/Info.plist\" 2>/dev/null | grep -qi 'html'; then\n"
-		       + "          BROWSERS+=(\"$(basename \"$app\" .app)\")\n"
-		       + "        fi\n"
-		       + "      fi\n"
-		       + "    done\n"
-		       + "    if [ ${#BROWSERS[@]} -eq 0 ]; then\n"
-		       + "      open \"$1\"\n"
-		       + "    else\n"
-		       + "      echo '  Select browser:'\n"
-		       + "      for i in \"${!BROWSERS[@]}\"; do echo \"    $((i+1))) ${BROWSERS[$i]}\"; done\n"
-		       + "      echo \"    $((${#BROWSERS[@]}+1))) Default\"\n"
-		       + "      printf '  Choice [%d]: ' $((${#BROWSERS[@]}+1))\n"
-		       + "      read -r PICK </dev/tty\n"
-		       + "      PICK=${PICK:-$((${#BROWSERS[@]}+1))}\n"
-		       + "      if [ \"$PICK\" -gt ${#BROWSERS[@]} ] 2>/dev/null; then\n"
-		       + "        open \"$1\"\n"
-		       + "      else\n"
-		       + "        open -a \"${BROWSERS[$((PICK-1))]}\" \"$1\"\n"
-		       + "      fi\n"
-		       + "    fi\n"
-		       + "  else\n"
-		       + "    xdg-open \"$1\" 2>/dev/null || echo \"Open this URL: $1\"\n"
-		       + "  fi\n"
-		       + "}\n"
-		       + "open_url \"$VERIFY_URI\"\n"
-		       + "echo ''\n"
-		       + "printf '  \\033[2mWaiting for authorization...\\033[0m\\n'\n"
-		       + "echo ''\n"
-		       + "while true; do\n"
-		       + "  sleep $INTERVAL\n"
-		       +
-		       "  TOKEN_RESP=$(curl -s -X POST 'https://auth.x.ai/oauth2/token' \\\n"
-		       + "    -H 'Content-Type: application/x-www-form-urlencoded' \\\n"
-		       +
-		       "    -d \"grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code=$DEVICE_CODE&client_id=$CLIENT_ID\")\n"
-		       +
-		       "  if echo \"$TOKEN_RESP\" | grep -q '\"access_token\"'; then\n"
-		       + "    echo 'Authorized! Sending tokens to gateway...'\n"
-		       +
-		       "    curl -sL -X POST \"$GATEWAY/auth/xai/device-exchange\" \\\n"
-		       + "      -H 'Content-Type: application/json' \\\n"
-		       + "      -d \"$TOKEN_RESP\"\n"
-		       + "    echo ''\n"
-		       + "    echo 'Done! xAI account connected.'\n"
-		       + "    exit 0\n"
-		       + "  fi\n"
-		       + "  if echo \"$TOKEN_RESP\" | grep -q '\"error\"'; then\n"
-		       +
-		       "    ERR=$(echo \"$TOKEN_RESP\" | grep -o '\"error\":\"[^\"]*\"' | cut -d'\"' -f4)\n"
-		       +
-		       "    if [ \"$ERR\" != \"authorization_pending\" ] && [ \"$ERR\" != \"slow_down\" ]; then\n"
-		       + "      echo \"Error: $ERR\"; exit 1\n"
-		       + "    fi\n"
-		       +
-		       "    [ \"$ERR\" = \"slow_down\" ] && INTERVAL=$((INTERVAL+5))\n"
-		       + "  fi\n"
-		       + "  printf '.'\n"
-		       + "done\n";
+		return XaiRemoteSetupPages.agentScript(
+				OAuthPkce.gatewayBase(httpReq),
+				state
+		);
 	}
 
 	@PostMapping("/auth/xai/state")
 	@ResponseBody
 	Map<String, String> generateState() {
-		String codeVerifier = generateCodeVerifier();
-		String state = generateRandom();
-		pendingVerifiers.put(state, codeVerifier);
-		return Map.of("state", state);
+		return Map.of("state", newPendingState());
 	}
 
 	@PostMapping("/auth/xai/device-exchange")
 	@ResponseBody
 	Map<String, String> deviceExchange(@RequestBody Map<String, Object> body) {
 		String accessToken = (String) body.get("access_token");
-		String refreshToken = (String) body.get("refresh_token");
-		String idToken = (String) body.get("id_token");
-		Object expiresInObj = body.get("expires_in");
-
 		if (accessToken == null) {
 			return Map.of("error", "missing access_token");
 		}
 
-		int expiresIn = expiresInObj instanceof Number n ? n.intValue() : 604800;
-		String email = XaiTokenRefresher.decodeIdTokenEmail(idToken);
-		Instant expiresAt = Instant.now().plusSeconds(expiresIn);
-		authManager.saveCredentials(
+		Object expiresIn = body.get("expires_in");
+		String email = saveCredentials(
 				accessToken,
-				refreshToken,
-				expiresAt,
-				email
+				(String) body.get("refresh_token"),
+				(String) body.get("id_token"),
+				expiresIn instanceof Number n ? n.intValue() : DEFAULT_EXPIRES_IN
 		);
 		log.info("[xAI] OAuth complete (device flow), email={}", email);
 		return Map.of("status", "ok", "email", email != null ? email : "");
@@ -273,20 +120,7 @@ public class XaiOAuthController {
 		}
 
 		try {
-			XaiTokenResponse tokenResponse = XaiTokenRefresher.exchangeCode(
-					code,
-					codeVerifier,
-					Xai.REDIRECT_URI
-			);
-			String email = XaiTokenRefresher.decodeIdTokenEmail(tokenResponse.idToken());
-			Instant expiresAt = Instant.now()
-			                           .plusSeconds(tokenResponse.expiresIn());
-			authManager.saveCredentials(
-					tokenResponse.accessToken(),
-					tokenResponse.refreshToken(),
-					expiresAt,
-					email
-			);
+			String email = exchangeAndSave(code, codeVerifier);
 			log.info("[xAI] OAuth complete (remote), email={}", email);
 			return Map.of("status", "ok", "email", email != null ? email : "");
 		} catch (Exception e) {
@@ -295,51 +129,51 @@ public class XaiOAuthController {
 		}
 	}
 
-	private static String generateCodeVerifier() {
-		byte[] bytes = new byte[96];
-		new SecureRandom().nextBytes(bytes);
-		return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+	private String newPendingState() {
+		String state = OAuthPkce.state();
+		pendingVerifiers.put(state, OAuthPkce.codeVerifier());
+		return state;
 	}
 
-	private static String generateCodeChallenge(String codeVerifier) {
+	private void completeLocalLogin(String code, String codeVerifier) {
 		try {
-			MessageDigest digest = MessageDigest.getInstance("SHA-256");
-			byte[] hash = digest.digest(codeVerifier.getBytes(StandardCharsets.US_ASCII));
-			return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
+			String email = exchangeAndSave(code, codeVerifier);
+			log.info("[xAI] OAuth complete (local), email={}", email);
 		} catch (Exception e) {
-			throw new RuntimeException("SHA-256 not available", e);
+			log.error("[xAI] Token exchange failed: {}", e.getMessage());
+			throw new IllegalStateException("xAI token exchange failed", e);
 		}
 	}
 
-	private static String generateRandom() {
-		byte[] bytes = new byte[32];
-		new SecureRandom().nextBytes(bytes);
-		return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+	/** Trades the authorization code for tokens and stores them. */
+	private String exchangeAndSave(String code, String codeVerifier) throws Exception {
+		XaiTokenResponse tokens = XaiTokenRefresher.exchangeCode(
+				code,
+				codeVerifier,
+				Xai.REDIRECT_URI
+		);
+		return saveCredentials(
+				tokens.accessToken(),
+				tokens.refreshToken(),
+				tokens.idToken(),
+				tokens.expiresIn()
+		);
 	}
 
-	private static String encode(String value) {
-		return URLEncoder.encode(value, StandardCharsets.UTF_8);
-	}
-
-	private static String buildGatewayBase(HttpServletRequest request) {
-		String forwardedProto = request.getHeader("X-Forwarded-Proto");
-		String forwardedHost = request.getHeader("X-Forwarded-Host");
-
-		if (forwardedProto != null && !forwardedProto.isEmpty()) {
-			String host = (forwardedHost != null && !forwardedHost.isEmpty())
-					? forwardedHost
-					: request.getServerName();
-			return forwardedProto + "://" + host;
-		}
-
-		String scheme = request.getScheme();
-		String host = request.getServerName();
-		int port = request.getServerPort();
-		boolean defaultPort = ("http".equals(scheme) && port == 80) ||
-		                      ("https".equals(scheme) && port == 443);
-		if (!defaultPort) {
-			host = host + ":" + port;
-		}
-		return scheme + "://" + host;
+	/** @return the email read from the id_token, or null when absent. */
+	private String saveCredentials(
+			String accessToken,
+			String refreshToken,
+			String idToken,
+			int expiresIn
+	) {
+		String email = XaiTokenRefresher.decodeIdTokenEmail(idToken);
+		authManager.saveCredentials(
+				accessToken,
+				refreshToken,
+				Instant.now().plusSeconds(expiresIn),
+				email
+		);
+		return email;
 	}
 }
