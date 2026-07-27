@@ -202,6 +202,43 @@ class AntigravityHttpClientTest {
 		Map<String, Object> model = models.getFirst();
 		assertEquals(false, model.get("supportsPdf"));
 		assertEquals(false, model.get("supportsAudio"));
+		assertEquals(true, model.get("supportsVideo"));
+	}
+
+	/**
+	 * Live responses carry {@code video/*} MIME types for models that omit the
+	 * {@code supportsVideo} boolean, so the MIME list has to win over the boolean's absence.
+	 */
+	@Test
+	void parseModelsWithQuota_videoMimesWithoutBoolean_reportsVideoSupported() {
+		List<Map<String, Object>> models = AntigravityHttpClient.parseModelsWithQuota("""
+				{"models":{"models/gemini-2.5-pro":{"supportsImages":true,
+				"supportedMimeTypes":{"video/mp4":true,"video/audio/wav":true}}}}
+				""");
+
+		assertEquals(true, models.getFirst().get("supportsVideo"));
+	}
+
+	/** No MIME list at all leaves the boolean as the only signal. */
+	@Test
+	void parseModelsWithQuota_withoutMimeList_fallsBackToVideoBoolean() {
+		List<Map<String, Object>> models = AntigravityHttpClient.parseModelsWithQuota("""
+				{"models":{"models/some-model":{"supportsVideo":true}}}
+				""");
+
+		Map<String, Object> model = models.getFirst();
+		assertEquals(true, model.get("supportsVideo"));
+		assertFalse(model.containsKey("supportsPdf"));
+	}
+
+	/** A MIME list naming no video type means no video, even without the boolean. */
+	@Test
+	void parseModelsWithQuota_mimeListWithoutVideo_reportsVideoUnsupported() {
+		List<Map<String, Object>> models = AntigravityHttpClient.parseModelsWithQuota("""
+				{"models":{"models/text-only":{"supportedMimeTypes":{"text/plain":true}}}}
+				""");
+
+		assertEquals(false, models.getFirst().get("supportsVideo"));
 	}
 
 	/** A model the upstream says nothing about must not gain invented capability keys. */

@@ -259,16 +259,17 @@ class AntigravityHttpClient {
 	 * Copies the capability fields the upstream reports for one model onto {@code item}.
 	 * <p>
 	 * Absent fields are left out rather than defaulted, so a caller can tell "the upstream
-	 * says no" apart from "the upstream did not say". Modality support comes from two places:
-	 * the explicit {@code supportsImages}/{@code supportsVideo} booleans, and
-	 * {@code supportedMimeTypes}, which is the only signal for PDF and audio.
+	 * says no" apart from "the upstream did not say".
+	 * <p>
+	 * Image support comes from the {@code supportsImages} boolean, but PDF, audio and video
+	 * are read from {@code supportedMimeTypes}, which is exhaustive when present and is the
+	 * only signal for PDF and audio. The {@code supportsVideo} boolean is not authoritative:
+	 * models carrying seven {@code video/*} MIME types omit it entirely, so trusting it alone
+	 * would under-report video. It is used only as a fallback when no MIME list is given.
 	 */
 	private static void copyCapabilities(JsonNode model, Map<String, Object> item) {
 		if (model.has("supportsImages")) {
 			item.put("supportsImages", model.get("supportsImages").asBoolean());
-		}
-		if (model.has("supportsVideo")) {
-			item.put("supportsVideo", model.get("supportsVideo").asBoolean());
 		}
 		if (model.has("supportsThinking")) {
 			item.put("supportsThinking", model.get("supportsThinking").asBoolean());
@@ -288,13 +289,23 @@ class AntigravityHttpClient {
 		JsonNode mimeTypes = model.get("supportedMimeTypes");
 		if (mimeTypes != null && mimeTypes.isObject()) {
 			item.put("supportsPdf", mimeTypes.has("application/pdf"));
-			item.put(
-					"supportsAudio",
-					mimeTypes.propertyNames()
-					         .stream()
-					         .anyMatch(mime -> mime.startsWith("audio/"))
-			);
+			item.put("supportsAudio", hasMimeFamily(mimeTypes, "audio/"));
+			item.put("supportsVideo", hasMimeFamily(mimeTypes, "video/"));
+		} else if (model.has("supportsVideo")) {
+			item.put("supportsVideo", model.get("supportsVideo").asBoolean());
 		}
+	}
+
+	/**
+	 * Whether the MIME list names any type in one family. Video is a family rather than a
+	 * single type, and the upstream spells its own video entries inconsistently
+	 * ({@code video/mp4} next to {@code video/audio/wav}), so matching the prefix is the only
+	 * reliable read.
+	 */
+	private static boolean hasMimeFamily(JsonNode mimeTypes, String prefix) {
+		return mimeTypes.propertyNames()
+		                .stream()
+		                .anyMatch(mime -> mime.startsWith(prefix));
 	}
 
 	/**
