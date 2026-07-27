@@ -31,6 +31,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -319,6 +320,15 @@ public class KiroAuthManager implements ProviderAuthManager {
 			"claude-3.7-sonnet"
 	);
 
+	/**
+	 * Schema properties that wrap the reasoning-effort enum, in the order to look. Claude
+	 * models nest it under {@code output_config}, GPT ones under {@code reasoning}.
+	 */
+	private static final List<String> EFFORT_SCHEMA_WRAPPERS = List.of(
+			"output_config",
+			"reasoning"
+	);
+
 	@Cacheable(value = "kiroModels", key = "T(dev.suprim.gateway.provider.kiro.KiroAccountModelAvailability).accountKey(#account)")
 	public List<Map<String, Object>> listModels(StoredAccount account) throws Exception {
 
@@ -407,37 +417,102 @@ public class KiroAuthManager implements ProviderAuthManager {
 			    HIDDEN_MODELS.contains(id)) {
 				continue;
 			}
-			Object cost = m.get("rateMultiplier");
-			String unit = (String) m.get("rateUnit");
-			String name = (String) m.get("modelName");
-			Matcher mat = DOT_VERSION.matcher(id);
-			if (mat.matches()) {
-				String hyphenated =
-						mat.group(1) + mat.group(2) + "-" + mat.group(3);
-				if (!disabled.contains(hyphenated) &&
-				    seen.add(hyphenated)) {
-					models.add(
-							Map.of(
-									"id", hyphenated,
-									"cost", cost != null ? cost : 0,
-									"unit", unit != null ? unit : "",
-									"name", name != null ? name : ""
-							)
-					);
-				}
-			} else if (seen.add(id)) {
-				models.add(
-						Map.of(
-								"id", id,
-								"cost", cost != null ? cost : 0,
-								"unit", unit != null ? unit : "",
-								"name", name != null ? name : ""
-						)
-				);
+			String exposedId = hyphenatedId(id);
+			if (disabled.contains(exposedId) || !seen.add(exposedId)) {
+				continue;
 			}
+			models.add(toModelEntry(exposedId, m));
 		}
 
 		return models;
+	}
+
+	/**
+	 * Kiro names some models with a dotted version ({@code claude-sonnet-4.5}) that the
+	 * gateway exposes hyphenated. Ids without a dotted version pass through unchanged.
+	 */
+	private static String hyphenatedId(String modelId) {
+		Matcher matcher = DOT_VERSION.matcher(modelId);
+		return matcher.matches()
+				? matcher.group(1) + matcher.group(2) + "-" + matcher.group(3)
+				: modelId;
+	}
+
+	/**
+	 * Flattens one upstream model into the map shape callers consume, carrying the capability
+	 * fields the upstream reports: {@code supportedInputTypes}, prompt caching, token limits,
+	 * and the reasoning-effort levels advertised in
+	 * {@code additionalModelRequestFieldsSchema}. Fields the upstream omits are left out, so
+	 * "unsupported" stays distinguishable from "unreported".
+	 */
+	private static Map<String, Object> toModelEntry(
+			String exposedId,
+			Map<String, Object> upstream
+	) {
+		Map<String, Object> entry = new LinkedHashMap<>();
+		entry.put("id", exposedId);
+		entry.put(
+				"cost",
+				upstream.get("rateMultiplier") != null
+						? upstream.get("rateMultiplier")
+						: 0
+		);
+		entry.put(
+				"unit",
+				upstream.get("rateUnit") != null ? upstream.get("rateUnit") : ""
+		);
+		entry.put(
+				"name",
+				upstream.get("modelName") != null
+						? upstream.get("modelName")
+						: ""
+		);
+
+		if (upstream.get("supportedInputTypes") instanceof List<?> inputTypes) {
+			entry.put("supportsImages", inputTypes.contains("IMAGE"));
+		}
+		if (upstream.get("promptCaching") instanceof Map<?, ?> caching &&
+		    caching.get("supportsPromptCaching") instanceof Boolean supported) {
+			entry.put("supportsPromptCaching", supported);
+		}
+		if (upstream.get("tokenLimits") instanceof Map<?, ?> limits) {
+			if (limits.get("maxInputTokens") instanceof Number maxInput) {
+				entry.put("maxInputTokens", maxInput.intValue());
+			}
+			if (limits.get("maxOutputTokens") instanceof Number maxOutput) {
+				entry.put("maxOutputTokens", maxOutput.intValue());
+			}
+		}
+		copyEffortLevels(upstream, entry);
+		return entry;
+	}
+
+	/**
+	 * Reads the reasoning-effort enum out of the model's request-fields JSON schema. Kiro
+	 * nests it under {@code output_config.effort} for Claude models and {@code reasoning.effort}
+	 * for GPT ones; models with no schema advertise no effort levels.
+	 */
+	private static void copyEffortLevels(
+			Map<String, Object> upstream,
+			Map<String, Object> entry
+	) {
+		if (!(upstream.get(
+				"additionalModelRequestFieldsSchema") instanceof Map<?, ?> schema) ||
+		    !(schema.get("properties") instanceof Map<?, ?> properties)) {
+			return;
+		}
+		for (String wrapper : EFFORT_SCHEMA_WRAPPERS) {
+			if (properties.get(wrapper) instanceof Map<?, ?> group &&
+			    group.get("properties") instanceof Map<?, ?> groupProperties &&
+			    groupProperties.get("effort") instanceof Map<?, ?> effort &&
+			    effort.get("enum") instanceof List<?> levels) {
+				entry.put("effortLevels", List.copyOf(levels));
+				if (effort.get("default") instanceof String defaultLevel) {
+					entry.put("defaultEffort", defaultLevel);
+				}
+				return;
+			}
+		}
 	}
 
 	private record ModelsResponse(List<Map<String, Object>> models) {}

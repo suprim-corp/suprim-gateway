@@ -20,18 +20,25 @@ class ModelListing {
 	}
 
 	void add(String id, String provider, String displayName) {
-		if (id == null || !seen.add(id)) {
+		add(ModelForListingApi.builder()
+		                      .id(id)
+		                      .ownedBy(provider)
+		                      .displayName(displayName));
+	}
+
+	/**
+	 * Adds an entry from a partially-built model, filling in the fields every
+	 * entry shares. Callers that have capability or token-limit data set it on
+	 * the builder first.
+	 */
+	void add(ModelForListingApi.ModelForListingApiBuilder builder) {
+		ModelForListingApi model = builder.object("model")
+		                                  .created(created)
+		                                  .build();
+		if (model.id() == null || !seen.add(model.id())) {
 			return;
 		}
-		models.add(
-				ModelForListingApi.builder()
-				                  .id(id)
-				                  .object("model")
-				                  .ownedBy(provider)
-				                  .created(created)
-				                  .displayName(displayName)
-				                  .build()
-		);
+		models.add(model);
 	}
 
 	List<ModelForListingApi> models() {

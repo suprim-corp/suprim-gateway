@@ -33,6 +33,14 @@ public class KiroAccountModelAvailability {
 	private final ModelResolver modelResolver;
 	private final CacheManager cacheManager;
 	private final Map<String, Set<String>> modelsByAccount = new ConcurrentHashMap<>();
+
+	/**
+	 * The full upstream entry per exposed model id, keyed by canonical id. Routing only needs
+	 * the ids in {@link #modelsByAccount}; this keeps the capability fields alongside them so
+	 * the aggregated listing does not have to re-fetch. Accounts share the map because Kiro
+	 * reports the same capabilities for a model regardless of which account asked.
+	 */
+	private final Map<String, Map<String, Object>> detailsByModel = new ConcurrentHashMap<>();
 	private final Set<String> completedAccounts = ConcurrentHashMap.newKeySet();
 	private final AtomicBoolean refreshing = new AtomicBoolean();
 
@@ -60,15 +68,7 @@ public class KiroAccountModelAvailability {
 	public void refresh(StoredAccount account) {
 		String key = accountKey(account);
 		try {
-			Set<String> models =
-					kiroAuthManager.listModels(account)
-					               .stream()
-					               .map(model -> (String) model.get(
-							               "id")
-					               )
-					               .filter(Objects::nonNull)
-					               .map(modelResolver::canonicalize)
-					               .collect(Collectors.toUnmodifiableSet());
+			Set<String> models = fetchAndIndex(account);
 			modelsByAccount.put(key, models);
 			completedAccounts.add(key);
 			log.info(
@@ -137,16 +137,37 @@ public class KiroAccountModelAvailability {
 		if (!cached.isEmpty()) {
 			return cached;
 		}
-		Set<String> models = kiroAuthManager.listModels(account)
-		                                    .stream()
-		                                    .map(model -> (String) model.get("id"))
-		                                    .filter(Objects::nonNull)
-		                                    .map(modelResolver::canonicalize)
-		                                    .collect(Collectors.toUnmodifiableSet());
+		Set<String> models = fetchAndIndex(account);
 		String key = accountKey(account);
 		modelsByAccount.put(key, models);
 		completedAccounts.add(key);
 		return models;
+	}
+
+	/**
+	 * Fetches one account's models, returning their canonical ids and recording each model's
+	 * full upstream entry in {@link #detailsByModel} on the way through.
+	 */
+	private Set<String> fetchAndIndex(StoredAccount account) throws Exception {
+		Set<String> canonicalIds = new LinkedHashSet<>();
+		for (Map<String, Object> model : kiroAuthManager.listModels(account)) {
+			if (!(model.get("id") instanceof String id)) {
+				continue;
+			}
+			String canonical = modelResolver.canonicalize(id);
+			canonicalIds.add(canonical);
+			detailsByModel.put(canonical, model);
+		}
+		return Set.copyOf(canonicalIds);
+	}
+
+	/**
+	 * The upstream entry for one canonical model id, or an empty map when no refresh has seen
+	 * that model yet. Callers read capability fields out of it; see
+	 * {@code KiroAuthManager#listModels} for the keys.
+	 */
+	public Map<String, Object> modelDetails(String canonicalModelId) {
+		return detailsByModel.getOrDefault(canonicalModelId, Map.of());
 	}
 
 	public static String accountKey(StoredAccount account) {

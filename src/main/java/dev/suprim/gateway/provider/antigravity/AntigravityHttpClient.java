@@ -69,8 +69,9 @@ class AntigravityHttpClient {
 
 	/**
 	 * Calls {@code fetchAvailableModels}, returning one map per model with {@code id} and,
-	 * when the upstream reports it, {@code quota} (percent remaining) and
-	 * {@code displayName}. Returns an empty list on any non-200 or unparseable response.
+	 * when the upstream reports them, {@code quota} (percent remaining), {@code displayName},
+	 * and the capability keys listed on {@link #copyCapabilities}. Returns an empty list on
+	 * any non-200 or unparseable response.
 	 */
 	static List<Map<String, Object>> listModels(
 			String accessToken,
@@ -255,12 +256,54 @@ class AntigravityHttpClient {
 	}
 
 	/**
+	 * Copies the capability fields the upstream reports for one model onto {@code item}.
+	 * <p>
+	 * Absent fields are left out rather than defaulted, so a caller can tell "the upstream
+	 * says no" apart from "the upstream did not say". Modality support comes from two places:
+	 * the explicit {@code supportsImages}/{@code supportsVideo} booleans, and
+	 * {@code supportedMimeTypes}, which is the only signal for PDF and audio.
+	 */
+	private static void copyCapabilities(JsonNode model, Map<String, Object> item) {
+		if (model.has("supportsImages")) {
+			item.put("supportsImages", model.get("supportsImages").asBoolean());
+		}
+		if (model.has("supportsVideo")) {
+			item.put("supportsVideo", model.get("supportsVideo").asBoolean());
+		}
+		if (model.has("supportsThinking")) {
+			item.put("supportsThinking", model.get("supportsThinking").asBoolean());
+		}
+		if (model.has("thinkingBudget")) {
+			item.put("thinkingBudget", model.get("thinkingBudget").asInt());
+		}
+		if (model.has("minThinkingBudget")) {
+			item.put("minThinkingBudget", model.get("minThinkingBudget").asInt());
+		}
+		if (model.has("maxTokens")) {
+			item.put("maxInputTokens", model.get("maxTokens").asInt());
+		}
+		if (model.has("maxOutputTokens")) {
+			item.put("maxOutputTokens", model.get("maxOutputTokens").asInt());
+		}
+		JsonNode mimeTypes = model.get("supportedMimeTypes");
+		if (mimeTypes != null && mimeTypes.isObject()) {
+			item.put("supportsPdf", mimeTypes.has("application/pdf"));
+			item.put(
+					"supportsAudio",
+					mimeTypes.propertyNames()
+					         .stream()
+					         .anyMatch(mime -> mime.startsWith("audio/"))
+			);
+		}
+	}
+
+	/**
 	 * Flattens a models response into one map per model. Handles both shapes the upstream
 	 * returns: {@code availableModels} keyed by model name, and {@code models} as an array of
 	 * wrappers. Either way the {@code models/} prefix is stripped and quota, when reported,
 	 * becomes a whole percent. Malformed input yields an empty list rather than an error.
 	 */
-	private static List<Map<String, Object>> parseModelsWithQuota(String json) {
+	static List<Map<String, Object>> parseModelsWithQuota(String json) {
 		List<Map<String, Object>> models = new ArrayList<>();
 		try {
 			JsonNode root = new JsonMapper().readTree(json);
@@ -301,6 +344,7 @@ class AntigravityHttpClient {
 					if (displayName != null) {
 						item.put("displayName", displayName);
 					}
+					copyCapabilities(value, item);
 					models.add(item);
 				}
 			} else if (available.isArray()) {
@@ -321,13 +365,14 @@ class AntigravityHttpClient {
 						}
 						String displayName = model.has("displayName") ? model.get(
 								"displayName").asString() : null;
-						Map<String, Object> item = new java.util.LinkedHashMap<>();
+						Map<String, Object> item = new LinkedHashMap<>();
 						item.put("id", modelId);
 						if (quotaPct >= 0) item.put("quota", quotaPct);
 						if (displayName != null) item.put(
 								"displayName",
 								displayName
 						);
+						copyCapabilities(model, item);
 						models.add(item);
 					}
 				}

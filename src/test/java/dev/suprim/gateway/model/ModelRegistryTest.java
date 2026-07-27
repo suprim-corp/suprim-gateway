@@ -129,6 +129,124 @@ class ModelRegistryTest {
 	}
 
 	@Test
+	void testRefreshCache_AntigravityCapabilities_carriedIntoListing() throws Exception {
+		StoredAccount agAccount = StoredAccount.builder()
+		                                       .provider(Provider.ANTIGRAVITY.name())
+		                                       .name("test-ag")
+		                                       .build();
+
+		Map<String, Object> model = new HashMap<>();
+		model.put("id", "gemini-3.1-pro-low");
+		model.put("supportsImages", true);
+		model.put("supportsVideo", true);
+		model.put("supportsPdf", true);
+		model.put("supportsAudio", true);
+		model.put("supportsThinking", true);
+		model.put("thinkingBudget", 1001);
+		model.put("minThinkingBudget", 128);
+		model.put("maxInputTokens", 1048576);
+		model.put("maxOutputTokens", 65535);
+
+		when(kiroModelAvailability.availableModels()).thenReturn(Set.of());
+		when(credentialStore.load()).thenReturn(List.of(agAccount));
+		when(antigravityAuthManager.listModels(agAccount)).thenReturn(List.of(model));
+
+		registry.refreshCache();
+
+		ModelForListingApi listed = registry.getAllModelsForApi().getFirst();
+		assertEquals(1048576, listed.maxInputTokens());
+		assertEquals(65535, listed.maxOutputTokens());
+		ModelCapabilities capabilities = listed.capabilities();
+		assertTrue(capabilities.imageInput().supported());
+		assertTrue(capabilities.videoInput().supported());
+		assertTrue(capabilities.pdfInput().supported());
+		assertTrue(capabilities.audioInput().supported());
+		assertTrue(capabilities.thinking().supported());
+		assertEquals(1001, capabilities.thinking().budgetTokens());
+		assertEquals(128, capabilities.thinking().minBudgetTokens());
+	}
+
+	@Test
+	void testRefreshCache_providerReportsNoCapabilities_omitsThemEntirely() throws Exception {
+		StoredAccount agAccount = StoredAccount.builder()
+		                                       .provider(Provider.ANTIGRAVITY.name())
+		                                       .name("test-ag")
+		                                       .build();
+
+		when(kiroModelAvailability.availableModels()).thenReturn(Set.of());
+		when(credentialStore.load()).thenReturn(List.of(agAccount));
+		when(antigravityAuthManager.listModels(agAccount)).thenReturn(
+				List.of(Map.of("id", "chat_20706"))
+		);
+
+		registry.refreshCache();
+
+		ModelForListingApi listed = registry.getAllModelsForApi().getFirst();
+		assertNull(listed.capabilities());
+		assertNull(listed.maxInputTokens());
+		assertNull(listed.maxOutputTokens());
+	}
+
+	/**
+	 * A model the upstream says is text-only must serialize as supported=false, not as an
+	 * absent field, so a client can tell "no images" apart from "unknown".
+	 */
+	@Test
+	void testRefreshCache_unsupportedModality_reportedAsFalseNotAbsent() throws Exception {
+		StoredAccount agAccount = StoredAccount.builder()
+		                                       .provider(Provider.ANTIGRAVITY.name())
+		                                       .name("test-ag")
+		                                       .build();
+
+		Map<String, Object> model = new HashMap<>();
+		model.put("id", "gpt-oss-120b-medium");
+		model.put("supportsImages", false);
+
+		when(kiroModelAvailability.availableModels()).thenReturn(Set.of());
+		when(credentialStore.load()).thenReturn(List.of(agAccount));
+		when(antigravityAuthManager.listModels(agAccount)).thenReturn(List.of(model));
+
+		registry.refreshCache();
+
+		ModelCapabilities capabilities =
+				registry.getAllModelsForApi().getFirst().capabilities();
+		assertNotNull(capabilities.imageInput());
+		assertFalse(capabilities.imageInput().supported());
+		assertNull(capabilities.videoInput());
+	}
+
+	@Test
+	void testRefreshCache_KiroCapabilities_readFromAvailabilityCache() {
+		Map<String, Object> details = new HashMap<>();
+		details.put("id", "claude-opus-5");
+		details.put("supportsImages", true);
+		details.put("supportsPromptCaching", true);
+		details.put("maxInputTokens", 1000000);
+		details.put("maxOutputTokens", 128000);
+		details.put("effortLevels", List.of("low", "medium", "high", "xhigh", "max"));
+		details.put("defaultEffort", "high");
+
+		when(kiroModelAvailability.availableModels()).thenReturn(Set.of("claude-opus-5"));
+		when(kiroModelAvailability.modelDetails("claude-opus-5")).thenReturn(details);
+		when(credentialStore.load()).thenReturn(List.of());
+
+		registry.refreshCache();
+
+		ModelForListingApi listed = registry.getAllModelsForApi().getFirst();
+		assertEquals(1000000, listed.maxInputTokens());
+		ModelCapabilities capabilities = listed.capabilities();
+		assertTrue(capabilities.imageInput().supported());
+		assertTrue(capabilities.promptCaching().supported());
+		assertTrue(capabilities.effort().supported());
+		assertEquals(
+				List.of("low", "medium", "high", "xhigh", "max"),
+				capabilities.effort().levels()
+		);
+		assertEquals("high", capabilities.effort().defaultLevel());
+		assertNull(capabilities.thinking());
+	}
+
+	@Test
 	void testGetModelsForProvider_AntigravityWithoutDisplayName_returnsModels() throws Exception {
 		StoredAccount agAccount = StoredAccount.builder()
 		                                       .provider(Provider.ANTIGRAVITY.name())

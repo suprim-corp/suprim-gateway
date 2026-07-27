@@ -160,6 +160,65 @@ class AntigravityHttpClientTest {
 		assertEquals("Weekly Limit", buckets.getFirst().get("label"));
 	}
 
+	/**
+	 * Shape captured from a live {@code fetchAvailableModels} response, trimmed to the
+	 * capability fields. PDF and audio support show up only in {@code supportedMimeTypes}.
+	 */
+	@Test
+	void parseModelsWithQuota_carriesCapabilityFields() {
+		List<Map<String, Object>> models = AntigravityHttpClient.parseModelsWithQuota("""
+				{"models":{"models/gemini-3.1-pro-low":{
+				"displayName":"Gemini 3.1 Pro (Low)","supportsImages":true,
+				"supportsVideo":true,"supportsThinking":true,"thinkingBudget":1001,
+				"minThinkingBudget":128,"maxTokens":1048576,"maxOutputTokens":65535,
+				"supportedMimeTypes":{"image/png":true,"application/pdf":true,
+				"audio/webm;codecs=opus":true,"video/mp4":true}}}}
+				""");
+
+		Map<String, Object> model = models.getFirst();
+		assertEquals("gemini-3.1-pro-low", model.get("id"));
+		assertEquals(true, model.get("supportsImages"));
+		assertEquals(true, model.get("supportsVideo"));
+		assertEquals(true, model.get("supportsThinking"));
+		assertEquals(1001, model.get("thinkingBudget"));
+		assertEquals(128, model.get("minThinkingBudget"));
+		assertEquals(1048576, model.get("maxInputTokens"));
+		assertEquals(65535, model.get("maxOutputTokens"));
+		assertEquals(true, model.get("supportsPdf"));
+		assertEquals(true, model.get("supportsAudio"));
+	}
+
+	/**
+	 * A model whose MIME list has no PDF or audio entry is reported as not supporting them,
+	 * since the list is exhaustive when present.
+	 */
+	@Test
+	void parseModelsWithQuota_mimeListWithoutPdfOrAudio_reportsUnsupported() {
+		List<Map<String, Object>> models = AntigravityHttpClient.parseModelsWithQuota("""
+				{"models":{"models/claude-sonnet-4-6":{"supportsImages":true,
+				"supportedMimeTypes":{"image/png":true,"video/mp4":true}}}}
+				""");
+
+		Map<String, Object> model = models.getFirst();
+		assertEquals(false, model.get("supportsPdf"));
+		assertEquals(false, model.get("supportsAudio"));
+	}
+
+	/** A model the upstream says nothing about must not gain invented capability keys. */
+	@Test
+	void parseModelsWithQuota_modelWithoutCapabilities_omitsThoseKeys() {
+		List<Map<String, Object>> models = AntigravityHttpClient.parseModelsWithQuota("""
+				{"models":{"models/chat_20706":{"maxTokens":16384}}}
+				""");
+
+		Map<String, Object> model = models.getFirst();
+		assertEquals(16384, model.get("maxInputTokens"));
+		assertFalse(model.containsKey("supportsImages"));
+		assertFalse(model.containsKey("supportsPdf"));
+		assertFalse(model.containsKey("supportsThinking"));
+		assertFalse(model.containsKey("maxOutputTokens"));
+	}
+
 	/** Shape captured from a live {@code retrieveUserQuotaSummary} response. */
 	private static final String GROUPED_QUOTA = """
 			{"groups":[

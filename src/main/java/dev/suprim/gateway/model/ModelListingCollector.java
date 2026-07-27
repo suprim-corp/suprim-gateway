@@ -41,12 +41,7 @@ public class ModelListingCollector {
 		);
 
 		kiroModelAvailability.availableModels()
-		                     .forEach(modelId -> listing.add(
-						                     Provider.KIRO.getPrefix() + modelId,
-						                     Provider.KIRO.name(),
-						                     modelId
-				                     )
-		                     );
+		                     .forEach(modelId -> addKiro(modelId, listing));
 
 		accountsByProvider()
 				.forEach((provider, accounts) ->
@@ -148,37 +143,19 @@ public class ModelListingCollector {
 					                                          )
 			                                          );
 			case XAI -> xaiAuthManager.listModels(account)
-			                          .forEach(model -> {
-				                          String id = model.get("id")
-				                                           .toString();
-				                          listing.add(
-						                          id,
-						                          Provider.XAI.name(),
-						                          displayName(
-								                          model,
-								                          stripPrefix(
-										                          id,
-										                          Provider.XAI
-								                          )
-						                          )
-				                          );
-			                          });
+			                          .forEach(model -> addPrefixed(
+							                          model,
+							                          Provider.XAI,
+							                          listing
+					                          )
+			                          );
 			case CODEX -> codexAuthManager.listModels(account)
-			                              .forEach(model -> {
-				                              String id = model.get("id")
-				                                               .toString();
-				                              listing.add(
-						                              id,
-						                              Provider.CODEX.name(),
-						                              displayName(
-								                              model,
-								                              stripPrefix(
-										                              id,
-										                              Provider.CODEX
-								                              )
-						                              )
-				                              );
-			                              });
+			                              .forEach(model -> addPrefixed(
+							                              model,
+							                              Provider.CODEX,
+							                              listing
+					                              )
+			                              );
 			default -> {}
 		}
 	}
@@ -193,9 +170,64 @@ public class ModelListingCollector {
 		}
 		String modelId = id.toString();
 		listing.add(
-				Provider.ANTIGRAVITY.getPrefix() + modelId,
-				Provider.ANTIGRAVITY.name(),
-				"Antigravity | " + displayName(model, modelId)
+				withCapabilities(model)
+						.id(Provider.ANTIGRAVITY.getPrefix() + modelId)
+						.ownedBy(Provider.ANTIGRAVITY.name())
+						.displayName(
+								"Antigravity | " + displayName(model, modelId)
+						)
+		);
+	}
+
+	/**
+	 * Kiro's capability fields come from the availability cache rather than the listing call,
+	 * since routing already keeps every model's upstream entry there.
+	 */
+	private void addKiro(String modelId, ModelListing listing) {
+		listing.add(
+				withCapabilities(kiroModelAvailability.modelDetails(modelId))
+						.id(Provider.KIRO.getPrefix() + modelId)
+						.ownedBy(Provider.KIRO.name())
+						.displayName(modelId)
+		);
+	}
+
+	/**
+	 * Seeds a listing entry with whatever capabilities and token limits the provider reported.
+	 * Providers that report none yield a builder with those fields left null, which the
+	 * response then omits.
+	 */
+	private static ModelForListingApi.ModelForListingApiBuilder withCapabilities(
+			Map<String, Object> model
+	) {
+		return ModelForListingApi.builder()
+		                         .capabilities(ProviderCapabilities.from(model))
+		                         .maxInputTokens(
+				                         ProviderCapabilities.maxInputTokens(
+						                         model
+				                         )
+		                         )
+		                         .maxOutputTokens(
+				                         ProviderCapabilities.maxOutputTokens(
+						                         model
+				                         )
+		                         );
+	}
+
+	/**
+	 * Adds a model whose id already carries its provider prefix. These providers report no
+	 * capabilities, so the entry carries the id and display name only.
+	 */
+	private static void addPrefixed(
+			Map<String, Object> model,
+			Provider provider,
+			ModelListing listing
+	) {
+		String id = model.get("id").toString();
+		listing.add(
+				id,
+				provider.name(),
+				displayName(model, stripPrefix(id, provider))
 		);
 	}
 
