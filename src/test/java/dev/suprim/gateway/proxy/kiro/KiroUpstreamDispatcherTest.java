@@ -258,6 +258,125 @@ class KiroUpstreamDispatcherTest {
 		verify(rotator, times(2)).next(eq("KIRO"), anyList());
 	}
 
+	/**
+	 * The payload must carry the ARN of the account whose token is being sent. Sending the
+	 * connected account's ARN instead makes the upstream reject the token outright, which is what
+	 * happens when the payload is built once outside the rotation loop.
+	 */
+	@Test
+	void dispatch_buildsPayloadWithTheSendingAccountsProfileArn() throws Exception {
+		StoredAccount acc = StoredAccount.builder()
+		                                 .name("sso").provider("KIRO")
+		                                 .authType("AWS_SSO_OIDC")
+		                                 .accessToken("sso-token")
+		                                 .profileArn("arn:aws:codewhisperer:us-east-1:111:profile/OWN")
+		                                 .build();
+		when(store.findAllByProvider("KIRO")).thenReturn(List.of(acc));
+		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc);
+		when(authManager.getAccessToken(acc)).thenReturn("sso-token");
+		when(authManager.getProfileArn()).thenReturn(
+				"arn:aws:codewhisperer:us-east-1:999:profile/CONNECTED"
+		);
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(),
+				eq("sso-token"), any(), anyBoolean()))
+				.thenReturn(new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()),
+						"text/event-stream"));
+
+		dispatcher.dispatch(
+				InternalRequest.builder()
+				               .model("claude-sonnet-4-20250514")
+				               .messages(List.of())
+				               .build(),
+				true
+		);
+
+		ArgumentCaptor<String> arn = ArgumentCaptor.forClass(String.class);
+		verify(payloadBuilder).buildOpenAiPayload(any(), arn.capture());
+		assertEquals(
+				"arn:aws:codewhisperer:us-east-1:111:profile/OWN",
+				arn.getValue()
+		);
+	}
+
+	/**
+	 * Each account in a rotation sends its own ARN, so the payload cannot be built once and reused
+	 * across accounts.
+	 */
+	@Test
+	void dispatch_rotation_sendsEachAccountsOwnProfileArn() throws Exception {
+		StoredAccount first = StoredAccount.builder()
+		                                   .name("k1").provider("KIRO")
+		                                   .authType("AWS_SSO_OIDC")
+		                                   .accessToken("token-1")
+		                                   .profileArn("arn:aws:codewhisperer:us-east-1:111:profile/ONE")
+		                                   .build();
+		StoredAccount second = StoredAccount.builder()
+		                                    .name("k2").provider("KIRO")
+		                                    .authType("AWS_SSO_OIDC")
+		                                    .accessToken("token-2")
+		                                    .profileArn("arn:aws:codewhisperer:us-east-1:222:profile/TWO")
+		                                    .build();
+		when(store.findAllByProvider("KIRO")).thenReturn(List.of(first, second));
+		when(rotator.next(eq("KIRO"), anyList())).thenReturn(first, second);
+		when(authManager.getAccessToken(first)).thenReturn("token-1");
+		when(authManager.getAccessToken(second)).thenReturn("token-2");
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(),
+				eq("token-1"), any(), anyBoolean()))
+				.thenReturn(new KiroResponse(429, new ByteArrayInputStream("limited".getBytes()),
+						"application/json"));
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(),
+				eq("token-2"), any(), anyBoolean()))
+				.thenReturn(new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()),
+						"text/event-stream"));
+
+		dispatcher.dispatch(
+				InternalRequest.builder()
+				               .model("claude-sonnet-4-20250514")
+				               .messages(List.of())
+				               .build(),
+				true
+		);
+
+		ArgumentCaptor<String> arns = ArgumentCaptor.forClass(String.class);
+		verify(payloadBuilder, times(2)).buildOpenAiPayload(any(), arns.capture());
+		assertEquals(
+				List.of(
+						"arn:aws:codewhisperer:us-east-1:111:profile/ONE",
+						"arn:aws:codewhisperer:us-east-1:222:profile/TWO"
+				),
+				arns.getAllValues()
+		);
+	}
+
+	/** An API key is already scoped by the key, so it must not send a profile ARN. */
+	@Test
+	void dispatch_apiKeyAccount_sendsNoProfileArn() throws Exception {
+		StoredAccount acc = StoredAccount.builder()
+		                                 .name("key").provider("KIRO")
+		                                 .authType("api_key").accessToken("api-key-1")
+		                                 .profileArn("arn:aws:codewhisperer:us-east-1:111:profile/IGNORED")
+		                                 .build();
+		when(store.findAllByProvider("KIRO")).thenReturn(List.of(acc));
+		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc);
+		when(authManager.getAccessToken(acc)).thenReturn("api-key-1");
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(),
+				eq("api-key-1"), any(), anyBoolean()))
+				.thenReturn(new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()),
+						"text/event-stream"));
+
+		dispatcher.dispatch(
+				InternalRequest.builder()
+				               .model("claude-sonnet-4-20250514")
+				               .messages(List.of())
+				               .build(),
+				true
+		);
+
+		ArgumentCaptor<String> arn = ArgumentCaptor.forClass(String.class);
+		verify(payloadBuilder).buildOpenAiPayload(any(), arn.capture());
+		assertNull(arn.getValue());
+	}
+
 	@Test
 	void dispatch_allAccountsExhausted_throws() throws Exception {
 		StoredAccount acc1 = StoredAccount.builder()
