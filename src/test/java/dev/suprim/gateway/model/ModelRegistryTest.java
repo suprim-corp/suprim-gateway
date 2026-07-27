@@ -84,6 +84,28 @@ class ModelRegistryTest {
 	}
 
 	@Test
+	void testRefreshCache_AntigravityFailure_usesNextAccount() throws Exception {
+		StoredAccount firstAccount = StoredAccount.builder()
+		                                          .provider(Provider.ANTIGRAVITY.name())
+		                                          .name("first")
+		                                          .build();
+		StoredAccount secondAccount = StoredAccount.builder()
+		                                           .provider(Provider.ANTIGRAVITY.name())
+		                                           .name("second")
+		                                           .build();
+		Map<String, Object> model = Map.of("id", "gemini-2.5-pro");
+
+		when(kiroModelAvailability.availableModels()).thenReturn(Set.of());
+		when(credentialStore.load()).thenReturn(List.of(firstAccount, secondAccount));
+		when(antigravityAuthManager.listModels(firstAccount)).thenThrow(new NullPointerException());
+		when(antigravityAuthManager.listModels(secondAccount)).thenReturn(List.of(model));
+
+		registry.refreshCache();
+
+		assertEquals(List.of("ag/gemini-2.5-pro"), registry.getAllModelsForApi().stream().map(ModelRegistry.ModelForListingApi::id).toList());
+	}
+
+	@Test
 	void testGetModelsForProvider_AntigravityWithoutDisplayName_returnsModels() throws Exception {
 		StoredAccount agAccount = StoredAccount.builder()
 		                                       .provider(Provider.ANTIGRAVITY.name())

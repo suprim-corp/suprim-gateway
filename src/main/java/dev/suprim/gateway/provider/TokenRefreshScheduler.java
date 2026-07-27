@@ -1,6 +1,7 @@
 package dev.suprim.gateway.provider;
 
 import dev.suprim.gateway.instants.Antigravity;
+import dev.suprim.gateway.provider.antigravity.AntigravityAuthManager;
 import dev.suprim.gateway.provider.antigravity.GoogleTokenRefresher;
 import dev.suprim.gateway.provider.antigravity.GoogleTokenResponse;
 import dev.suprim.gateway.provider.codex.CodexTokenRefresher;
@@ -33,6 +34,7 @@ public class TokenRefreshScheduler {
 	private final CredentialStore credentialStore;
 	private final ProxyChain proxyChain;
 	private final XaiAuthManager xaiAuthManager;
+	private final AntigravityAuthManager antigravityAuthManager;
 
 	@Scheduled(fixedDelay = 1_800_000)
 	void refreshAll() {
@@ -48,6 +50,8 @@ public class TokenRefreshScheduler {
 				credentialStore.upsert(refreshed);
 				if (Provider.XAI.name().equals(account.provider())) {
 					xaiAuthManager.evictTokenCache(account.name());
+				} else if (Provider.ANTIGRAVITY.name().equals(account.provider())) {
+					antigravityAuthManager.evictTokenCache(account);
 				}
 				log.info("⟳ {}[{}]{} Refreshed: {}", GREEN, account.provider(), RESET, account.name());
 			}

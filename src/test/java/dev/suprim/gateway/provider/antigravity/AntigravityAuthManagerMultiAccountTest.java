@@ -28,14 +28,7 @@ class AntigravityAuthManagerMultiAccountTest {
 
 	@Test
 	void getAccessToken_returnsTokenWhenNotExpired() {
-		StoredAccount account = StoredAccount.builder()
-		                                     .name("acc1")
-		                                     .provider("ANTIGRAVITY")
-		                                     .accessToken("valid-token")
-		                                     .refreshToken("refresh-1")
-		                                     .projectId("proj-1")
-		                                     .expiresAt(Instant.now().plusSeconds(3600))
-		                                     .build();
+		StoredAccount account = account("acc1", null, "valid-token");
 
 		String token = authManager.getAccessToken(account);
 
@@ -44,26 +37,32 @@ class AntigravityAuthManagerMultiAccountTest {
 
 	@Test
 	void getAccessToken_cachesPerAccount() {
-		StoredAccount account1 = StoredAccount.builder()
-		                                      .name("acc1")
-		                                      .provider("ANTIGRAVITY")
-		                                      .accessToken("token-1")
-		                                      .refreshToken("refresh-1")
-		                                      .projectId("proj-1")
-		                                      .expiresAt(Instant.now().plusSeconds(3600))
-		                                      .build();
-		StoredAccount account2 = StoredAccount.builder()
-		                                      .name("acc2")
-		                                      .provider("ANTIGRAVITY")
-		                                      .accessToken("token-2")
-		                                      .refreshToken("refresh-2")
-		                                      .projectId("proj-2")
-		                                      .expiresAt(Instant.now().plusSeconds(3600))
-		                                      .build();
+		StoredAccount account1 = account("acc1", null, "token-1");
+		StoredAccount account2 = account("acc2", null, "token-2");
 
 		assertEquals("token-1", authManager.getAccessToken(account1));
 		assertEquals("token-2", authManager.getAccessToken(account2));
 		assertEquals("token-1", authManager.getAccessToken(account1));
+	}
+
+	@Test
+	void getAccessToken_returnsDistinctTokensForAccountsWithoutCacheIdentity() {
+		StoredAccount account1 = account(null, null, "token-1");
+		StoredAccount account2 = account(null, null, "token-2");
+
+		assertEquals("token-1", authManager.getAccessToken(account1));
+		assertEquals("token-2", authManager.getAccessToken(account2));
+	}
+
+	@Test
+	void evictTokenCache_usesNewTokenForIdentifiedAccount() {
+		StoredAccount oldAccount = account("acc1", null, "old-token");
+		StoredAccount refreshedAccount = account("acc1", null, "new-token");
+
+		assertEquals("old-token", authManager.getAccessToken(oldAccount));
+		authManager.evictTokenCache(oldAccount);
+
+		assertEquals("new-token", authManager.getAccessToken(refreshedAccount));
 	}
 
 	@Test
@@ -93,17 +92,22 @@ class AntigravityAuthManagerMultiAccountTest {
 
 	@Test
 	void getProjectId_returnsAccountProjectId() {
-		StoredAccount account = StoredAccount.builder()
-		                                     .name("acc1")
-		                                     .provider("ANTIGRAVITY")
-		                                     .accessToken("token")
-		                                     .refreshToken("refresh")
-		                                     .projectId("my-project-id")
-		                                     .expiresAt(Instant.now().plusSeconds(3600))
-		                                     .build();
+		StoredAccount account = account("acc1", null, "token");
 
 		String projectId = authManager.getProjectId(account);
 
-		assertEquals("my-project-id", projectId);
+		assertEquals("proj-1", projectId);
+	}
+
+	private StoredAccount account(String name, String clientId, String accessToken) {
+		return StoredAccount.builder()
+		                    .name(name)
+		                    .clientId(clientId)
+		                    .provider("ANTIGRAVITY")
+		                    .accessToken(accessToken)
+		                    .refreshToken("refresh")
+		                    .projectId("proj-1")
+		                    .expiresAt(Instant.now().plusSeconds(3600))
+		                    .build();
 	}
 }

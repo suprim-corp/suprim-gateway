@@ -168,24 +168,40 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 			return List.of();
 		}
 		String token = getAccessToken(account);
-		return AntigravityHttpClient.listModels(token, account.projectId(), proxyChain);
+		return AntigravityHttpClient.listModels(
+				token,
+				account.projectId(),
+				proxyChain
+		);
 	}
 
 	public String getAccessToken(StoredAccount account) {
-		String key =
-				account.name() != null ? account.name() : account.clientId();
-		TokenState state = tokenCache.computeIfAbsent(
-				key, k -> new TokenState(
-						account.accessToken(),
-						account.refreshToken(),
-						account.expiresAt()
+		Optional<String> cacheKey = cacheKey(account);
+		TokenState state = cacheKey
+				.map(key -> tokenCache.computeIfAbsent(
+								key, ignored -> new TokenState(
+										account.accessToken(),
+										account.refreshToken(),
+										account.expiresAt()
+								)
+						)
 				)
-		);
+				.orElseGet(() -> new TokenState(
+								account.accessToken(),
+								account.refreshToken(),
+								account.expiresAt()
+						)
+				);
 		if (state.isExpired()) {
 			state = refreshForAccount(account, state);
-			tokenCache.put(key, state);
+			TokenState refreshed = state;
+			cacheKey.ifPresent(key -> tokenCache.put(key, refreshed));
 		}
 		return state.accessToken();
+	}
+
+	public void evictTokenCache(StoredAccount account) {
+		cacheKey(account).ifPresent(tokenCache::remove);
 	}
 
 	public String getProjectId(StoredAccount account) {
@@ -224,6 +240,11 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 		} finally {
 			refreshLock.unlock();
 		}
+	}
+
+	private Optional<String> cacheKey(StoredAccount account) {
+		return Optional.ofNullable(account.name())
+		               .or(() -> Optional.ofNullable(account.clientId()));
 	}
 
 	private void applyCredentials(StoredAccount account) {

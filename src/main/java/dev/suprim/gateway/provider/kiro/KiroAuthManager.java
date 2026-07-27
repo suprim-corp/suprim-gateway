@@ -518,8 +518,9 @@ public class KiroAuthManager implements ProviderAuthManager {
 					new TypeReference<>() {}
 			);
 		} catch (Exception e) {
-			log.warn("[Usage] getUsageLimits failed: {}", e.getMessage());
-			return Map.of("error", e.getMessage());
+			String errorMessage = Optional.ofNullable(e.getMessage()).orElse("Unknown error");
+			log.warn("[Usage] getUsageLimits failed: {}", errorMessage);
+			return Map.of("error", errorMessage);
 		}
 	}
 

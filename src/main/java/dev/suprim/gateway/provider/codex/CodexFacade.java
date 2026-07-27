@@ -262,6 +262,11 @@ public class CodexFacade {
 				return;
 			}
 
+			httpRes.setCharacterEncoding("UTF-8");
+			httpRes.setContentType("text/event-stream; charset=utf-8");
+			httpRes.setHeader("Cache-Control", "no-cache");
+			PrintWriter writer = httpRes.getWriter();
+
 			boolean thinkingEnabled =
 					format != Format.ANTHROPIC || requestThinkingEnabled;
 			StreamConverter converter = new StreamConverter();
@@ -280,7 +285,7 @@ public class CodexFacade {
 				if (failure.isPresent()) {
 					log.error(LogTag.CODEX + "SSE stream failed: {}", failure.get());
 					if (eventWriter == null) {
-						handleStreamFailure(httpRes, format);
+						handleStreamFailure(httpRes, format, failure.get());
 						return;
 					}
 					break;
@@ -320,7 +325,7 @@ public class CodexFacade {
 
 			if (eventWriter == null) {
 				log.error(LogTag.CODEX + "SSE stream completed without usable output");
-				handleStreamFailure(httpRes, format);
+				handleStreamFailure(httpRes, format, null);
 				return;
 			}
 			log.info(
@@ -358,21 +363,28 @@ public class CodexFacade {
 
 	private void handleStreamFailure(
 			HttpServletResponse httpRes,
-			Format format
+			Format format,
+			String failure
 	) throws IOException {
+		boolean contextLengthExceeded = failure != null &&
+		                              failure.startsWith("context_length_exceeded:");
+		int status = contextLengthExceeded ? 400 : 502;
+		String message = contextLengthExceeded
+		                 ? "Your input exceeds the context window of this model."
+		                 : "Codex upstream stream failed";
 		if (format == Format.ANTHROPIC) {
 			ErrorResponse.anthropic(
 					httpRes,
-					502,
-					"Codex upstream stream failed",
-					"api_error"
+					status,
+					message,
+					contextLengthExceeded ? "invalid_request_error" : "api_error"
 			);
 		} else {
 			ErrorResponse.openAi(
 					httpRes,
-					502,
-					"Codex upstream stream failed",
-					"upstream_error"
+					status,
+					message,
+					contextLengthExceeded ? "invalid_request_error" : "upstream_error"
 			);
 		}
 	}
@@ -494,18 +506,22 @@ public class CodexFacade {
 
 	/**
 	 * GPT-5 series doesn't support sampling params (temperature, top_p, etc).
-	 * Maps temperature → reasoning.effort, max_tokens → max_output_tokens,
-	 * then strips unsupported fields.
+	 * Maps temperature → reasoning.effort, then strips unsupported fields.
 	 * <p>
 	 * temperature → reasoning.effort mapping:
 	 * [0.0, 0.3] → "high"
 	 * (0.3, 0.7] → "medium"
 	 * (0.7, 1.0] → "low"
 	 * (1.0, 2.0] → "minimal"
+	 * <p>
+	 * Output length caps are dropped: the ChatGPT subscription backend
+	 * ({@code chatgpt.com/backend-api/codex/responses}) rejects
+	 * {@code max_output_tokens} with HTTP 400 and accepts no known
+	 * equivalent, unlike the public Responses API which does support it.
 	 *
 	 * @see <a href="https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_new_params_and_tools">GPT-5 New Params and Tools</a>
 	 * @see <a href="https://developers.openai.com/api/docs/guides/deployment-checklist">API Deployment Checklist — reasoning.effort values</a>
-	 * @see <a href="https://help.openai.com/en/articles/5072518">Controlling the length of OpenAI model responses</a>
+	 * @see <a href="https://help.openai.com/en/articles/5072518">Controlling the length of OpenAI model responses (public Responses API)</a>
 	 */
 	private static void mapSamplingToReasoning(ObjectNode node) {
 		if (!node.has("reasoning") && node.has("temperature")) {
@@ -523,16 +539,6 @@ public class CodexFacade {
 			ObjectNode reasoning = node.putObject("reasoning");
 			reasoning.put("effort", effort);
 		}
-		if (!node.has("max_output_tokens")) {
-			if (node.has("max_tokens")) {
-				node.set("max_output_tokens", node.get("max_tokens"));
-			} else if (node.has("max_completion_tokens")) {
-				node.set(
-						"max_output_tokens",
-						node.get("max_completion_tokens")
-				);
-			}
-		}
 		node.remove("temperature");
 		node.remove("top_p");
 		node.remove("frequency_penalty");
@@ -543,6 +549,7 @@ public class CodexFacade {
 		node.remove("n");
 		node.remove("max_tokens");
 		node.remove("max_completion_tokens");
+		node.remove("max_output_tokens");
 		node.remove("thinking"); // Anthropic-only; Codex uses reasoning.effort
 	}
 }

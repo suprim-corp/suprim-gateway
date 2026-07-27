@@ -12,12 +12,16 @@ import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockHttpServletResponse;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.ByteArrayInputStream;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -100,7 +104,7 @@ class CodexFacadeRetryTest {
 		when(rotator.next("CODEX")).thenReturn(account);
 		when(authManager.getAccessToken(account)).thenReturn("token");
 
-		String failedStream = "data: {\"type\":\"error\",\"error\":{\"code\":\"server_error\",\"message\":\"upstream failed\"}}\n\n"
+		String failedStream = "data: {\"type\":\"error\",\"error\":{\"code\":\"context_length_exceeded\",\"message\":\"input too large\"}}\n\n"
 				+ "data: {\"type\":\"response.failed\"}\n\n";
 		try (MockedStatic<CodexHttpClient> mocked = mockStatic(CodexHttpClient.class)) {
 			mocked.when(() -> CodexHttpClient.call(anyString(), eq("token"), any(ProxyChain.class)))
@@ -109,10 +113,41 @@ class CodexFacadeRetryTest {
 			MockHttpServletResponse httpResponse = new MockHttpServletResponse();
 			facade.handle(request(), "gpt-5", true, 10, "key", "127.0.0.1", Format.ANTHROPIC, httpResponse);
 
-			assertEquals(502, httpResponse.getStatus());
-			assertTrue(httpResponse.getContentAsString().contains("Codex upstream stream failed"));
-			assertTrue(httpResponse.getContentAsString().contains("\"type\":\"error\""));
+			assertEquals(400, httpResponse.getStatus());
+			assertTrue(httpResponse.getContentAsString().contains("Your input exceeds the context window"));
+			assertTrue(httpResponse.getContentAsString().contains("invalid_request_error"));
 		}
+	}
+
+	@Test
+	void handle_omitsOutputTokenLimitsRejectedByCodexBackend() throws Exception {
+		StoredAccount account = account("healthy", "token");
+		when(store.findAllByProvider("CODEX")).thenReturn(List.of(account));
+		when(rotator.next("CODEX")).thenReturn(account);
+		when(authManager.getAccessToken(account)).thenReturn("token");
+		AtomicReference<String> payload = new AtomicReference<>();
+
+		try (MockedStatic<CodexHttpClient> mocked = mockStatic(CodexHttpClient.class)) {
+			mocked.when(() -> CodexHttpClient.call(anyString(), eq("token"), any(ProxyChain.class)))
+			      .thenAnswer(invocation -> {
+				      payload.set(invocation.getArgument(0));
+				      return response(200, "data: {\"type\":\"response.completed\"}\n\n");
+			      });
+
+			MockHttpServletResponse httpResponse = new MockHttpServletResponse();
+			facade.handle(
+					requestWithMaxTokens(), "gpt-5", false, 10, "key", "127.0.0.1",
+					Format.RESPONSES, httpResponse
+			);
+			assertEquals(200, httpResponse.getStatus());
+		}
+
+		JsonNode sentPayload = new JsonMapper().readTree(payload.get());
+		assertEquals("gpt-5", sentPayload.path("model").asString());
+		assertTrue(sentPayload.path("stream").asBoolean());
+		assertFalse(sentPayload.has("max_output_tokens"));
+		assertFalse(sentPayload.has("max_tokens"));
+		assertFalse(sentPayload.has("max_completion_tokens"));
 	}
 
 	@Test
@@ -152,6 +187,15 @@ class CodexFacadeRetryTest {
 		return InternalRequest.builder()
 		                      .model("gpt-5")
 		                      .messages(List.of())
+		                      .stream(false)
+		                      .build();
+	}
+
+	private InternalRequest requestWithMaxTokens() {
+		return InternalRequest.builder()
+		                      .model("gpt-5")
+		                      .messages(List.of())
+		                      .maxTokens(256)
 		                      .stream(false)
 		                      .build();
 	}

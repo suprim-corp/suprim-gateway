@@ -20,6 +20,7 @@ class KiroAuthManagerMultiAccountTest {
 	Path tempDir;
 
 	private KiroAuthManager authManager;
+	private ProxyChain proxyChain;
 
 	@BeforeEach
 	void setUp() {
@@ -28,7 +29,7 @@ class KiroAuthManagerMultiAccountTest {
 		when(config.profileArn()).thenReturn(null);
 		when(config.region()).thenReturn("us-east-1");
 		when(config.apiRegion()).thenReturn("us-east-1");
-		ProxyChain proxyChain = mock(ProxyChain.class);
+		proxyChain = mock(ProxyChain.class);
 		authManager = new KiroAuthManager(config, store, proxyChain);
 	}
 
@@ -60,6 +61,23 @@ class KiroAuthManagerMultiAccountTest {
 		String token = authManager.getAccessToken(account);
 
 		assertEquals("valid-sso-token", token);
+	}
+
+	@Test
+	void getUsageLimits_returnsErrorWhenFailureHasNoMessage() throws Exception {
+		StoredAccount account = StoredAccount.builder()
+		                                     .authType("AWS_SSO_OIDC")
+		                                     .accessToken("valid-sso-token")
+		                                     .expiresAt(Instant.now().plusSeconds(3600))
+		                                     .apiRegion("us-east-1")
+		                                     .region("us-east-1")
+		                                     .build();
+		when(proxyChain.send(any())).thenThrow(new RuntimeException());
+
+		assertEquals(
+				"Unknown error",
+				authManager.getUsageLimits(account).get("error")
+		);
 	}
 
 	@Test

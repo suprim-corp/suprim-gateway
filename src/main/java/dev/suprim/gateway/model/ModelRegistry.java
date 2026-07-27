@@ -193,11 +193,11 @@ public class ModelRegistry {
 					break;
 				} catch (Exception e) {
 					log.warn(
-							"[Models] {} account '{}' failed, trying next: {}",
+							"[Models] {} account '{}' failed, trying next ({})",
 							account.provider(),
 							Optional.ofNullable(account.name())
 							        .orElse("unnamed"),
-							e.getMessage()
+							e.getClass().getSimpleName()
 					);
 				}
 			}
