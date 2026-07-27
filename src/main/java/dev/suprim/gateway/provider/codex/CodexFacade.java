@@ -515,8 +515,12 @@ public class CodexFacade {
 	 * temperature → reasoning.effort mapping:
 	 * [0.0, 0.3] → "high"
 	 * (0.3, 0.7] → "medium"
-	 * (0.7, 1.0] → "low"
-	 * (1.0, 2.0] → "minimal"
+	 * (1.0, 2.0] → "low"
+	 * <p>
+	 * The upstream model catalog declares only low, medium, high, xhigh, max
+	 * and ultra. {@code minimal} exists in the client's effort enum but no
+	 * gpt-5.x entry lists it as supported, so the lowest safe floor is
+	 * {@code low} rather than a level the backend may reject.
 	 * <p>
 	 * Output length caps are dropped: the ChatGPT subscription backend
 	 * ({@code chatgpt.com/backend-api/codex/responses}) rejects
@@ -535,10 +539,8 @@ public class CodexFacade {
 				effort = "high";
 			} else if (temp <= 0.7) {
 				effort = "medium";
-			} else if (temp <= 1.0) {
-				effort = "low";
 			} else {
-				effort = "minimal";
+				effort = "low";
 			}
 			ObjectNode reasoning = node.putObject("reasoning");
 			reasoning.put("effort", effort);

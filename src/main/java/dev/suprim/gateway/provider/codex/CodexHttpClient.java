@@ -45,19 +45,18 @@ public class CodexHttpClient {
 			String accessToken,
 			ProxyChain proxyChain
 	) throws IOException {
-		HttpRequest request =
+		HttpRequest.Builder builder =
 				HttpRequest.newBuilder()
 				           .uri(
 						           URI.create(
-								           Codex.API_BASE +
-								           "/models?client_version=0.144.4"
+								           Codex.API_BASE + "/models" +
+								           "?client_version=" +
+								           Codex.CLIENT_VERSION
 						           )
 				           )
-				           .header("Authorization", "Bearer " + accessToken)
-				           .header("originator", "codex_cli_rs")
-				           .header("User-Agent", "codex_cli_rs/0.136.0")
-				           .GET()
-				           .build();
+				           .GET();
+		CodexHeaders.apply(builder, accessToken);
+		HttpRequest request = builder.build();
 		try {
 			HttpResponse<String> response = resolveClient(proxyChain).send(
 					request,
@@ -110,22 +109,17 @@ public class CodexHttpClient {
 
 		for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
 			try {
-				HttpRequest request =
+				HttpRequest.Builder builder =
 						HttpRequest.newBuilder()
 						           .uri(URI.create(url))
-						           .header(
-								           "Authorization",
-								           "Bearer " + accessToken
-						           )
 						           .header("Content-Type", "application/json")
-						           .header("originator", "codex_cli_rs")
-						           .header("User-Agent", "codex_cli_rs/0.136.0")
 						           .POST(
 								           HttpRequest.BodyPublishers.ofString(
 										           payload
 								           )
-						           )
-						           .build();
+						           );
+				CodexHeaders.apply(builder, accessToken);
+				HttpRequest request = builder.build();
 
 				HttpResponse<InputStream> response = resolveClient(proxyChain).send(
 						request,
@@ -177,37 +171,39 @@ public class CodexHttpClient {
 		throw new IOException("All retries exhausted");
 	}
 
+	/**
+	 * Reads the account's rate-limit windows.
+	 * <p>
+	 * The upstream client resolves this path in two styles: {@code /api/codex}
+	 * for ordinary accounts and {@code /wham} for internal ones. It picks by
+	 * account, which the gateway cannot know, so the ordinary path is tried
+	 * first and the internal one only if it 404s.
+	 */
 	public static Map<String, Object> fetchUsage(
 			String accessToken,
 			ProxyChain proxyChain
 	) {
-		try {
-			HttpRequest request =
-					HttpRequest.newBuilder()
-					           .uri(
-							           URI.create(
-									           "https://chatgpt.com/backend-api/wham/usage"
-							           )
-					           )
-					           .header(
-							           "Authorization",
-							           "Bearer " + accessToken
-					           )
-					           .header(
-							           "originator",
-							           "codex_cli_rs"
-					           )
-					           .header(
-							           "User-Agent",
-							           "codex_cli_rs/0.136.0"
-					           )
-					           .GET()
-					           .build();
+		return fetchUsage(accessToken, proxyChain, Codex.CHATGPT_BASE);
+	}
 
-			HttpResponse<String> response = resolveClient(proxyChain).send(
-					request,
-					HttpResponse.BodyHandlers.ofString()
+	static Map<String, Object> fetchUsage(
+			String accessToken,
+			ProxyChain proxyChain,
+			String base
+	) {
+		try {
+			HttpResponse<String> response = getUsage(
+					base + "/api/codex/usage",
+					accessToken,
+					proxyChain
 			);
+			if (response.statusCode() == 404) {
+				response = getUsage(
+						base + "/wham/usage",
+						accessToken,
+						proxyChain
+				);
+			}
 			if (response.statusCode() != 200) {
 				log.warn("[Codex] usage returned {}", response.statusCode());
 				return Map.of(
@@ -216,7 +212,16 @@ public class CodexHttpClient {
 				);
 			}
 
-			JsonNode root = MAPPER.readTree(response.body());
+			return parseUsage(response.body());
+		} catch (Exception e) {
+			log.error("[Codex] Failed to fetch usage: {}", e.getMessage());
+			return Map.of("message", "Failed: " + e.getMessage());
+		}
+	}
+
+	static Map<String, Object> parseUsage(String body) {
+		try {
+			JsonNode root = MAPPER.readTree(body);
 			Map<String, Object> result = new HashMap<>();
 
 			Optional.ofNullable(root.get("plan_type"))
@@ -277,8 +282,23 @@ public class CodexHttpClient {
 
 			return result;
 		} catch (Exception e) {
-			log.error("[Codex] Failed to fetch usage: {}", e.getMessage());
+			log.error("[Codex] Failed to read usage response: {}", e.getMessage());
 			return Map.of("message", "Failed: " + e.getMessage());
 		}
+	}
+
+	private static HttpResponse<String> getUsage(
+			String url,
+			String accessToken,
+			ProxyChain proxyChain
+	) throws IOException, InterruptedException {
+		HttpRequest.Builder builder = HttpRequest.newBuilder()
+		                                        .uri(URI.create(url))
+		                                        .GET();
+		CodexHeaders.apply(builder, accessToken);
+		return resolveClient(proxyChain).send(
+				builder.build(),
+				HttpResponse.BodyHandlers.ofString()
+		);
 	}
 }

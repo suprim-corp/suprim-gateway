@@ -152,6 +152,63 @@ class CodexFacadeRetryTest {
 	}
 
 	@Test
+	void handle_mapsTemperatureOnlyToEffortLevelsTheCatalogDeclares() throws Exception {
+		// The upstream catalog lists low/medium/high/xhigh/max/ultra for every
+		// gpt-5.x slug. Effort is serialized by name, so an undeclared level is
+		// rejected rather than ignored.
+		assertEquals("high", effortForTemperature(0.0));
+		assertEquals("high", effortForTemperature(0.3));
+		assertEquals("medium", effortForTemperature(0.5));
+		assertEquals("medium", effortForTemperature(0.7));
+		assertEquals("low", effortForTemperature(1.0));
+		assertEquals("low", effortForTemperature(2.0));
+	}
+
+	@Test
+	void handle_keepsTemperatureOutOfThePayload() throws Exception {
+		JsonNode payload = payloadForTemperature(0.5);
+
+		assertFalse(payload.has("temperature"));
+	}
+
+	private String effortForTemperature(double temperature) throws Exception {
+		return payloadForTemperature(temperature).path("reasoning")
+		                                        .path("effort")
+		                                        .asString();
+	}
+
+	private JsonNode payloadForTemperature(double temperature) throws Exception {
+		StoredAccount account = account("healthy", "token");
+		when(store.findAllByProvider("CODEX")).thenReturn(List.of(account));
+		when(rotator.next("CODEX")).thenReturn(account);
+		when(authManager.getAccessToken(account)).thenReturn("token");
+		AtomicReference<String> payload = new AtomicReference<>();
+
+		try (MockedStatic<CodexHttpClient> mocked = mockStatic(CodexHttpClient.class)) {
+			mocked.when(() -> CodexHttpClient.call(anyString(), eq("token"), any(ProxyChain.class)))
+			      .thenAnswer(invocation -> {
+				      payload.set(invocation.getArgument(0));
+				      return response(200, "data: {\"type\":\"response.completed\"}\n\n");
+			      });
+
+			facade.handle(
+					requestWithTemperature(temperature), "gpt-5", false, 10, "key",
+					"127.0.0.1", Format.RESPONSES, new MockHttpServletResponse()
+			);
+		}
+		return new JsonMapper().readTree(payload.get());
+	}
+
+	private InternalRequest requestWithTemperature(double temperature) {
+		return InternalRequest.builder()
+		                      .model("gpt-5")
+		                      .messages(List.of())
+		                      .temperature(temperature)
+		                      .stream(false)
+		                      .build();
+	}
+
+	@Test
 	void handle_coolsAccountAfter503() throws Exception {
 		StoredAccount account = account("unavailable", "token");
 		when(store.findAllByProvider("CODEX")).thenReturn(List.of(account));

@@ -2,11 +2,8 @@ package dev.suprim.gateway.admin;
 
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
-import dev.suprim.gateway.provider.Provider;
-import dev.suprim.gateway.provider.codex.CodexAuthManager;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.model.ModelRegistry;
-import dev.suprim.gateway.provider.antigravity.AntigravityAuthManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -17,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -29,13 +25,18 @@ class ProvidersController {
 	private final CredentialStore credentialStore;
 	private final ModelRegistry modelRegistry;
 	private final KiroAuthManager kiroAuthManager;
-	private final CodexAuthManager codexAuthManager;
-	private final AntigravityAuthManager antigravityAuthManager;
+	private final ProviderUsageLookup providerUsageLookup;
 
 	@GetMapping("/providers")
-	String providers(Model model) {
-		List<StoredAccount> accounts = credentialStore.load();
-		model.addAttribute("accounts", accounts);
+	String providers(
+			@RequestParam(required = false) String provider,
+			Model model
+	) {
+		List<ProviderAccountCard> cards =
+				ProviderAccountCards.sorted(credentialStore.load());
+		model.addAttribute("providerFilter", provider);
+		model.addAttribute("providerNames", ProviderAccountCards.providers(cards));
+		model.addAttribute("accounts", cards);
 		model.addAttribute("view", "providers");
 		model.addAttribute("currentPage", "providers");
 		model.addAttribute("pageTitle", "Providers");
@@ -144,19 +145,6 @@ class ProvidersController {
 		if (index < 0 || index >= accounts.size()) {
 			return Map.of();
 		}
-		StoredAccount account = accounts.get(index);
-		return switch (Provider.valueOf(account.provider())) {
-			case KIRO -> kiroAuthManager.getUsageLimits(account);
-			case CODEX -> codexAuthManager.getUsageLimits(account);
-			case ANTIGRAVITY -> {
-				Map<String, Object> usage = new LinkedHashMap<>(antigravityAuthManager.getQuota(account));
-				String tier = antigravityAuthManager.getSubscriptionTier(account);
-				if (tier != null) {
-					usage.put("tier", tier);
-				}
-				yield usage;
-			}
-			default -> Map.of();
-		};
+		return providerUsageLookup.forAccount(accounts.get(index));
 	}
 }

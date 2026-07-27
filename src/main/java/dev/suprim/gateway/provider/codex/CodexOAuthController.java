@@ -87,7 +87,7 @@ public class CodexOAuthController {
 		             + "&nonce=" + encode(nonce)
 		             + "&id_token_add_organizations=true"
 		             + "&codex_cli_simplified_flow=true"
-		             + "&originator=codex_cli_rs";
+		             + "&originator=" + encode(Codex.ORIGINATOR);
 
 		return "redirect:" + url;
 	}
@@ -131,7 +131,7 @@ public class CodexOAuthController {
 		                     + "&code_challenge_method=S256"
 		                     + "&id_token_add_organizations=true"
 		                     + "&codex_cli_simplified_flow=true"
-		                     + "&originator=codex_cli_rs";
+		                     + "&originator=" + encode(Codex.ORIGINATOR);
 
 		return "#!/bin/bash\n"
 		       + "GATEWAY='" + gatewayBase + "'\n"

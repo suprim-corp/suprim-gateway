@@ -14,6 +14,13 @@ public final class Codex {
 	public static final String CALLBACK_PATH = "/auth/callback";
 	public static final int LOOPBACK_PORT = 1455;
 
+	/** Value the real CLI sends as {@code originator} and as its User-Agent prefix. */
+	public static final String ORIGINATOR = "codex_cli_rs";
+	/** Version reported in the User-Agent and in {@code ?client_version=} on /models. */
+	public static final String CLIENT_VERSION = "0.145.0";
+	/** Backend host that serves the account-scoped usage and credits endpoints. */
+	public static final String CHATGPT_BASE = "https://chatgpt.com/backend-api";
+
 	public static final Map<String, String> MODEL_NAMES = Map.ofEntries(
 			Map.entry("gpt-5.6-sol", "GPT 5.6 Sol"),
 			Map.entry("gpt-5.6-terra", "GPT 5.6 Terra"),

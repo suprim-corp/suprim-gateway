@@ -33,6 +33,13 @@ class ProvidersTemplateRenderTest {
 	private static final String KIRO = "KIRO";
 
 	private String renderProvidersPage(List<StoredAccount> accounts) throws Exception {
+		return renderProvidersPage(accounts, null);
+	}
+
+	private String renderProvidersPage(
+			List<StoredAccount> accounts,
+			String providerFilter
+	) throws Exception {
 		MockServletContext servletContext = new MockServletContext();
 		StaticWebApplicationContext applicationContext = new StaticWebApplicationContext();
 		applicationContext.setServletContext(servletContext);
@@ -53,8 +60,11 @@ class ProvidersTemplateRenderTest {
 		viewResolver.setTemplateEngine(engine);
 		viewResolver.setCharacterEncoding("UTF-8");
 
+		List<ProviderAccountCard> cards = ProviderAccountCards.sorted(accounts);
 		Map<String, Object> model = new HashMap<>();
-		model.put("accounts", accounts);
+		model.put("accounts", cards);
+		model.put("providerNames", ProviderAccountCards.providers(cards));
+		model.put("providerFilter", providerFilter);
 		model.put("view", "providers");
 		model.put("currentPage", "providers");
 		model.put("pageTitle", "Providers");
@@ -133,6 +143,7 @@ class ProvidersTemplateRenderTest {
 		assertTrue(addAccount >= 0, "providers-add-account.js not loaded");
 		assertTrue(usage < dialog && usage < cards,
 				"providers-usage.js must load before the files calling summarizeUsage");
+		assertTrue(html.indexOf("/js/providers-filter.js") >= 0, "providers-filter.js not loaded");
 	}
 
 	@Test
@@ -159,6 +170,101 @@ class ProvidersTemplateRenderTest {
 	}
 
 	@Test
+	void providersPage_ordersCardsByProviderNameKeepingStoreIndexes() throws Exception {
+		StoredAccount kiro = StoredAccount.builder()
+				.provider(KIRO)
+				.name("kiro-one")
+				.accessToken("token")
+				.build();
+		StoredAccount antigravity = StoredAccount.builder()
+				.provider("ANTIGRAVITY")
+				.name("ag-one")
+				.accessToken("token")
+				.build();
+
+		String html = renderProvidersPage(List.of(kiro, antigravity));
+
+		assertTrue(
+				html.indexOf("ag-one") < html.indexOf("kiro-one"),
+				"Antigravity should sort before Kiro"
+		);
+		// The Antigravity card renders first but still addresses store position 1.
+		assertTrue(
+				html.indexOf("data-index=\"1\"") < html.indexOf("data-index=\"0\""),
+				"Cards must keep their credential store index after sorting"
+		);
+	}
+
+	@Test
+	void providersPage_rendersOneFilterOptionPerDistinctProvider() throws Exception {
+		StoredAccount kiroA = StoredAccount.builder()
+				.provider(KIRO)
+				.name("kiro-a")
+				.accessToken("token")
+				.build();
+		StoredAccount kiroB = StoredAccount.builder()
+				.provider(KIRO)
+				.name("kiro-b")
+				.accessToken("token")
+				.build();
+		StoredAccount codex = StoredAccount.builder()
+				.provider("CODEX")
+				.name("codex-a")
+				.accessToken("token")
+				.build();
+
+		String html = renderProvidersPage(List.of(kiroA, kiroB, codex));
+
+		assertTrue(html.contains("id=\"providerFilterSelect\""), "Filter dropdown missing");
+		// Counted within the filter's own markup: the add-account dialog has a region select whose
+		// options would otherwise be mixed into the tally.
+		String filter = filterSelectMarkup(html);
+		assertEquals(
+				3,
+				countOccurrences(filter, "<option"),
+				"Expected an All option plus one per distinct provider"
+		);
+		assertTrue(filter.contains("value=\"CODEX\""), "Codex option missing");
+		assertTrue(filter.contains("value=\"KIRO\""), "Kiro option missing");
+		assertTrue(html.contains("data-provider=\"KIRO\""), "Card provider marker missing");
+	}
+
+	@Test
+	void providersPage_preselectsTheRequestedProvider() throws Exception {
+		StoredAccount kiro = StoredAccount.builder()
+				.provider(KIRO)
+				.name("kiro-a")
+				.accessToken("token")
+				.build();
+		StoredAccount codex = StoredAccount.builder()
+				.provider("CODEX")
+				.name("codex-a")
+				.accessToken("token")
+				.build();
+
+		String filter = filterSelectMarkup(renderProvidersPage(List.of(kiro, codex), KIRO));
+
+		assertTrue(
+				filter.contains("value=\"KIRO\" selected"),
+				"Requested provider should render as the selected option"
+		);
+		assertTrue(
+				!filter.contains("value=\"CODEX\" selected"),
+				"Only the requested provider should be selected"
+		);
+	}
+
+	@Test
+	void providersPage_omitsFilterWhenThereAreNoAccounts() throws Exception {
+		String html = renderProvidersPage(List.of());
+
+		assertTrue(
+				!html.contains("id=\"providerFilterSelect\""),
+				"Filter dropdown should be hidden with no accounts"
+		);
+	}
+
+	@Test
 	void providersPage_marksDisconnectedCardUsageAsSkipped() throws Exception {
 		StoredAccount disconnected = StoredAccount.builder()
 				.provider("CODEX")
@@ -171,6 +277,22 @@ class ProvidersTemplateRenderTest {
 		assertTrue(html.contains("card-usage mt-3 min-h-[2.25rem] invisible"),
 				"Disconnected account should not reserve a usage slot to fetch");
 		assertTrue(html.contains("/auth/codex"), "Codex reconnect link missing");
+	}
+
+	/**
+	 * Just the provider filter's own {@code <select>}, so assertions about its options are not
+	 * confused by the region select in the add-account dialog.
+	 */
+	private static String filterSelectMarkup(String html) {
+		int start = html.indexOf("id=\"providerFilterSelect\"");
+		if (start < 0) {
+			return "";
+		}
+		int end = html.indexOf("</select>", start);
+		String markup = end < 0 ? html.substring(start) : html.substring(start, end);
+		// Each attribute sits on its own line in the template, so collapse whitespace to assert on
+		// attribute pairs without depending on the source's line breaks.
+		return markup.replaceAll("\\s+", " ");
 	}
 
 	private static int countOccurrences(String haystack, String needle) {
