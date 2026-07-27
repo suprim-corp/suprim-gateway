@@ -12,6 +12,8 @@ function showModels(index) {
     empty.classList.add('hidden')
     usageBanner.classList.add('hidden')
     document.getElementById('usageBar').parentElement.classList.remove('hidden')
+    document.getElementById('usageBuckets').classList.add('hidden')
+    document.getElementById('usageBuckets').innerHTML = ''
     list.innerHTML = ''
     dialog.showModal()
 
@@ -20,11 +22,24 @@ function showModels(index) {
         .then(data => {
             if (!data || data.error) return
 
-            // Antigravity format: {tier}
-            if (data.tier) {
-                document.getElementById('usageLabel').textContent = data.tier
-                document.getElementById('usageText').textContent = ''
-                document.getElementById('usageBar').parentElement.classList.add('hidden')
+            // Antigravity format: {tier, quota, resetTime, buckets}
+            // quota is percent REMAINING and mirrors the most constrained bucket.
+            if (data.tier || data.quota !== undefined) {
+                document.getElementById('usageLabel').textContent = data.tier || 'Antigravity'
+                const remaining = data.quota
+                const parts = []
+                if (remaining !== undefined && remaining !== null) parts.push(remaining + '% remaining')
+                if (data.resetTime) parts.push('resets ' + formatResetTime(data.resetTime))
+                document.getElementById('usageText').textContent = parts.join(' · ')
+                const bar = document.getElementById('usageBar')
+                if (remaining !== undefined && remaining !== null) {
+                    bar.parentElement.classList.remove('hidden')
+                    bar.style.width = remaining + '%'
+                    bar.className = 'h-full rounded-full transition-all ' + quotaColor(remaining)
+                } else {
+                    bar.parentElement.classList.add('hidden')
+                }
+                renderQuotaBuckets(data.buckets)
                 usageBanner.classList.remove('hidden')
                 return
             }
@@ -117,6 +132,66 @@ function showModels(index) {
             error.textContent = err.message
             error.classList.remove('hidden')
         })
+}
+
+// Upstream sends an ISO timestamp; show it in the viewer's own timezone.
+// Falls back to the raw value if it is not parseable.
+function formatResetTime(value) {
+    const date = new Date(value)
+    if (isNaN(date.getTime())) return value
+    return date.toLocaleString(undefined, {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    })
+}
+
+function quotaColor(remaining) {
+    if (remaining > 50) return 'bg-green-400'
+    return remaining > 20 ? 'bg-yellow-400' : 'bg-red-400'
+}
+
+// Antigravity reports quota per window: each model group has a weekly and a rolling
+// 5-hour limit that refill independently, so one bar cannot represent them all.
+function renderQuotaBuckets(buckets) {
+    const list = document.getElementById('usageBuckets')
+    list.innerHTML = ''
+    if (!buckets || !buckets.length) {
+        list.classList.add('hidden')
+        return
+    }
+
+    buckets.forEach(bucket => {
+        const row = document.createElement('li')
+
+        const header = document.createElement('div')
+        header.className = 'flex items-center justify-between text-[11px]'
+
+        const name = document.createElement('span')
+        name.className = 'text-zinc-500'
+        name.textContent = [bucket.group, bucket.label].filter(Boolean).join(' · ')
+        header.appendChild(name)
+
+        const value = document.createElement('span')
+        value.className = 'text-zinc-400'
+        const detail = [bucket.quota + '%']
+        if (bucket.resetTime) detail.push(formatResetTime(bucket.resetTime))
+        value.textContent = detail.join(' · ')
+        header.appendChild(value)
+
+        row.appendChild(header)
+
+        const track = document.createElement('div')
+        track.className = 'mt-1 h-1 bg-zinc-800 rounded-full overflow-hidden'
+        const fill = document.createElement('div')
+        fill.className = 'h-full rounded-full transition-all ' + quotaColor(bucket.quota)
+        fill.style.width = bucket.quota + '%'
+        track.appendChild(fill)
+        row.appendChild(track)
+
+        if (bucket.description) row.title = bucket.description
+
+        list.appendChild(row)
+    })
+    list.classList.remove('hidden')
 }
 
 document.querySelectorAll('.inline-edit-name').forEach(span => {

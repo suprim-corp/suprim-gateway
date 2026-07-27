@@ -1,10 +1,14 @@
 package dev.suprim.gateway.provider.antigravity;
 
 import dev.suprim.gateway.instants.Antigravity;
+import dev.suprim.gateway.provider.antigravity.LoadCodeAssist.Request.ClientMetadata;
+import dev.suprim.gateway.provider.antigravity.LoadCodeAssist.Request.IdeType;
+import dev.suprim.gateway.provider.antigravity.LoadCodeAssist.Request.Mode;
+import dev.suprim.gateway.provider.antigravity.LoadCodeAssist.Request.Platform;
+import dev.suprim.gateway.provider.antigravity.LoadCodeAssist.Request.PluginType;
 
 import lombok.extern.slf4j.Slf4j;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.net.URI;
@@ -12,26 +16,36 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.util.Map;
 
 @Slf4j
 class ProjectIdFetcher {
 
-	private static final ObjectMapper MAPPER = new ObjectMapper();
+	private static final JsonMapper MAPPER = JsonMapper.builder().build();
 	private static final HttpClient HTTP_CLIENT =
 			HttpClient.newBuilder()
 			          .connectTimeout(Duration.ofSeconds(10))
 			          .build();
 
-	private static final String[] IDE_TYPES = {"VSCODE", "JETBRAINS", "CLOUD_SHELL", "IDE_UNSPECIFIED"};
+	/**
+	 * Tried in order when discovering the project. {@code ANTIGRAVITY} is deliberately not
+	 * in this list: it is the identity that unlocks subscription data, but its response
+	 * carries no {@code cloudaicompanionProject}, so it would only add a wasted round trip
+	 * here.
+	 */
+	private static final IdeType[] IDE_TYPES = {
+			IdeType.VSCODE,
+			IdeType.JETBRAINS,
+			IdeType.CLOUD_SHELL,
+			IdeType.IDE_UNSPECIFIED
+	};
 
 	static String fetch(String accessToken) throws IOException {
-		for (String ideType : IDE_TYPES) {
+		for (IdeType ideType : IDE_TYPES) {
 			try {
-				String body = "{\"metadata\":{\"ideType\":\"" + ideType + "\",\"platform\":\"PLATFORM_UNSPECIFIED\",\"pluginType\":\"GEMINI\"}}";
+				String body = buildRequestBody(ideType, Platform.PLATFORM_UNSPECIFIED, null);
 				HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
 				                                            .uri(URI.create(Antigravity.CLOUDCODE_BASE + "/v1internal:loadCodeAssist"));
-				buildHeaders(accessToken).forEach(reqBuilder::header);
+				AntigravityHeaders.forControlPlane(accessToken).forEach(reqBuilder::header);
 				reqBuilder.POST(HttpRequest.BodyPublishers.ofString(body));
 
 				HttpResponse<String> response = HTTP_CLIENT.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
@@ -56,73 +70,100 @@ class ProjectIdFetcher {
 		return null;
 	}
 
+	/**
+	 * Body for subscription lookups. Reports {@code ideType: ANTIGRAVITY} because the
+	 * backend gates subscription data on client identity: with {@code VSCODE} the same
+	 * token is answered as a legacy Gemini Code Assist client — {@code paidTier} is
+	 * omitted entirely and the response instead carries
+	 * {@code ineligibleTiers[UNSUPPORTED_CLIENT]}. {@code mode} and {@code pluginType}
+	 * make no difference; {@code ideType} alone decides.
+	 */
 	static String buildLoadCodeAssistBody() {
-		return "{\"metadata\":{\"ideType\":\"VSCODE\",\"platform\":\"PLATFORM_UNSPECIFIED\",\"pluginType\":\"GEMINI\"}}";
+		return buildRequestBody(
+				IdeType.ANTIGRAVITY, Platform.DARWIN_ARM64, Mode.FULL_ELIGIBILITY_CHECK
+		);
 	}
 
+	/**
+	 * Builds a {@code LoadCodeAssistRequest} body. A null {@code mode} is omitted, which
+	 * the backend reads as {@code MODE_UNSPECIFIED}.
+	 */
+	private static String buildRequestBody(IdeType ideType, Platform platform, Mode mode) {
+		return MAPPER.writeValueAsString(
+				LoadCodeAssist.Request.builder()
+				                      .metadata(
+						                      ClientMetadata.builder()
+						                                    .ideType(ideType)
+						                                    .platform(platform)
+						                                    .pluginType(PluginType.GEMINI)
+						                                    .build()
+				                      )
+				                      .mode(mode)
+				                      .build()
+		);
+	}
+
+	/**
+	 * Extracts the plan the account is actually on.
+	 * <p>
+	 * {@code paidTier} is the paid subscription (for example {@code g1-pro-tier} /
+	 * "Google AI Pro"), {@code currentTier} the active free plan when there is no
+	 * subscription. {@code allowedTiers} is deliberately not consulted: it lists the
+	 * tiers the account is <em>permitted to select</em> and normally starts with
+	 * {@code free-tier} even for subscribers.
+	 */
 	static String parseTier(String json) {
 		try {
-			JsonNode node = MAPPER.readTree(json);
-			JsonNode allowedTiers = node.get("allowedTiers");
-			if (allowedTiers != null && allowedTiers.isArray() && !allowedTiers.isEmpty()) {
-				JsonNode first = allowedTiers.get(0);
-				JsonNode name = first.get("name");
-				JsonNode desc = first.get("description");
-				if (name != null && !name.isNull()) {
-					String tierName = name.asString();
-					if (desc != null && !desc.isNull()) {
-						return tierName + " — " + desc.asString();
-					}
-					return tierName;
-				}
-			}
+			LoadCodeAssist.Response response = MAPPER.readValue(
+					json, LoadCodeAssist.Response.class
+			);
+			String paid = formatTier(response.paidTier());
+			return paid != null ? paid : formatTier(response.currentTier());
 		} catch (Exception ignored) {}
 		return null;
 	}
 
+	private static String formatTier(LoadCodeAssist.Response.UserTier tier) {
+		if (tier == null || tier.name() == null) {
+			return null;
+		}
+		String description = tier.description();
+		if (description == null || description.equals(tier.name())) {
+			return tier.name();
+		}
+		return tier.name() + " — " + description;
+	}
+
 	static String parseProjectId(String json) {
 		try {
-			JsonNode node = MAPPER.readTree(json);
-			JsonNode project = node.get("cloudaicompanionProject");
-			if (project == null || project.isNull()) return null;
-			if (project.isObject()) {
-				JsonNode id = project.get("id");
-				return id != null && !id.isNull() ? id.asString() : null;
-			}
-			String val = project.asString();
-			return val != null && !val.isEmpty() ? val : null;
+			return projectId(
+					MAPPER.readValue(json, LoadCodeAssist.Response.class)
+					      .cloudaicompanionProject()
+			);
 		} catch (Exception e) {
 			return null;
 		}
+	}
+
+	private static String projectId(LoadCodeAssist.Response.Project project) {
+		if (project == null || project.id() == null || project.id().isEmpty()) {
+			return null;
+		}
+		return project.id();
 	}
 
 	static String parseOnboardResponse(String json) {
 		try {
-			JsonNode node = MAPPER.readTree(json);
-			if (!node.has("done") || !node.get("done").asBoolean()) return null;
-			JsonNode response = node.get("response");
-			if (response == null) return null;
-			JsonNode project = response.get("cloudaicompanionProject");
-			if (project == null || project.isNull()) return null;
-			if (project.isObject()) {
-				JsonNode id = project.get("id");
-				return id != null && !id.isNull() ? id.asString() : null;
+			OnboardUser.Operation operation = MAPPER.readValue(
+					json, OnboardUser.Operation.class
+			);
+			if (!operation.done() || operation.response() == null) {
+				return null;
 			}
-			String val = project.asString();
-			return val != null && !val.isEmpty() ? val : null;
+			return projectId(operation.response().cloudaicompanionProject());
 		} catch (Exception e) {
 			return null;
 		}
-	}
-
-	private static Map<String, String> buildHeaders(String accessToken) {
-		return Map.of(
-				"Authorization", "Bearer " + accessToken,
-				"Content-Type", "application/json",
-				"User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/2.0.1 Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36",
-				"X-Goog-Api-Client", "google-cloud-sdk vscode/1.96.0",
-				"Client-Metadata", "{\"ideType\":\"VSCODE\",\"platform\":\"MACOS\",\"pluginType\":\"GEMINI\",\"osVersion\":\"15.1\",\"arch\":\"arm64\"}"
-		);
 	}
 
 	private static boolean isSuccess(int status) {

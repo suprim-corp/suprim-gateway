@@ -1,12 +1,21 @@
 package dev.suprim.gateway.provider.antigravity;
 
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class AntigravityHttpClientTest {
+
+	private static final long NO_BACKOFF = 0;
 
 	@Test
 	void buildUrl_correctFormat() {
@@ -44,9 +53,164 @@ class AntigravityHttpClientTest {
 	}
 
 	@Test
+	@SuppressWarnings("unchecked")
+	void parseQuotaSummary_returnsEveryBucketAcrossGroups() {
+		Map<String, Object> quota = AntigravityHttpClient.parseQuotaSummary(GROUPED_QUOTA);
+
+		List<Map<String, Object>> buckets =
+				(List<Map<String, Object>>) quota.get("buckets");
+		assertEquals(4, buckets.size());
+
+		assertEquals("Gemini Models", buckets.getFirst().get("group"));
+		assertEquals("Weekly Limit", buckets.getFirst().get("label"));
+		assertEquals(100, buckets.getFirst().get("quota"));
+		assertEquals("2026-08-03T15:16:28Z", buckets.getFirst().get("resetTime"));
+
+		assertEquals("Claude and GPT models", buckets.get(2).get("group"));
+		assertEquals("Five Hour Limit", buckets.get(3).get("label"));
+	}
+
+	@Test
+	void parseQuotaSummary_headlineMirrorsMostConstrainedBucket() {
+		Map<String, Object> quota = AntigravityHttpClient.parseQuotaSummary(GROUPED_QUOTA);
+
+		assertEquals(30, quota.get("quota"));
+		assertEquals("2026-07-27T20:52:05Z", quota.get("resetTime"));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void parseQuotaSummary_skipsBucketsWithoutUsableFraction() {
+		Map<String, Object> quota = AntigravityHttpClient.parseQuotaSummary("""
+				{"groups":[{"displayName":"Gemini Models","buckets":[
+				{"bucketId":"a","displayName":"Weekly Limit","remainingFraction":0.5},
+				{"bucketId":"b","displayName":"No Fraction"},
+				{"bucketId":"c","displayName":"Out Of Range","remainingFraction":1.4}]}]}
+				""");
+
+		List<Map<String, Object>> buckets =
+				(List<Map<String, Object>>) quota.get("buckets");
+		assertEquals(1, buckets.size());
+		assertEquals("Weekly Limit", buckets.getFirst().get("label"));
+		assertEquals(50, quota.get("quota"));
+	}
+
+	/** Shape captured from a live {@code retrieveUserQuotaSummary} response. */
+	private static final String GROUPED_QUOTA = """
+			{"groups":[
+			 {"displayName":"Gemini Models",
+			  "description":"Models within this group: Gemini Flash, Gemini Pro",
+			  "buckets":[
+			   {"bucketId":"gemini-weekly","displayName":"Weekly Limit","window":"weekly",
+			    "resetTime":"2026-08-03T15:16:28Z","remainingFraction":0.9999863,
+			    "description":"You have used some of your weekly limit."},
+			   {"bucketId":"gemini-5h","displayName":"Five Hour Limit","window":"5h",
+			    "resetTime":"2026-07-27T20:16:28Z","remainingFraction":0.75}]},
+			 {"displayName":"Claude and GPT models",
+			  "buckets":[
+			   {"bucketId":"3p-weekly","displayName":"Weekly Limit","window":"weekly",
+			    "resetTime":"2026-08-03T15:52:05Z","remainingFraction":0.6},
+			   {"bucketId":"3p-5h","displayName":"Five Hour Limit","window":"5h",
+			    "resetTime":"2026-07-27T20:52:05Z","remainingFraction":0.3}]}]}
+			""";
+
+	@Test
 	void parseQuotaSummary_rejectsInvalidOrMissingFractions() {
 		assertTrue(AntigravityHttpClient.parseQuotaSummary("{}").isEmpty());
 		assertTrue(AntigravityHttpClient.parseQuotaSummary("{\"remainingFraction\":1.2}").isEmpty());
 		assertTrue(AntigravityHttpClient.parseQuotaSummary("not json").isEmpty());
+	}
+
+	@Test
+	void call_returnsFirstSuccessWithoutRetrying() throws Exception {
+		try (MockWebServer server = new MockWebServer()) {
+			server.enqueue(new MockResponse().setResponseCode(200).setBody("ok"));
+			server.start();
+
+			AntigravityHttpClient.AntigravityResponse response = AntigravityHttpClient.postWithRetry(
+					server.url("/v1internal:streamGenerateContent").toString(),
+					"{\"request\":{}}",
+					"ya29.token",
+					NO_BACKOFF
+			);
+
+			assertEquals(200, response.status());
+			assertEquals("ok", read(response));
+			assertEquals(1, server.getRequestCount());
+
+			RecordedRequest request = server.takeRequest();
+			assertEquals("Bearer ya29.token", request.getHeader("Authorization"));
+			assertEquals("{\"request\":{}}", request.getBody().readUtf8());
+		}
+	}
+
+	@Test
+	void call_passesNonRetryableStatusStraightBack() throws Exception {
+		try (MockWebServer server = new MockWebServer()) {
+			server.enqueue(new MockResponse().setResponseCode(403).setBody("denied"));
+			server.start();
+
+			AntigravityHttpClient.AntigravityResponse response = AntigravityHttpClient.postWithRetry(
+					server.url("/").toString(), "{}", "token", NO_BACKOFF
+			);
+
+			assertEquals(403, response.status());
+			assertEquals("denied", read(response));
+			assertEquals(1, server.getRequestCount());
+		}
+	}
+
+	@Test
+	void call_retriesRetryableStatusThenSucceeds() throws Exception {
+		try (MockWebServer server = new MockWebServer()) {
+			server.enqueue(new MockResponse().setResponseCode(503).setBody("unavailable"));
+			server.enqueue(new MockResponse().setResponseCode(200).setBody("recovered"));
+			server.start();
+
+			AntigravityHttpClient.AntigravityResponse response = AntigravityHttpClient.postWithRetry(
+					server.url("/").toString(), "{}", "token", NO_BACKOFF
+			);
+
+			assertEquals(200, response.status());
+			assertEquals("recovered", read(response));
+			assertEquals(2, server.getRequestCount());
+		}
+	}
+
+	@Test
+	void call_returnsLastStatusWhenEveryAttemptIsRetryable() throws Exception {
+		try (MockWebServer server = new MockWebServer()) {
+			for (int i = 0; i < 3; i++) {
+				server.enqueue(new MockResponse().setResponseCode(429).setBody("attempt " + i));
+			}
+			server.start();
+
+			AntigravityHttpClient.AntigravityResponse response = AntigravityHttpClient.postWithRetry(
+					server.url("/").toString(), "{}", "token", NO_BACKOFF
+			);
+
+			assertEquals(429, response.status());
+			assertEquals("attempt 2", read(response));
+			assertEquals(3, server.getRequestCount());
+		}
+	}
+
+	@Test
+	void call_propagatesNetworkErrorAfterExhaustingRetries() throws Exception {
+		MockWebServer server = new MockWebServer();
+		server.start();
+		String url = server.url("/").toString();
+		server.close();
+
+		assertThrows(
+				IOException.class,
+				() -> AntigravityHttpClient.postWithRetry(url, "{}", "token", NO_BACKOFF)
+		);
+	}
+
+	private static String read(AntigravityHttpClient.AntigravityResponse response) throws IOException {
+		try (InputStream body = response.body()) {
+			return new String(body.readAllBytes(), StandardCharsets.UTF_8);
+		}
 	}
 }

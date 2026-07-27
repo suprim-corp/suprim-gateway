@@ -1,0 +1,30 @@
+<dialog th:fragment="modelsDialog" id="modelsDialog"
+        class="bg-zinc-900 border border-zinc-800 rounded-lg p-0 w-[640px] max-w-[calc(100vw-2rem)] max-h-[70vh] backdrop:bg-black/50">
+    <div class="p-5 space-y-4">
+        <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-zinc-100">Available Models</h2>
+            <button onclick="document.getElementById('modelsDialog').close()"
+                    class="text-zinc-500 hover:text-zinc-100 cursor-pointer">
+                <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div id="modelsContent" class="overflow-y-auto max-h-[50vh]">
+            <div id="usageBanner" class="hidden mb-3 p-3 bg-zinc-950 border border-zinc-800 rounded-lg">
+                <div class="flex items-center justify-between text-xs">
+                    <span id="usageLabel" class="text-zinc-400">Credits</span>
+                    <span id="usageText" class="font-medium text-zinc-100"></span>
+                </div>
+                <div class="mt-2 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                    <div id="usageBar" class="h-full rounded-full transition-all"></div>
+                </div>
+                <ul id="usageBuckets" class="hidden mt-3 space-y-2"></ul>
+            </div>
+            <div id="modelsLoading" class="text-center text-zinc-500 text-xs py-4">Loading...</div>
+            <ul id="modelsList" class="hidden space-y-1"></ul>
+            <div id="modelsError" class="hidden text-center text-red-400 text-xs py-4"></div>
+            <div id="modelsEmpty" class="hidden text-center text-zinc-500 text-xs py-4">No models available.</div>
+        </div>
+    </div>
+</dialog>

@@ -70,9 +70,9 @@ class AntigravityFacadeRetryTest {
 		                                         .build();
 
 		try (MockedStatic<AntigravityHttpClient> mocked = mockStatic(AntigravityHttpClient.class)) {
-			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
+			mocked.when(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
 			      .thenReturn(new AntigravityHttpClient.AntigravityResponse(429, new ByteArrayInputStream("rate limited".getBytes())));
-			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok2")))
+			mocked.when(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok2")))
 			      .thenReturn(new AntigravityHttpClient.AntigravityResponse(200, new ByteArrayInputStream("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hi\"}]}}]}\n".getBytes())));
 
 			MockHttpServletResponse httpRes = new MockHttpServletResponse();
@@ -110,9 +110,9 @@ class AntigravityFacadeRetryTest {
 		                                         .build();
 
 		try (MockedStatic<AntigravityHttpClient> mocked = mockStatic(AntigravityHttpClient.class)) {
-			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
+			mocked.when(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
 			      .thenAnswer(ignored -> new AntigravityHttpClient.AntigravityResponse(429, new ByteArrayInputStream("rate limited".getBytes())));
-			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok2")))
+			mocked.when(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok2")))
 			      .thenAnswer(ignored -> new AntigravityHttpClient.AntigravityResponse(200, new ByteArrayInputStream("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hi\"}]}}]}\n".getBytes())));
 
 			MockHttpServletResponse firstResponse = new MockHttpServletResponse();
@@ -122,8 +122,8 @@ class AntigravityFacadeRetryTest {
 
 			assertEquals(200, firstResponse.getStatus());
 			assertEquals(200, secondResponse.getStatus());
-			mocked.verify(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok1")), times(1));
-			mocked.verify(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok2")), times(2));
+			mocked.verify(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok1")), times(1));
+			mocked.verify(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok2")), times(2));
 		}
 	}
 
@@ -147,7 +147,7 @@ class AntigravityFacadeRetryTest {
 		                                         .build();
 
 		try (MockedStatic<AntigravityHttpClient> mocked = mockStatic(AntigravityHttpClient.class)) {
-			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok")))
+			mocked.when(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok")))
 			      .thenAnswer(ignored -> new AntigravityHttpClient.AntigravityResponse(503, new ByteArrayInputStream("unavailable".getBytes())));
 
 			MockHttpServletResponse firstResponse = new MockHttpServletResponse();
@@ -158,7 +158,7 @@ class AntigravityFacadeRetryTest {
 			assertEquals(429, firstResponse.getStatus());
 			assertEquals(429, secondResponse.getStatus());
 			assertTrue(secondResponse.getContentAsString().contains("rate_limit_exhausted"));
-			mocked.verify(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok")), times(1));
+			mocked.verify(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok")), times(1));
 		}
 	}
 
@@ -183,7 +183,7 @@ class AntigravityFacadeRetryTest {
 		                                         .build();
 
 		try (MockedStatic<AntigravityHttpClient> mocked = mockStatic(AntigravityHttpClient.class)) {
-			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
+			mocked.when(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
 			      .thenReturn(new AntigravityHttpClient.AntigravityResponse(429, new ByteArrayInputStream("rate limited".getBytes())));
 
 			MockHttpServletResponse httpRes = new MockHttpServletResponse();
@@ -223,9 +223,9 @@ class AntigravityFacadeRetryTest {
 		                                         .build();
 
 		try (MockedStatic<AntigravityHttpClient> mocked = mockStatic(AntigravityHttpClient.class)) {
-			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
+			mocked.when(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
 			      .thenAnswer(ignored -> new AntigravityHttpClient.AntigravityResponse(403, new ByteArrayInputStream("{\"error\":{\"status\":\"PERMISSION_DENIED\",\"message\":\"Verify your account to continue.\"}}".getBytes())));
-			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok2")))
+			mocked.when(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok2")))
 			      .thenAnswer(ignored -> new AntigravityHttpClient.AntigravityResponse(200, new ByteArrayInputStream("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hi\"}]}}]}\n".getBytes())));
 
 			MockHttpServletResponse firstResponse = new MockHttpServletResponse();
@@ -235,8 +235,8 @@ class AntigravityFacadeRetryTest {
 
 			assertEquals(200, firstResponse.getStatus());
 			assertEquals(200, secondResponse.getStatus());
-			mocked.verify(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok1")), times(1));
-			mocked.verify(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok2")), times(2));
+			mocked.verify(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok1")), times(1));
+			mocked.verify(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok2")), times(2));
 		}
 	}
 
@@ -261,7 +261,7 @@ class AntigravityFacadeRetryTest {
 		                                         .build();
 
 		try (MockedStatic<AntigravityHttpClient> mocked = mockStatic(AntigravityHttpClient.class)) {
-			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
+			mocked.when(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
 			      .thenReturn(new AntigravityHttpClient.AntigravityResponse(403, new ByteArrayInputStream("{\"error\":{\"status\":\"PERMISSION_DENIED\"}}".getBytes())));
 
 			MockHttpServletResponse httpRes = new MockHttpServletResponse();
@@ -301,9 +301,9 @@ class AntigravityFacadeRetryTest {
 		                                         .build();
 
 		try (MockedStatic<AntigravityHttpClient> mocked = mockStatic(AntigravityHttpClient.class)) {
-			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
+			mocked.when(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok1")))
 			      .thenReturn(new AntigravityHttpClient.AntigravityResponse(401, new ByteArrayInputStream("unauthorized".getBytes())));
-			mocked.when(() -> AntigravityHttpClient.call(eq("gemini-2.5-pro"), anyString(), eq("tok2")))
+			mocked.when(() -> AntigravityHttpClient.streamGenerateContent(eq("gemini-2.5-pro"), anyString(), eq("tok2")))
 			      .thenReturn(new AntigravityHttpClient.AntigravityResponse(200, new ByteArrayInputStream("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hi\"}]}}]}\n".getBytes())));
 
 			MockHttpServletResponse httpRes = new MockHttpServletResponse();

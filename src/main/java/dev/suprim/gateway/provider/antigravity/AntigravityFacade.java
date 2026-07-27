@@ -105,9 +105,10 @@ public class AntigravityFacade {
 					request, model, projectId, THOUGHT_SIGNATURES
 			);
 
-			AntigravityHttpClient.AntigravityResponse response = AntigravityHttpClient.call(
-					model, payload, accessToken
-			);
+			AntigravityHttpClient.AntigravityResponse response =
+					AntigravityHttpClient.streamGenerateContent(
+							model, payload, accessToken
+					);
 
 			if (response.status() != 200) {
 				String body;

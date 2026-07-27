@@ -1,0 +1,112 @@
+<div th:fragment="accountsTable" class="border border-zinc-800 bg-zinc-900/50 rounded-lg overflow-hidden">
+    <table class="w-full text-xs" th:if="${!accounts.isEmpty()}">
+        <thead>
+        <tr class="border-b border-zinc-800">
+            <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                Name
+            </th>
+            <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                Provider
+            </th>
+            <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                Status
+            </th>
+            <th class="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                Models
+            </th>
+            <th class="px-4 py-3 text-right text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                Actions
+            </th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="account, iter : ${accounts}" class="border-b border-zinc-800 last:border-0">
+            <!-- Name (inline editable) -->
+            <td class="px-4 py-3">
+                <span class="inline-edit-name cursor-pointer hover:text-neon-purple transition-colors"
+                      th:data-index="${iter.index}"
+                      th:text="${account.name() != null ? account.name() : (account.provider() != null ? account.provider() : 'Unnamed')}"></span>
+                <form th:action="@{/providers/{idx}/rename(idx=${iter.index})}" method="post"
+                      class="hidden inline-edit-form">
+                    <input type="text" name="name"
+                           th:value="${account.name() != null ? account.name() : ''}"
+                           class="h-7 px-2 bg-zinc-950 border border-neon-purple rounded text-xs text-zinc-100 focus:outline-none w-48">
+                </form>
+            </td>
+            <!-- Provider badge -->
+            <td class="px-4 py-3">
+                <div class="flex items-center gap-2">
+                    <img th:if="${account.provider() == 'KIRO'}"
+                         src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kiro-color.png"
+                         class="size-4" alt="Kiro">
+                    <img th:if="${account.provider() == 'ANTIGRAVITY'}"
+                         src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/antigravity-color.png"
+                         class="size-4" alt="Antigravity">
+                    <img th:if="${account.provider() == 'CODEX'}"
+                         src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/openai.png"
+                         class="size-4" alt="Codex">
+                    <img th:if="${account.provider() == 'XAI'}"
+                         src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/xai.png"
+                         class="size-4" alt="xAI">
+                    <img th:if="${account.provider() == 'DEEPSEEK'}"
+                         src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/deepseek-color.png"
+                         class="size-4" alt="DeepSeek">
+                    <span class="text-zinc-400"
+                          th:text="${account.provider() != null ? account.provider() : 'UNKNOWN'}"></span>
+                </div>
+            </td>
+            <!-- Status -->
+            <td class="px-4 py-3">
+                <span th:if="${account.accessToken() == null}"
+                      class="inline-flex items-center gap-1.5 text-red-400">
+                    <span class="size-1.5 rounded-full bg-red-400"></span>
+                    Disconnected
+                </span>
+                <span th:if="${account.accessToken() != null && (account.expiresAt() == null || account.expiresAt().isAfter(T(java.time.Instant).now()))}"
+                      class="inline-flex items-center gap-1.5 text-neon-green">
+                    <span class="size-1.5 rounded-full bg-green-400"></span>
+                    Connected
+                </span>
+                <span th:if="${account.accessToken() != null && account.expiresAt() != null && !account.expiresAt().isAfter(T(java.time.Instant).now())}"
+                      class="inline-flex items-center gap-1.5 text-red-400">
+                    <span class="size-1.5 rounded-full bg-red-400"></span>
+                    Expired
+                </span>
+            </td>
+            <!-- Models -->
+            <td class="px-4 py-3">
+                <button th:data-index="${iter.index}" onclick="showModels(this.dataset.index)"
+                        class="text-zinc-400 hover:text-neon-purple transition-colors cursor-pointer text-xs underline underline-offset-2">
+                    View Models
+                </button>
+            </td>
+            <!-- Actions -->
+            <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
+                <a th:if="${account.accessToken() == null && account.provider() == 'XAI'}"
+                   href="/auth/xai"
+                   class="text-xs text-neon-purple hover:text-purple-300 transition-colors cursor-pointer">
+                    Reconnect
+                </a>
+                <a th:if="${account.accessToken() == null && account.provider() == 'CODEX'}"
+                   href="/auth/codex"
+                   class="text-xs text-neon-purple hover:text-purple-300 transition-colors cursor-pointer">
+                    Reconnect
+                </a>
+                <form th:action="@{/providers/{idx}/delete(idx=${iter.index})}" method="post" class="inline"
+                      onsubmit="return confirm('Delete this account?')">
+                    <button type="submit"
+                            class="text-zinc-500 hover:text-red-400 transition-colors cursor-pointer">
+                        <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                    </button>
+                </form>
+            </td>
+        </tr>
+        </tbody>
+    </table>
+    <div th:if="${accounts.isEmpty()}" class="px-4 py-8 text-center text-zinc-500 text-xs">
+        No accounts configured. Click "Add Account" to get started.
+    </div>
+</div>
