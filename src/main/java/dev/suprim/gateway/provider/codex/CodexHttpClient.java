@@ -172,12 +172,13 @@ public class CodexHttpClient {
 	}
 
 	/**
-	 * Reads the account's rate-limit windows.
+	 * Reads the account's rate-limit windows from the ChatGPT backend.
 	 * <p>
-	 * The upstream client resolves this path in two styles: {@code /api/codex}
-	 * for ordinary accounts and {@code /wham} for internal ones. It picks by
-	 * account, which the gateway cannot know, so the ordinary path is tried
-	 * first and the internal one only if it 404s.
+	 * Codex chooses the path from the configured base URL, not from the account
+	 * or response status: a base containing {@code /backend-api} uses the
+	 * ChatGPT path {@code /wham/usage}; a Codex API base uses
+	 * {@code /api/codex/usage}. This gateway authenticates against
+	 * {@code chatgpt.com/backend-api}, so only the former is valid.
 	 */
 	public static Map<String, Object> fetchUsage(
 			String accessToken,
@@ -193,17 +194,10 @@ public class CodexHttpClient {
 	) {
 		try {
 			HttpResponse<String> response = getUsage(
-					base + "/api/codex/usage",
+					base + "/wham/usage",
 					accessToken,
 					proxyChain
 			);
-			if (response.statusCode() == 404) {
-				response = getUsage(
-						base + "/wham/usage",
-						accessToken,
-						proxyChain
-				);
-			}
 			if (response.statusCode() != 200) {
 				log.warn("[Codex] usage returned {}", response.statusCode());
 				return Map.of(

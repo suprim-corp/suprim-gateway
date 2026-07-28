@@ -34,7 +34,7 @@ class CodexHttpClientTest {
 	}
 
 	@Test
-	void fetchUsage_prefersTheAccountScopedPath() throws Exception {
+	void fetchUsage_usesChatGptPathForBackendApiBase() throws Exception {
 		server.enqueue(usageResponse());
 
 		Map<String, Object> usage = CodexHttpClient.fetchUsage(
@@ -42,34 +42,22 @@ class CodexHttpClientTest {
 		);
 
 		RecordedRequest request = server.takeRequest();
-		assertEquals("/api/codex/usage", request.getPath());
-		assertEquals("plus", usage.get("plan"));
-	}
-
-	@Test
-	void fetchUsage_fallsBackToInternalPathOnNotFound() throws Exception {
-		server.enqueue(new MockResponse().setResponseCode(404));
-		server.enqueue(usageResponse());
-
-		Map<String, Object> usage = CodexHttpClient.fetchUsage(
-				"sk-token", proxyChain, base()
-		);
-
-		assertEquals("/api/codex/usage", server.takeRequest().getPath());
-		assertEquals("/wham/usage", server.takeRequest().getPath());
-		assertEquals("plus", usage.get("plan"));
-	}
-
-	@Test
-	void fetchUsage_doesNotFallBackOnOtherFailures() throws Exception {
-		server.enqueue(new MockResponse().setResponseCode(401));
-
-		Map<String, Object> usage = CodexHttpClient.fetchUsage(
-				"sk-token", proxyChain, base()
-		);
-
+		assertEquals("/wham/usage", request.getPath());
 		assertEquals(1, server.getRequestCount());
-		assertEquals("Usage unavailable (401)", usage.get("message"));
+		assertEquals("plus", usage.get("plan"));
+	}
+
+	@Test
+	void fetchUsage_surfacesBackendFailureWithoutTryingAnotherPath() throws Exception {
+		server.enqueue(new MockResponse().setResponseCode(403));
+
+		Map<String, Object> usage = CodexHttpClient.fetchUsage(
+				"sk-token", proxyChain, base()
+		);
+
+		assertEquals("/wham/usage", server.takeRequest().getPath());
+		assertEquals(1, server.getRequestCount());
+		assertEquals("Usage unavailable (403)", usage.get("message"));
 	}
 
 	@Test
