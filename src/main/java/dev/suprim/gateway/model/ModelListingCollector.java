@@ -7,6 +7,7 @@ import dev.suprim.gateway.provider.antigravity.AntigravityAuthManager;
 import dev.suprim.gateway.provider.codex.CodexAuthManager;
 import dev.suprim.gateway.provider.deepseek.DeepSeekModels;
 import dev.suprim.gateway.provider.kiro.KiroAccountModelAvailability;
+import dev.suprim.gateway.provider.kiro.KiroModelNames;
 import dev.suprim.gateway.provider.xai.XaiAuthManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -186,9 +187,12 @@ public class ModelListingCollector {
 	private void addKiro(String modelId, ModelListing listing) {
 		listing.add(
 				withCapabilities(kiroModelAvailability.modelDetails(modelId))
-						.id(Provider.KIRO.getPrefix() + modelId)
+						.id(
+								Provider.KIRO.getPrefix() +
+								KiroModelNames.exposedId(modelId)
+						)
 						.ownedBy(Provider.KIRO.name())
-						.displayName(modelId)
+						.displayName(KiroModelNames.displayName(modelId))
 		);
 	}
 

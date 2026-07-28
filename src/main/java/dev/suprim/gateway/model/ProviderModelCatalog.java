@@ -5,6 +5,7 @@ import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.provider.antigravity.AntigravityAuthManager;
 import dev.suprim.gateway.provider.codex.CodexAuthManager;
 import dev.suprim.gateway.provider.kiro.KiroAccountModelAvailability;
+import dev.suprim.gateway.provider.kiro.KiroModelNames;
 import dev.suprim.gateway.provider.xai.XaiAuthManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -39,7 +40,8 @@ public class ProviderModelCatalog {
 		return kiroModelAvailability.modelsForAccountOrFetch(account)
 		                            .stream()
 		                            .map(id -> ModelInfo.of(
-				                            Provider.KIRO.getPrefix() + id
+				                            Provider.KIRO.getPrefix() +
+				                            KiroModelNames.exposedId(id)
 		                            ))
 		                            .toList();
 	}
