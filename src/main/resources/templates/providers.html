@@ -5,8 +5,6 @@
         <div class="flex items-center justify-between gap-4">
             <div class="flex items-center gap-4 min-w-0">
                 <h1 class="text-lg font-semibold tracking-tight">Providers</h1>
-                <!--/* Filtering is client-side: the cards are already on the page, and hiding them
-                       keeps the usage poll running for every account. */-->
                 <select th:if="${!providerNames.isEmpty()}" id="providerFilterSelect"
                         aria-label="Filter accounts by provider"
                         class="h-7 pl-2.5 pr-7 bg-zinc-900 border border-zinc-800 rounded text-[10px] uppercase tracking-widest text-zinc-400 hover:text-zinc-100 focus:outline-none focus:border-neon-purple transition-colors cursor-pointer">

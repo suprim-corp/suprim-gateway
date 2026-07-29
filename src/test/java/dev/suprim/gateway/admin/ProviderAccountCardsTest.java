@@ -64,6 +64,21 @@ class ProviderAccountCardsTest {
 	}
 
 	@Test
+	void filtersCardsByProviderWithoutChangingStoreIndexes() {
+		List<ProviderAccountCard> cards = ProviderAccountCards.sorted(List.of(
+				account("KIRO", "kiro"),
+				account("CODEX", "codex"),
+				account("KIRO", "kiro-two")
+		));
+
+		List<ProviderAccountCard> filtered = ProviderAccountCards.filtered(cards, "KIRO");
+
+		assertEquals(List.of(0, 2), filtered.stream().map(ProviderAccountCard::index).toList());
+		assertEquals(cards, ProviderAccountCards.filtered(cards, null));
+		assertEquals(cards, ProviderAccountCards.filtered(cards, ""));
+	}
+
+	@Test
 	void listsEachProviderOnceForTheFilter() {
 		List<ProviderAccountCard> cards = ProviderAccountCards.sorted(List.of(
 				account("KIRO", "a"),

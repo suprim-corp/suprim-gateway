@@ -99,13 +99,10 @@
             </div>
         </div>
     </div>
-    <!--/* Shown by the filter when a provider is selected that has no matching cards. */-->
-    <div th:if="${!accounts.isEmpty()}" id="noFilterMatch"
-         class="hidden border border-zinc-800 bg-zinc-900/50 rounded-lg px-4 py-8 text-center text-zinc-500 text-xs">
-        No accounts for this provider.
-    </div>
     <div th:if="${accounts.isEmpty()}"
-         class="border border-zinc-800 bg-zinc-900/50 rounded-lg px-4 py-8 text-center text-zinc-500 text-xs">
-        No accounts configured. Click "Add Account" to get started.
+         class="border border-zinc-800 bg-zinc-900/50 rounded-lg px-4 py-8 text-center text-zinc-500 text-xs"
+         th:text="${providerFilter != null && !providerFilter.isBlank()}
+                 ? 'No accounts for this provider.'
+                 : 'No accounts configured. Click &quot;Add Account&quot; to get started.'">
     </div>
 </th:block>

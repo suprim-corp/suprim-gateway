@@ -34,8 +34,10 @@ class ProvidersController {
 	) {
 		List<ProviderAccountCard> cards =
 				ProviderAccountCards.sorted(credentialStore.load());
+		List<String> providerNames = ProviderAccountCards.providers(cards);
+		cards = ProviderAccountCards.filtered(cards, provider);
 		model.addAttribute("providerFilter", provider);
-		model.addAttribute("providerNames", ProviderAccountCards.providers(cards));
+		model.addAttribute("providerNames", providerNames);
 		model.addAttribute("accounts", cards);
 		model.addAttribute("view", "providers");
 		model.addAttribute("currentPage", "providers");

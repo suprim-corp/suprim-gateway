@@ -60,10 +60,11 @@ class ProvidersTemplateRenderTest {
 		viewResolver.setTemplateEngine(engine);
 		viewResolver.setCharacterEncoding("UTF-8");
 
-		List<ProviderAccountCard> cards = ProviderAccountCards.sorted(accounts);
+		List<ProviderAccountCard> allCards = ProviderAccountCards.sorted(accounts);
+		List<ProviderAccountCard> cards = ProviderAccountCards.filtered(allCards, providerFilter);
 		Map<String, Object> model = new HashMap<>();
 		model.put("accounts", cards);
-		model.put("providerNames", ProviderAccountCards.providers(cards));
+		model.put("providerNames", ProviderAccountCards.providers(allCards));
 		model.put("providerFilter", providerFilter);
 		model.put("view", "providers");
 		model.put("currentPage", "providers");
@@ -252,6 +253,25 @@ class ProvidersTemplateRenderTest {
 				!filter.contains("value=\"CODEX\" selected"),
 				"Only the requested provider should be selected"
 		);
+	}
+
+	@Test
+	void providersPage_rendersOnlyTheRequestedProviderAccounts() throws Exception {
+		StoredAccount kiro = StoredAccount.builder()
+				.provider(KIRO)
+				.name("kiro-a")
+				.accessToken("token")
+				.build();
+		StoredAccount codex = StoredAccount.builder()
+				.provider("CODEX")
+				.name("codex-a")
+				.accessToken("token")
+				.build();
+
+		String html = renderProvidersPage(List.of(kiro, codex), KIRO);
+
+		assertTrue(html.contains("kiro-a"), "Requested provider account missing");
+		assertTrue(!html.contains("codex-a"), "Unrequested provider account should not render");
 	}
 
 	@Test

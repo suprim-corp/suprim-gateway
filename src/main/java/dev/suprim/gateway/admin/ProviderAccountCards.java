@@ -30,6 +30,18 @@ final class ProviderAccountCards {
 		                .toList();
 	}
 
+	static List<ProviderAccountCard> filtered(
+			List<ProviderAccountCard> cards,
+			String provider
+	) {
+		if (provider == null || provider.isBlank()) {
+			return cards;
+		}
+		return cards.stream()
+		            .filter(card -> provider.equals(card.provider()))
+		            .toList();
+	}
+
 	/**
 	 * Provider names present in the list, alphabetical — the filter only offers what is there.
 	 */
