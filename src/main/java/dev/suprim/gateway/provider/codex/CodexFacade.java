@@ -159,12 +159,20 @@ public class CodexFacade {
 			}
 
 			// Codex upstream returns Responses API SSE
-			relayUpstream(
-					response, account.name(), model, inputTokens,
-					keyId, clientIp, startTime, format,
-					request.thinkingEnabled(), httpRes
-			);
-			return;
+			try {
+				relayUpstream(
+						response, account.name(), model, inputTokens,
+						keyId, clientIp, startTime, format,
+						request.thinkingEnabled(), httpRes
+				);
+				return;
+			} catch (ServerOverloadedException e) {
+				accountCooldown.coolDown(account);
+				log.warn(
+						LogTag.CODEX + "Account {} server overloaded, trying another account",
+						account.name()
+				);
+			}
 		}
 
 		ErrorResponse.openAi(
@@ -290,6 +298,9 @@ public class CodexFacade {
 				Optional<String> failure = CodexSseMapper.failureMessage(node);
 				if (failure.isPresent()) {
 					log.error(LogTag.CODEX + "SSE stream failed: {}", failure.get());
+					if (eventWriter == null && failure.get().startsWith("server_is_overloaded:")) {
+						throw new ServerOverloadedException();
+					}
 					if (eventWriter == null) {
 						handleStreamFailure(httpRes, format, failure.get());
 						return;
@@ -365,6 +376,9 @@ public class CodexFacade {
 					               .build()
 			);
 		}
+	}
+
+	private static final class ServerOverloadedException extends Exception {
 	}
 
 	private void handleStreamFailure(

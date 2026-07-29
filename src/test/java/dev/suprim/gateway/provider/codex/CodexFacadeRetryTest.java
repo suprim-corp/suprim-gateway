@@ -121,6 +121,34 @@ class CodexFacadeRetryTest {
 	}
 
 	@Test
+	void handle_triesAnotherAccountWhenSseReportsServerOverload() throws Exception {
+		StoredAccount overloaded = account("overloaded", "token-overloaded");
+		StoredAccount healthy = account("healthy", "token-healthy");
+		when(store.findAllByProvider("CODEX")).thenReturn(List.of(overloaded, healthy));
+		when(rotator.next("CODEX")).thenReturn(overloaded, healthy);
+		when(authManager.getAccessToken(overloaded)).thenReturn("token-overloaded");
+		when(authManager.getAccessToken(healthy)).thenReturn("token-healthy");
+
+		String overloadedStream = "data: {\"type\":\"response.created\"}\n\n"
+				+ "data: {\"type\":\"error\",\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"try again later\"}}\n\n";
+		String healthyStream = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n";
+		try (MockedStatic<CodexHttpClient> mocked = mockStatic(CodexHttpClient.class)) {
+			mocked.when(() -> CodexHttpClient.call(anyString(), eq("token-overloaded"), any(ProxyChain.class)))
+			      .thenAnswer(ignored -> response(200, overloadedStream));
+			mocked.when(() -> CodexHttpClient.call(anyString(), eq("token-healthy"), any(ProxyChain.class)))
+			      .thenAnswer(ignored -> response(200, healthyStream));
+
+			MockHttpServletResponse httpResponse = new MockHttpServletResponse();
+			facade.handle(request(), "gpt-5", true, 10, "key", "127.0.0.1", Format.ANTHROPIC, httpResponse);
+
+			assertEquals(200, httpResponse.getStatus());
+			assertTrue(httpResponse.getContentAsString().contains("ok"));
+			mocked.verify(() -> CodexHttpClient.call(anyString(), eq("token-overloaded"), any(ProxyChain.class)), times(1));
+			mocked.verify(() -> CodexHttpClient.call(anyString(), eq("token-healthy"), any(ProxyChain.class)), times(1));
+		}
+	}
+
+	@Test
 	void handle_omitsOutputTokenLimitsRejectedByCodexBackend() throws Exception {
 		StoredAccount account = account("healthy", "token");
 		when(store.findAllByProvider("CODEX")).thenReturn(List.of(account));
