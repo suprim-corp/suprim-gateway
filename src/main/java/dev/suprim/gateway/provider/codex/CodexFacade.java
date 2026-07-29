@@ -10,6 +10,7 @@ import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
+import dev.suprim.gateway.proxy.Message;
 import dev.suprim.gateway.proxy.ProxyChain;
 import dev.suprim.gateway.proxy.StreamConverter;
 import dev.suprim.gateway.proxy.StreamingEventWriter;
@@ -25,6 +26,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -87,6 +89,7 @@ public class CodexFacade {
 			);
 		}
 		mapSamplingToReasoning(payloadNode);
+		logToolResults(request.messages());
 		String payload = MAPPER.writeValueAsString(payloadNode);
 
 		Set<String> attemptedAccounts = new HashSet<>();
@@ -310,10 +313,19 @@ public class CodexFacade {
 				Optional<KiroEvent> event = CodexSseMapper.toEvent(node);
 				if (event.isPresent()) {
 					mappedEventCount++;
-					log.debug(
-							LogTag.CODEX + "SSE event type={} mapped={}",
-							upstreamType, event.get().type()
-					);
+					KiroEvent mappedEvent = event.get();
+					if ("tool_use".equals(mappedEvent.type())) {
+						log.debug(
+								LogTag.CODEX + "Tool call: name={} callId={} argumentBytes={}",
+								mappedEvent.toolName(), mappedEvent.toolUseId(),
+								utf8Length(mappedEvent.toolInput())
+						);
+					} else {
+						log.debug(
+								LogTag.CODEX + "SSE event type={} mapped={}",
+								upstreamType, mappedEvent.type()
+						);
+					}
 					if (eventWriter == null) {
 						httpRes.setCharacterEncoding("UTF-8");
 						httpRes.setContentType("text/event-stream; charset=utf-8");
@@ -326,9 +338,7 @@ public class CodexFacade {
 					if (firstTokenMs == null) {
 						firstTokenMs = System.currentTimeMillis() - startTime;
 					}
-					eventWriter.write(event.get());
-				} else {
-					log.debug(LogTag.CODEX + "SSE event type={} ignored", upstreamType);
+					eventWriter.write(mappedEvent);
 				}
 				Optional<Integer> outTok = CodexSseMapper.usageOutputTokens(node);
 				if (outTok.isPresent()) {
@@ -376,6 +386,25 @@ public class CodexFacade {
 					               .build()
 			);
 		}
+	}
+
+	private void logToolResults(List<Message> messages) {
+		if (messages == null || !log.isDebugEnabled()) {
+			return;
+		}
+		for (Message message : messages) {
+			if (message != null && "tool".equals(message.role())) {
+				log.debug(
+						LogTag.CODEX + "Tool result: callId={} resultBytes={} error={}",
+						message.toolCallId(), utf8Length(message.content()),
+						Boolean.TRUE.equals(message.toolError())
+				);
+			}
+		}
+	}
+
+	private int utf8Length(Object value) {
+		return value == null ? 0 : value.toString().getBytes(StandardCharsets.UTF_8).length;
 	}
 
 	private static final class ServerOverloadedException extends Exception {
