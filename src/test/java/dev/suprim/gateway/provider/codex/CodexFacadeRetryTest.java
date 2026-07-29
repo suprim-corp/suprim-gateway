@@ -44,8 +44,8 @@ class CodexFacadeRetryTest {
 		RequestLogPublisher logPublisher = new RequestLogPublisher(eventPublisher);
 		ProxyChain proxyChain = mock(ProxyChain.class);
 		facade = new CodexFacade(
-				authManager, logPublisher, rotator, store, proxyChain,
-				new AccountCooldown()
+				authManager, rotator, store, proxyChain, new AccountCooldown(),
+				new CodexResponseRelay(logPublisher)
 		);
 	}
 
@@ -73,6 +73,52 @@ class CodexFacadeRetryTest {
 			assertEquals(200, secondResponse.getStatus());
 			mocked.verify(() -> CodexHttpClient.call(anyString(), eq("token-limited"), any(ProxyChain.class)), times(1));
 			mocked.verify(() -> CodexHttpClient.call(anyString(), eq("token-healthy"), any(ProxyChain.class)), times(2));
+		}
+	}
+
+	@Test
+	void handle_triesAnotherAccountAfter401() throws Exception {
+		StoredAccount unauthorized = account("unauthorized", "token-unauthorized");
+		StoredAccount healthy = account("healthy", "token-healthy");
+		when(store.findAllByProvider("CODEX")).thenReturn(List.of(unauthorized, healthy));
+		when(rotator.next("CODEX")).thenReturn(unauthorized, healthy);
+		when(authManager.getAccessToken(unauthorized)).thenReturn("token-unauthorized");
+		when(authManager.getAccessToken(healthy)).thenReturn("token-healthy");
+
+		try (MockedStatic<CodexHttpClient> mocked = mockStatic(CodexHttpClient.class)) {
+			mocked.when(() -> CodexHttpClient.call(anyString(), eq("token-unauthorized"), any(ProxyChain.class)))
+			      .thenAnswer(ignored -> response(401, "token invalidated"));
+			mocked.when(() -> CodexHttpClient.call(anyString(), eq("token-healthy"), any(ProxyChain.class)))
+			      .thenAnswer(ignored -> response(200, "data: {\"type\":\"response.completed\"}\n\n"));
+
+			MockHttpServletResponse httpResponse = new MockHttpServletResponse();
+			facade.handle(request(), "gpt-5", false, 10, "key", "127.0.0.1", Format.RESPONSES, httpResponse);
+
+			assertEquals(200, httpResponse.getStatus());
+			mocked.verify(() -> CodexHttpClient.call(anyString(), eq("token-unauthorized"), any(ProxyChain.class)), times(1));
+			mocked.verify(() -> CodexHttpClient.call(anyString(), eq("token-healthy"), any(ProxyChain.class)), times(1));
+		}
+	}
+
+	@Test
+	void handle_returnsExhaustedAfterEveryAccountReturns401() throws Exception {
+		StoredAccount first = account("first", "token-first");
+		StoredAccount second = account("second", "token-second");
+		when(store.findAllByProvider("CODEX")).thenReturn(List.of(first, second));
+		when(rotator.next("CODEX")).thenReturn(first, second);
+		when(authManager.getAccessToken(first)).thenReturn("token-first");
+		when(authManager.getAccessToken(second)).thenReturn("token-second");
+
+		try (MockedStatic<CodexHttpClient> mocked = mockStatic(CodexHttpClient.class)) {
+			mocked.when(() -> CodexHttpClient.call(anyString(), anyString(), any(ProxyChain.class)))
+			      .thenAnswer(ignored -> response(401, "token invalidated"));
+
+			MockHttpServletResponse httpResponse = new MockHttpServletResponse();
+			facade.handle(request(), "gpt-5", false, 10, "key", "127.0.0.1", Format.RESPONSES, httpResponse);
+
+			assertEquals(429, httpResponse.getStatus());
+			assertTrue(httpResponse.getContentAsString().contains("rate_limit_exhausted"));
+			mocked.verify(() -> CodexHttpClient.call(anyString(), anyString(), any(ProxyChain.class)), times(2));
 		}
 	}
 
@@ -287,6 +333,9 @@ class CodexFacadeRetryTest {
 	}
 
 	private CodexHttpClient.CodexResponse response(int status, String body) {
-		return new CodexHttpClient.CodexResponse(status, new ByteArrayInputStream(body.getBytes()));
+		return CodexHttpClient.CodexResponse.builder()
+		                                        .status(status)
+		                                        .body(new ByteArrayInputStream(body.getBytes()))
+		                                        .build();
 	}
 }

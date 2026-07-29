@@ -1,12 +1,16 @@
 package dev.suprim.gateway.provider.codex;
 
+import dev.suprim.gateway.logging.LogTag;
+import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.Message;
 import dev.suprim.gateway.proxy.Tool;
+import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -15,11 +19,34 @@ import java.util.Optional;
  * Chat Completions shape → Responses API request body for Codex upstream.
  * Assistant tool_calls become function_call items; tool role becomes function_call_output.
  */
+@Slf4j
 final class CodexRequestConverter {
 
 	private static final JsonMapper MAPPER = new JsonMapper();
 
 	private CodexRequestConverter() {}
+
+	static ObjectNode toPayload(String model, InternalRequest request) {
+		ObjectNode root = toPayload(
+				model,
+				request.messages(),
+				request.tools(),
+				true,
+				request.clientSessionId()
+		);
+		if (request.temperature() != null) {
+			root.put("temperature", request.temperature());
+		}
+		if (request.maxTokens() != null) {
+			log.warn(
+					LogTag.CODEX + "Ignoring output limit {}: Codex does not support an output cap",
+					request.maxTokens()
+			);
+		}
+		mapSamplingToReasoning(root);
+		logToolResults(request.messages());
+		return root;
+	}
 
 	static ObjectNode toPayload(
 			String model,
@@ -166,6 +193,57 @@ final class CodexRequestConverter {
 		item.put("type", "message");
 		item.put("role", role);
 		item.put("content", Optional.ofNullable(text).orElse(""));
+	}
+
+	/**
+	 * The ChatGPT Codex backend rejects sampling and output-cap fields supported by
+	 * public OpenAI APIs. Temperature is mapped to a catalog-supported reasoning
+	 * effort before those fields are removed.
+	 */
+	private static void mapSamplingToReasoning(ObjectNode node) {
+		if (!node.has("reasoning") && node.has("temperature")) {
+			double temperature = node.get("temperature").asDouble(1.0);
+			String effort;
+			if (temperature <= 0.3) {
+				effort = "high";
+			} else if (temperature <= 0.7) {
+				effort = "medium";
+			} else {
+				effort = "low";
+			}
+			node.putObject("reasoning").put("effort", effort);
+		}
+		node.remove("temperature");
+		node.remove("top_p");
+		node.remove("frequency_penalty");
+		node.remove("presence_penalty");
+		node.remove("logit_bias");
+		node.remove("logprobs");
+		node.remove("top_logprobs");
+		node.remove("n");
+		node.remove("max_tokens");
+		node.remove("max_completion_tokens");
+		node.remove("max_output_tokens");
+		node.remove("thinking");
+	}
+
+	private static void logToolResults(List<Message> messages) {
+		if (messages == null || !log.isDebugEnabled()) {
+			return;
+		}
+		for (Message message : messages) {
+			if (message != null && "tool".equals(message.role())) {
+				log.debug(
+						LogTag.CODEX + "Tool result: callId={} resultBytes={} error={}",
+						message.toolCallId(), utf8Length(message.content()),
+						Boolean.TRUE.equals(message.toolError())
+				);
+			}
+		}
+	}
+
+	private static int utf8Length(Object value) {
+		return value == null ? 0 : value.toString().getBytes(StandardCharsets.UTF_8).length;
 	}
 
 	private static String contentAsString(Object content) {

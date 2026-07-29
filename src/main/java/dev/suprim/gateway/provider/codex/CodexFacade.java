@@ -1,8 +1,6 @@
 package dev.suprim.gateway.provider.codex;
 
 import dev.suprim.gateway.logging.LogTag;
-import dev.suprim.gateway.logging.RequestLogEvent;
-import dev.suprim.gateway.logging.RequestLogPublisher;
 import dev.suprim.gateway.provider.AccountCooldown;
 import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
@@ -10,26 +8,18 @@ import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
-import dev.suprim.gateway.proxy.Message;
 import dev.suprim.gateway.proxy.ProxyChain;
-import dev.suprim.gateway.proxy.StreamConverter;
-import dev.suprim.gateway.proxy.StreamingEventWriter;
-import dev.suprim.gateway.proxy.kiro.KiroEvent;
 import dev.suprim.gateway.utils.ErrorResponse;
-
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ObjectNode;
 
-import java.io.*;
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 @Slf4j
@@ -39,11 +29,11 @@ public class CodexFacade {
 
 	private static final JsonMapper MAPPER = new JsonMapper();
 	private final CodexAuthManager authManager;
-	private final RequestLogPublisher logPublisher;
 	private final AccountRotator accountRotator;
 	private final CredentialStore credentialStore;
 	private final ProxyChain proxyChain;
 	private final AccountCooldown accountCooldown;
+	private final CodexResponseRelay responseRelay;
 
 	public void handle(
 			InternalRequest request,
@@ -70,43 +60,25 @@ public class CodexFacade {
 
 		long startTime = System.currentTimeMillis();
 		int maxAttempts = accounts.size();
-
-		String clientSessionId = request.clientSessionId();
-		ObjectNode payloadNode = CodexRequestConverter.toPayload(
-				model,
-				request.messages(),
-				request.tools(),
-				true,
-				clientSessionId
+		String payload = MAPPER.writeValueAsString(
+				CodexRequestConverter.toPayload(model, request)
 		);
-		if (request.temperature() != null) {
-			payloadNode.put("temperature", request.temperature());
-		}
-		if (request.maxTokens() != null) {
-			log.warn(
-					LogTag.CODEX + "Ignoring output limit {}: Codex does not support an output cap",
-					request.maxTokens()
-			);
-		}
-		mapSamplingToReasoning(payloadNode);
-		logToolResults(request.messages());
-		String payload = MAPPER.writeValueAsString(payloadNode);
 
 		Set<String> attemptedAccounts = new HashSet<>();
 		for (int attempt = 0; attempt < maxAttempts; attempt++) {
 			StoredAccount account = accountRotator.next(Provider.CODEX.name());
 			String accountKey = accountCooldown.accountKey(account);
-			if (!attemptedAccounts.add(accountKey) || accountCooldown.isCoolingDown(account)) {
+			if (!attemptedAccounts.add(accountKey) ||
+			    accountCooldown.isCoolingDown(account)) {
 				continue;
 			}
 			String accessToken;
 			try {
 				accessToken = authManager.getAccessToken(account);
-			} catch (Exception e) {
+			} catch (Exception exception) {
 				log.error(
 						LogTag.CODEX + "Auth failed for {}: {}",
-						account.name(),
-						e.getMessage()
+						account.name(), exception.getMessage()
 				);
 				continue;
 			}
@@ -123,10 +95,10 @@ public class CodexFacade {
 						accessToken,
 						proxyChain
 				);
-			} catch (IOException e) {
+			} catch (IOException exception) {
 				log.warn(
 						LogTag.CODEX + "Upstream request failed: {}",
-						e.getMessage()
+						exception.getMessage()
 				);
 				ErrorResponse.openAi(
 						httpRes,
@@ -145,45 +117,54 @@ public class CodexFacade {
 				accountCooldown.coolDown(account);
 				log.warn(
 						LogTag.CODEX + "Account {} got {}, cooling down for {}",
-						account.name(), response.status(), AccountCooldown.duration()
+						account.name(),
+						response.status(),
+						AccountCooldown.duration()
 				);
-				try (InputStream is = response.body()) {
-					is.readAllBytes();
+				try (InputStream input = response.body()) {
+					input.readAllBytes();
 				}
 				continue;
 			}
-
 			if (response.status() == 401) {
 				log.warn(
-						LogTag.CODEX + "Account {} unauthorized, trying next account",
+						LogTag.CODEX +
+						"Account {} unauthorized, trying next account",
 						account.name()
 				);
-				try (InputStream is = response.body()) {
-					is.readAllBytes();
+				try (InputStream input = response.body()) {
+					input.readAllBytes();
 				}
 				continue;
 			}
 
+			CodexResponseRelay.Call call =
+					CodexResponseRelay.Call.builder()
+					                       .accountName(account.name())
+					                       .model(model)
+					                       .inputTokens(inputTokens)
+					                       .keyId(keyId)
+					                       .clientIp(clientIp)
+					                       .startTime(startTime)
+					                       .format(format)
+					                       .requestThinkingEnabled(
+							                       request.thinkingEnabled()
+					                       )
+					                       .httpRes(httpRes)
+					                       .build();
 			if (response.status() != 200) {
-				handleError(
-						response, account.name(), model, inputTokens,
-						keyId, clientIp, startTime, httpRes
-				);
+				responseRelay.handleError(response, call);
 				return;
 			}
 
-			// Codex upstream returns Responses API SSE
 			try {
-				relayUpstream(
-						response, account.name(), model, inputTokens,
-						keyId, clientIp, startTime, format,
-						request.thinkingEnabled(), httpRes
-				);
+				responseRelay.relay(response, call);
 				return;
-			} catch (ServerOverloadedException e) {
+			} catch (CodexResponseRelay.ServerOverloadedException exception) {
 				accountCooldown.coolDown(account);
 				log.warn(
-						LogTag.CODEX + "Account {} server overloaded, trying another account",
+						LogTag.CODEX +
+						"Account {} server overloaded, trying another account",
 						account.name()
 				);
 			}
@@ -195,423 +176,5 @@ public class CodexFacade {
 				"All accounts rate-limited",
 				"rate_limit_exhausted"
 		);
-	}
-
-	private void handleError(
-			CodexHttpClient.CodexResponse response,
-			String accountName,
-			String model,
-			int inputTokens,
-			String keyId,
-			String clientIp,
-			long startTime,
-			HttpServletResponse httpRes
-	) throws Exception {
-		String body;
-		try (InputStream is = response.body()) {
-			body = new String(is.readAllBytes());
-		}
-		log.error(
-				LogTag.CODEX + "Upstream {} body: {}", response.status(),
-				body.length() > 500 ? body.substring(0, 500) : body
-		);
-
-		int latency = (int) (System.currentTimeMillis() - startTime);
-		logPublisher.publish(
-				RequestLogEvent.builder()
-				               .virtualKeyId(keyId)
-				               .accountId(accountName)
-				               .model(model)
-				               .requestedModel(model)
-				               .status(response.status())
-				               .promptTokens(inputTokens)
-				               .latencyMs(latency)
-				               .streaming(false)
-				               .clientIp(clientIp)
-				               .errorMessage(
-						               body.length() > 200 ? body.substring(
-								               0,
-								               200
-						               ) : body)
-				               .build()
-		);
-
-		ErrorResponse.openAi(
-				httpRes,
-				response.status(),
-				"Codex upstream error",
-				"upstream_error"
-		);
-	}
-
-	private void relayUpstream(
-			CodexHttpClient.CodexResponse response,
-			String accountName,
-			String model,
-			int inputTokens,
-			String keyId,
-			String clientIp,
-			long startTime,
-			Format format,
-			boolean requestThinkingEnabled,
-			HttpServletResponse httpRes
-	) throws Exception {
-		if (format == Format.RESPONSES) {
-			// Client wants Responses API format — pass-through as-is
-			passThrough(
-					response,
-					accountName,
-					model,
-					inputTokens,
-					keyId,
-					clientIp,
-					startTime,
-					httpRes
-			);
-			return;
-		}
-
-		// COMPLETION or ANTHROPIC — parse Responses API SSE and convert
-		try (
-				BufferedReader reader =
-						new BufferedReader(new InputStreamReader(response.body()))
-		) {
-			String firstData = readFirstData(reader);
-			if (firstData == null) {
-				handleEmptyStream(
-						accountName,
-						model,
-						inputTokens,
-						keyId,
-						clientIp,
-						startTime,
-						httpRes
-				);
-				return;
-			}
-
-			httpRes.setCharacterEncoding("UTF-8");
-			httpRes.setContentType("text/event-stream; charset=utf-8");
-			httpRes.setHeader("Cache-Control", "no-cache");
-			PrintWriter writer = httpRes.getWriter();
-
-			boolean thinkingEnabled =
-					format != Format.ANTHROPIC || requestThinkingEnabled;
-			StreamConverter converter = new StreamConverter();
-			StreamingEventWriter eventWriter = null;
-
-			Long firstTokenMs = null;
-			int outputTokens = 0;
-			int upstreamEventCount = 0;
-			int mappedEventCount = 0;
-			String data = firstData;
-			do {
-				JsonNode node = MAPPER.readTree(data);
-				String upstreamType = node.path("type").asString("unknown");
-				upstreamEventCount++;
-				Optional<String> failure = CodexSseMapper.failureMessage(node);
-				if (failure.isPresent()) {
-					log.error(LogTag.CODEX + "SSE stream failed: {}", failure.get());
-					if (eventWriter == null && failure.get().startsWith("server_is_overloaded:")) {
-						throw new ServerOverloadedException();
-					}
-					if (eventWriter == null) {
-						handleStreamFailure(httpRes, format, failure.get());
-						return;
-					}
-					break;
-				}
-				Optional<KiroEvent> event = CodexSseMapper.toEvent(node);
-				if (event.isPresent()) {
-					mappedEventCount++;
-					KiroEvent mappedEvent = event.get();
-					if ("tool_use".equals(mappedEvent.type())) {
-						log.debug(
-								LogTag.CODEX + "Tool call: name={} callId={} argumentBytes={}",
-								mappedEvent.toolName(), mappedEvent.toolUseId(),
-								utf8Length(mappedEvent.toolInput())
-						);
-					} else {
-						log.debug(
-								LogTag.CODEX + "SSE event type={} mapped={}",
-								upstreamType, mappedEvent.type()
-						);
-					}
-					if (eventWriter == null) {
-						httpRes.setCharacterEncoding("UTF-8");
-						httpRes.setContentType("text/event-stream; charset=utf-8");
-						httpRes.setHeader("Cache-Control", "no-cache");
-						eventWriter = new StreamingEventWriter(
-								httpRes.getWriter(), converter, format, model,
-								thinkingEnabled, inputTokens
-						);
-					}
-					if (firstTokenMs == null) {
-						firstTokenMs = System.currentTimeMillis() - startTime;
-					}
-					eventWriter.write(mappedEvent);
-				}
-				Optional<Integer> outTok = CodexSseMapper.usageOutputTokens(node);
-				if (outTok.isPresent()) {
-					outputTokens = outTok.get();
-				}
-				Optional<Integer> inTok = CodexSseMapper.usageInputTokens(node);
-				if (inTok.isPresent()) {
-					inputTokens = inTok.get();
-				}
-			} while ((data = readFirstData(reader)) != null);
-
-			if (eventWriter == null) {
-				log.error(LogTag.CODEX + "SSE stream completed without usable output");
-				handleStreamFailure(httpRes, format, null);
-				return;
-			}
-			log.info(
-					LogTag.CODEX + "SSE summary: upstreamEvents={} mappedEvents={} hasOutput={} hasContent={} outputTokens={}",
-					upstreamEventCount,
-					mappedEventCount,
-					eventWriter.hasOutput(),
-					eventWriter.hasContent(),
-					outputTokens
-			);
-			eventWriter.finish(outputTokens);
-
-			int latency = (int) (System.currentTimeMillis() - startTime);
-			logPublisher.publish(
-					RequestLogEvent.builder()
-					               .virtualKeyId(keyId)
-					               .accountId(accountName)
-					               .model(model)
-					               .requestedModel(model)
-					               .status(200)
-					               .promptTokens(inputTokens)
-					               .completionTokens(outputTokens)
-					               .latencyMs(latency)
-					               .firstTokenMs(
-							               Optional.ofNullable(firstTokenMs)
-							                       .map(Long::intValue)
-							                       .orElse(null)
-					               )
-					               .streaming(true)
-					               .clientIp(clientIp)
-					               .build()
-			);
-		}
-	}
-
-	private void logToolResults(List<Message> messages) {
-		if (messages == null || !log.isDebugEnabled()) {
-			return;
-		}
-		for (Message message : messages) {
-			if (message != null && "tool".equals(message.role())) {
-				log.debug(
-						LogTag.CODEX + "Tool result: callId={} resultBytes={} error={}",
-						message.toolCallId(), utf8Length(message.content()),
-						Boolean.TRUE.equals(message.toolError())
-				);
-			}
-		}
-	}
-
-	private int utf8Length(Object value) {
-		return value == null ? 0 : value.toString().getBytes(StandardCharsets.UTF_8).length;
-	}
-
-	private static final class ServerOverloadedException extends Exception {
-	}
-
-	private void handleStreamFailure(
-			HttpServletResponse httpRes,
-			Format format,
-			String failure
-	) throws IOException {
-		boolean contextLengthExceeded = failure != null &&
-		                              failure.startsWith("context_length_exceeded:");
-		int status = contextLengthExceeded ? 400 : 502;
-		String message = contextLengthExceeded
-		                 ? "Your input exceeds the context window of this model."
-		                 : "Codex upstream stream failed";
-		if (format == Format.ANTHROPIC) {
-			ErrorResponse.anthropic(
-					httpRes,
-					status,
-					message,
-					contextLengthExceeded ? "invalid_request_error" : "api_error"
-			);
-		} else {
-			ErrorResponse.openAi(
-					httpRes,
-					status,
-					message,
-					contextLengthExceeded ? "invalid_request_error" : "upstream_error"
-			);
-		}
-	}
-
-	private String readFirstData(BufferedReader reader) throws IOException {
-		String line;
-		while ((line = reader.readLine()) != null) {
-			if (!line.startsWith("data: ")) {
-				continue;
-			}
-			String data = line.substring(6).trim();
-			if (!data.isEmpty() && !"[DONE]".equals(data)) {
-				return data;
-			}
-		}
-		return null;
-	}
-
-	private String readFirstSseLine(BufferedReader reader) throws IOException {
-		String line;
-		while ((line = reader.readLine()) != null) {
-			if (line.startsWith("event:") || line.startsWith("data:")) {
-				return line;
-			}
-		}
-		return null;
-	}
-
-	private void handleEmptyStream(
-			String accountName,
-			String model,
-			int inputTokens,
-			String keyId,
-			String clientIp,
-			long startTime,
-			HttpServletResponse httpRes
-	) throws IOException {
-		int latency = (int) (System.currentTimeMillis() - startTime);
-		String message = "Codex upstream returned an empty SSE stream";
-		log.error(LogTag.CODEX + "{}", message);
-		logPublisher.publish(
-				RequestLogEvent.builder()
-				               .virtualKeyId(keyId)
-				               .accountId(accountName)
-				               .model(model)
-				               .requestedModel(model)
-				               .status(502)
-				               .promptTokens(inputTokens)
-				               .latencyMs(latency)
-				               .streaming(true)
-				               .clientIp(clientIp)
-				               .errorMessage(message)
-				               .build()
-		);
-		ErrorResponse.openAi(httpRes, 502, message, "upstream_empty_response");
-	}
-
-	private void passThrough(
-			CodexHttpClient.CodexResponse response,
-			String accountName,
-			String model,
-			int inputTokens,
-			String keyId,
-			String clientIp,
-			long startTime,
-			HttpServletResponse httpRes
-	) throws Exception {
-		try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-				response.body()))) {
-			String firstLine = readFirstSseLine(reader);
-			if (firstLine == null) {
-				handleEmptyStream(
-						accountName,
-						model,
-						inputTokens,
-						keyId,
-						clientIp,
-						startTime,
-						httpRes
-				);
-				return;
-			}
-
-			httpRes.setCharacterEncoding("UTF-8");
-			httpRes.setContentType("text/event-stream; charset=utf-8");
-			httpRes.setHeader("Cache-Control", "no-cache");
-			PrintWriter writer = httpRes.getWriter();
-			long firstTokenMs = System.currentTimeMillis() - startTime;
-			writer.write(firstLine);
-			writer.write("\n");
-
-			String line;
-			while ((line = reader.readLine()) != null) {
-				writer.write(line);
-				writer.write("\n");
-				if (line.isEmpty()) {
-					writer.flush();
-				}
-			}
-			writer.flush();
-
-			int latency = (int) (System.currentTimeMillis() - startTime);
-			logPublisher.publish(
-					RequestLogEvent.builder()
-					               .virtualKeyId(keyId)
-					               .accountId(accountName)
-					               .model(model)
-					               .requestedModel(model)
-					               .status(200)
-					               .promptTokens(inputTokens)
-					               .latencyMs(latency)
-					               .firstTokenMs((int) firstTokenMs)
-					               .streaming(true)
-					               .clientIp(clientIp)
-					               .build()
-			);
-		}
-	}
-
-	/**
-	 * GPT-5 series doesn't support sampling params (temperature, top_p, etc).
-	 * Maps temperature → reasoning.effort, then strips unsupported fields.
-	 * <p>
-	 * temperature → reasoning.effort mapping:
-	 * [0.0, 0.3] → "high"
-	 * (0.3, 0.7] → "medium"
-	 * (1.0, 2.0] → "low"
-	 * <p>
-	 * The upstream model catalog declares only low, medium, high, xhigh, max
-	 * and ultra. {@code minimal} exists in the client's effort enum but no
-	 * gpt-5.x entry lists it as supported, so the lowest safe floor is
-	 * {@code low} rather than a level the backend may reject.
-	 * <p>
-	 * Output length caps are dropped: the ChatGPT subscription backend
-	 * ({@code chatgpt.com/backend-api/codex/responses}) rejects
-	 * {@code max_output_tokens} with HTTP 400 and accepts no known
-	 * equivalent, unlike the public Responses API which does support it.
-	 *
-	 * @see <a href="https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_new_params_and_tools">GPT-5 New Params and Tools</a>
-	 * @see <a href="https://developers.openai.com/api/docs/guides/deployment-checklist">API Deployment Checklist — reasoning.effort values</a>
-	 * @see <a href="https://help.openai.com/en/articles/5072518">Controlling the length of OpenAI model responses (public Responses API)</a>
-	 */
-	private static void mapSamplingToReasoning(ObjectNode node) {
-		if (!node.has("reasoning") && node.has("temperature")) {
-			double temp = node.get("temperature").asDouble(1.0);
-			String effort;
-			if (temp <= 0.3) {
-				effort = "high";
-			} else if (temp <= 0.7) {
-				effort = "medium";
-			} else {
-				effort = "low";
-			}
-			ObjectNode reasoning = node.putObject("reasoning");
-			reasoning.put("effort", effort);
-		}
-		node.remove("temperature");
-		node.remove("top_p");
-		node.remove("frequency_penalty");
-		node.remove("presence_penalty");
-		node.remove("logit_bias");
-		node.remove("logprobs");
-		node.remove("top_logprobs");
-		node.remove("n");
-		node.remove("max_tokens");
-		node.remove("max_completion_tokens");
-		node.remove("max_output_tokens");
-		node.remove("thinking"); // Anthropic-only; Codex uses reasoning.effort
 	}
 }
