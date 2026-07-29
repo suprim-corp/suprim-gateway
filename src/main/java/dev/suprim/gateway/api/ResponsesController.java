@@ -72,6 +72,7 @@ class ResponsesController {
 				               .tools(tools)
 				               .temperature(request.temperature())
 				               .maxTokens(request.maxOutputTokens())
+				               .clientSessionId(resolveClientSessionId(request, httpReq))
 				               .build();
 
 		providerDispatcher.resolve(provider)
@@ -85,5 +86,18 @@ class ResponsesController {
 				                  Format.RESPONSES,
 				                  httpRes
 		                  );
+	}
+
+	private static String resolveClientSessionId(
+			ResponsesRequest request,
+			HttpServletRequest httpReq
+	) {
+		if (request.metadata() != null) {
+			String sessionId = request.metadata().get("session_id");
+			if (sessionId != null && !sessionId.isBlank()) {
+				return sessionId.trim();
+			}
+		}
+		return RequestContext.clientSessionId(httpReq);
 	}
 }

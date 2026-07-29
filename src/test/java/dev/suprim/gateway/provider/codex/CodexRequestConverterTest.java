@@ -89,6 +89,44 @@ class CodexRequestConverterTest {
 	}
 
 	@Test
+	void payloadCarriesExplicitCacheIdentityOnly() {
+		ObjectNode identified = CodexRequestConverter.toPayload(
+				"gpt", List.of(Message.of("user", "hi")), List.of(), true, " session-1 "
+		);
+		ObjectNode anonymous = CodexRequestConverter.toPayload(
+				"gpt", List.of(Message.of("user", "hi")), List.of(), true
+		);
+
+		assertEquals("session-1", identified.get("prompt_cache_key").asString());
+		assertFalse(anonymous.has("prompt_cache_key"));
+		assertEquals(false, identified.get("store").asBoolean());
+	}
+
+	@Test
+	void malformedToolsAreRemoved() {
+		Tool unsupported = Tool.builder()
+		                       .type("computer")
+		                       .function(Tool.Function.builder().name("computer").build())
+		                       .build();
+		Tool malformed = Tool.builder()
+		                     .type("function")
+		                     .function(Tool.Function.builder()
+		                                            .name("broken")
+		                                            .parameters(MAPPER.createArrayNode())
+		                                            .build())
+		                     .build();
+		Tool valid = Tool.builder()
+		                 .type("function")
+		                 .function(Tool.Function.builder().name("valid").build())
+		                 .build();
+
+		ArrayNode tools = CodexRequestConverter.toTools(List.of(unsupported, malformed, valid));
+
+		assertEquals(1, tools.size());
+		assertEquals("valid", tools.get(0).get("name").asString());
+	}
+
+	@Test
 	void payloadHasNoThinkingOrMessages() {
 		ObjectNode payload = CodexRequestConverter.toPayload(
 				"gpt-5.6-terra",

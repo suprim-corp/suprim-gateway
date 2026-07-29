@@ -78,6 +78,7 @@ class MessagesController {
 				                                 .stream(request.stream())
 				                                 .tools(tools)
 				                                 .thinking(thinking)
+				                                 .clientSessionId(RequestContext.clientSessionId(httpReq))
 				                                 .build(),
 				                  actualModel,
 				                  request.stream(),

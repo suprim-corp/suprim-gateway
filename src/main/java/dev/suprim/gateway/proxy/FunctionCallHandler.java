@@ -50,10 +50,15 @@ final class FunctionCallHandler {
 		String callId = Optional.ofNullable(m.get("call_id"))
 		                        .map(Object::toString)
 		                        .orElse("");
+		Boolean toolError = Optional.ofNullable(m.get("status"))
+		                            .map(Object::toString)
+		                            .map("error"::equalsIgnoreCase)
+		                            .orElse(null);
 		return Message.builder()
 		              .role("tool")
 		              .content(content)
 		              .toolCallId(callId)
+		              .toolError(toolError)
 		              .build();
 	}
 

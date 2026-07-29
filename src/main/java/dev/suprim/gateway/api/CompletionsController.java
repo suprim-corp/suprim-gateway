@@ -93,6 +93,7 @@ class CompletionsController {
 				               .tools(tools)
 				               .temperature(request.temperature())
 				               .maxTokens(request.maxTokens())
+				               .clientSessionId(RequestContext.clientSessionId(httpReq))
 				               .build();
 
 		providerDispatcher.resolve(provider).handle(

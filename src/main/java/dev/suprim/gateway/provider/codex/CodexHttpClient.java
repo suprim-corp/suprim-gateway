@@ -105,6 +105,25 @@ public class CodexHttpClient {
 			String accessToken,
 			ProxyChain proxyChain
 	) throws IOException {
+		String sessionId = null;
+		try {
+			JsonNode payloadNode = MAPPER.readTree(payload);
+			JsonNode cacheKey = payloadNode.get("prompt_cache_key");
+			if (cacheKey != null && cacheKey.isString()) {
+				sessionId = cacheKey.asString();
+			}
+		} catch (Exception ignored) {
+			// The payload is constructed locally; omit identity if it cannot be read.
+		}
+		return call(payload, accessToken, proxyChain, sessionId);
+	}
+
+	static CodexResponse call(
+			String payload,
+			String accessToken,
+			ProxyChain proxyChain,
+			String clientSessionId
+	) throws IOException {
 		String url = Codex.API_BASE + "/responses";
 
 		for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -119,6 +138,9 @@ public class CodexHttpClient {
 								           )
 						           );
 				CodexHeaders.apply(builder, accessToken);
+				if (clientSessionId != null && !clientSessionId.isBlank()) {
+					builder.header("session_id", clientSessionId.trim());
+				}
 				HttpRequest request = builder.build();
 
 				HttpResponse<InputStream> response = resolveClient(proxyChain).send(

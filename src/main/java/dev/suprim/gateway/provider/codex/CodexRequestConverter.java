@@ -25,12 +25,16 @@ final class CodexRequestConverter {
 			String model,
 			List<Message> messages,
 			List<Tool> tools,
-			boolean stream
+			boolean stream,
+			String clientSessionId
 	) {
 		ObjectNode root = MAPPER.createObjectNode();
 		root.put("model", model);
 		root.put("store", false);
 		root.put("stream", stream);
+		if (clientSessionId != null && !clientSessionId.isBlank()) {
+			root.put("prompt_cache_key", clientSessionId.trim());
+		}
 
 		StringBuilder instructions = new StringBuilder();
 		root.set("input", toInput(messages, instructions));
@@ -41,6 +45,15 @@ final class CodexRequestConverter {
 			root.set("tools", toTools(tools));
 		}
 		return root;
+	}
+
+	static ObjectNode toPayload(
+			String model,
+			List<Message> messages,
+			List<Tool> tools,
+			boolean stream
+	) {
+		return toPayload(model, messages, tools, stream, null);
 	}
 
 	static ArrayNode toInput(List<Message> messages) {
@@ -98,8 +111,6 @@ final class CodexRequestConverter {
 					fc.put("type", "function_call");
 					String callId = Optional.ofNullable(tc.id()).orElse("");
 					fc.put("call_id", callId);
-					Optional.ofNullable(tc.id())
-					        .ifPresent(id -> fc.put("id", "fc_" + id));
 					Message.Function fn = tc.function();
 					fc.put(
 							"name",
@@ -126,13 +137,17 @@ final class CodexRequestConverter {
 	static ArrayNode toTools(List<Tool> tools) {
 		ArrayNode arr = MAPPER.createArrayNode();
 		for (Tool tool : tools) {
-			if (tool == null || tool.function() == null) {
+			if (tool == null || !"function".equals(tool.type()) || tool.function() == null ||
+			    tool.function().name() == null || tool.function().name().isBlank()) {
 				continue;
 			}
 			Tool.Function fn = tool.function();
+			if (fn.parameters() != null && !fn.parameters().isObject()) {
+				continue;
+			}
 			ObjectNode t = arr.addObject();
 			t.put("type", "function");
-			Optional.ofNullable(fn.name()).ifPresent(v -> t.put("name", v));
+			t.put("name", fn.name());
 			Optional.ofNullable(fn.description())
 			        .ifPresent(v -> t.put("description", v));
 			Optional.ofNullable(fn.parameters())

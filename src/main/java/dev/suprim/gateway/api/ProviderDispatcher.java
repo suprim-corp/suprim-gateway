@@ -6,6 +6,7 @@ import dev.suprim.gateway.provider.deepseek.DeepSeekFacade;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.xai.XaiFacade;
 import dev.suprim.gateway.proxy.kiro.KiroFacade;
+import dev.suprim.gateway.proxy.token.RequestOptimizer;
 
 import org.springframework.stereotype.Component;
 
@@ -21,16 +22,29 @@ class ProviderDispatcher {
 			XaiFacade xaiFacade,
 			CodexFacade codexFacade,
 			KiroFacade kiroFacade,
-			DeepSeekFacade deepSeekFacade
+			DeepSeekFacade deepSeekFacade,
+			RequestOptimizer requestOptimizer
 	) {
 		handlers = Map.of(
-				Provider.KIRO, kiroFacade::handle,
-				Provider.ANTIGRAVITY, antigravityFacade::handle,
+				Provider.KIRO, optimized(Provider.KIRO, kiroFacade::handle, requestOptimizer),
+				Provider.ANTIGRAVITY, optimized(Provider.ANTIGRAVITY, antigravityFacade::handle, requestOptimizer),
 				Provider.GROK, xaiFacade::handle,
 				Provider.XAI, xaiFacade::handle,
-				Provider.CODEX, codexFacade::handle,
+				Provider.CODEX, optimized(Provider.CODEX, codexFacade::handle, requestOptimizer),
 				Provider.DEEPSEEK, deepSeekFacade::handle
 		);
+	}
+
+	private static ProviderHandler optimized(
+			Provider provider,
+			ProviderHandler handler,
+			RequestOptimizer requestOptimizer
+	) {
+		return (request, model, stream, inputTokens, keyId, clientIp, format, httpRes) ->
+				handler.handle(
+						requestOptimizer.optimize(provider, request).request(), model, stream,
+						inputTokens, keyId, clientIp, format, httpRes
+				);
 	}
 
 	ProviderHandler resolve(Provider provider) {

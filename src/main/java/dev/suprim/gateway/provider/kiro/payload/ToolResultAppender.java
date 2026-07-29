@@ -9,8 +9,6 @@ import java.util.Optional;
 
 final class ToolResultAppender {
 
-	private static final int MAX_CONTENT_LEN = 4000;
-
 	private ToolResultAppender() {}
 
 	static void appendResult(ArrayNode resultsNode, Message toolResult) {
@@ -21,17 +19,10 @@ final class ToolResultAppender {
 		);
 		ArrayNode contentArr = resultObj.putArray("content");
 		ObjectNode textObj = contentArr.addObject();
-		textObj.put("text", truncate(ContentExtractor.fromMessage(toolResult)));
-		resultObj.put("status", "success");
-	}
-
-	static String truncate(String s) {
-		if (s == null) {
-			return "";
-		}
-		return s.length() <= MAX_CONTENT_LEN ? s : s.substring(
-				0,
-				MAX_CONTENT_LEN
+		textObj.put("text", ContentExtractor.fromMessage(toolResult));
+		resultObj.put(
+				"status",
+				Boolean.TRUE.equals(toolResult.toolError()) ? "error" : "success"
 		);
 	}
 }
