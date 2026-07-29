@@ -1,6 +1,7 @@
 package dev.suprim.gateway.api;
 
 import dev.suprim.gateway.api.request.ResponsesRequest;
+import dev.suprim.gateway.logging.RequestLogCall;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.model.ModelRouter;
 import dev.suprim.gateway.proxy.*;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @RequiredArgsConstructor
 @RestController
@@ -34,7 +36,9 @@ class ResponsesController {
 			HttpServletRequest httpReq, HttpServletResponse httpRes
 	) throws Exception {
 		VirtualKey key = RequestContext.resolveKey();
-		String keyId = key != null ? key.id() : null;
+		String keyId = Optional.ofNullable(key)
+		                       .map(VirtualKey::id)
+		                       .orElse(null);
 
 		if (key != null && !rateLimiter.isAllowed(
 				key.id(),
@@ -72,20 +76,28 @@ class ResponsesController {
 				               .tools(tools)
 				               .temperature(request.temperature())
 				               .maxTokens(request.maxOutputTokens())
-				               .clientSessionId(resolveClientSessionId(request, httpReq))
+				               .clientSessionId(
+						               resolveClientSessionId(
+								               request,
+								               httpReq
+						               )
+				               )
 				               .build();
 
-		providerDispatcher.resolve(provider)
-		                  .handle(
-				                  openAiReq,
-				                  actualModel,
-				                  stream,
-				                  inputTokens,
-				                  keyId,
-				                  RequestContext.clientIp(httpReq),
-				                  Format.RESPONSES,
-				                  httpRes
-		                  );
+		String clientIp = RequestContext.clientIp(httpReq);
+		providerDispatcher.dispatch(
+				provider,
+				openAiReq,
+				RequestLogCall.start(
+						actualModel,
+						stream,
+						inputTokens,
+						keyId,
+						clientIp,
+						Format.RESPONSES
+				),
+				httpRes
+		);
 	}
 
 	private static String resolveClientSessionId(

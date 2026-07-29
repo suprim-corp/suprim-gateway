@@ -1,8 +1,8 @@
 package dev.suprim.gateway.provider.antigravity;
 
 import dev.suprim.gateway.logging.LogTag;
-import dev.suprim.gateway.logging.RequestLogEvent;
-import dev.suprim.gateway.logging.RequestLogPublisher;
+import dev.suprim.gateway.logging.ProviderOutcome;
+import dev.suprim.gateway.logging.RequestLogCall;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
@@ -38,8 +38,8 @@ public class AntigravityFacade {
 	 */
 	private static final Map<String, String> THOUGHT_SIGNATURES = new ConcurrentHashMap<>();
 
-	private final RequestLogPublisher logPublisher;
 	private final StreamConverter streamConverter;
+
 	private final CredentialStore credentialStore;
 	private final AntigravityAccountAttempts accountAttempts;
 
@@ -52,31 +52,12 @@ public class AntigravityFacade {
 	private record Call(
 			String model,
 			int inputTokens,
-			String keyId,
-			String clientIp,
 			Format format,
 			long startTime,
 			HttpServletResponse httpRes
-	) {
+	) {}
 
-		int latencyMs() {
-			return (int) (System.currentTimeMillis() - startTime);
-		}
-
-		/** A log event with everything this request already knows filled in. */
-		RequestLogEvent.RequestLogEventBuilder log(String accountName, int status) {
-			return RequestLogEvent.builder()
-			                      .virtualKeyId(keyId)
-			                      .accountId(accountName)
-			                      .model(model)
-			                      .requestedModel(model)
-			                      .status(status)
-			                      .latencyMs(latencyMs())
-			                      .clientIp(clientIp);
-		}
-	}
-
-	public void handle(
+	ProviderOutcome handle(
 			InternalRequest request,
 			String model,
 			boolean stream,
@@ -86,6 +67,29 @@ public class AntigravityFacade {
 			Format format,
 			HttpServletResponse httpRes
 	) throws Exception {
+		return handle(
+				request,
+				RequestLogCall.start(
+						model,
+						stream,
+						inputTokens,
+						keyId,
+						clientIp,
+						format
+				),
+				httpRes
+		);
+	}
+
+	public ProviderOutcome handle(
+			InternalRequest request,
+			RequestLogCall requestLogCall,
+			HttpServletResponse httpRes
+	) throws Exception {
+		String model = requestLogCall.model();
+		boolean stream = requestLogCall.streaming();
+		int inputTokens = requestLogCall.estimatedInputTokens();
+		Format format = requestLogCall.format();
 		List<StoredAccount> accounts = credentialStore.findAllByProvider(
 				Provider.ANTIGRAVITY.name()
 		);
@@ -96,14 +100,12 @@ public class AntigravityFacade {
 					"Antigravity provider not connected. Visit /auth/antigravity to connect.",
 					"provider_not_connected"
 			);
-			return;
+			return ProviderOutcome.none();
 		}
 
 		Call call = Call.builder()
 		                .model(model)
 		                .inputTokens(inputTokens)
-		                .keyId(keyId)
-		                .clientIp(clientIp)
 		                .format(format)
 		                .startTime(System.currentTimeMillis())
 		                .httpRes(httpRes)
@@ -123,24 +125,32 @@ public class AntigravityFacade {
 		);
 
 		if (!outcome.succeeded()) {
-			reportFailure(outcome.failure(), call);
-			return;
+			return reportFailure(outcome.failure(), call, requestLogCall);
 		}
 
-		if (stream) {
-			handleStream(outcome.response(), outcome.accountName(), call);
-		} else {
-			handleNonStream(outcome.response(), outcome.accountName(), call);
-		}
+		return stream
+				? handleStream(
+				outcome.response(),
+				outcome.accountName(),
+				call,
+				requestLogCall
+		)
+				: handleNonStream(
+				outcome.response(),
+				outcome.accountName(),
+				call,
+				requestLogCall
+		);
 	}
 
 	/**
 	 * Reports the rotation's failure. A null {@code failure} means every account was
 	 * rate-limited, which has no specific error to relay.
 	 */
-	private void reportFailure(
+	private ProviderOutcome reportFailure(
 			AntigravityAccountAttempts.Failure failure,
-			Call call
+			Call call,
+			RequestLogCall requestLogCall
 	) throws Exception {
 		if (failure == null) {
 			ErrorResponse.openAi(
@@ -149,34 +159,20 @@ public class AntigravityFacade {
 					"All accounts rate-limited",
 					"rate_limit_exhausted"
 			);
-			return;
+			return ProviderOutcome.none();
 		}
-		handleError(failure, call);
+		return handleError(failure, call, requestLogCall);
 	}
 
-	private static String truncate(String value, int max) {
-		if (value == null) {
-			return "";
-		}
-		return value.length() > max ? value.substring(0, max) : value;
-	}
-
-	private void handleError(
+	private ProviderOutcome handleError(
 			AntigravityAccountAttempts.Failure failure,
-			Call call
+			Call call,
+			RequestLogCall requestLogCall
 	) throws Exception {
 		log.error(
 				LogTag.ANTIGRAVITY + "Upstream {} body: {}",
 				failure.status(),
 				failure.body() == null ? "" : failure.body()
-		);
-
-		logPublisher.publish(
-				call.log(failure.accountName(), failure.status())
-				    .promptTokens(call.inputTokens())
-				    .streaming(false)
-				    .errorMessage(truncate(failure.body(), 200))
-				    .build()
 		);
 
 		ErrorResponse.openAi(
@@ -185,12 +181,16 @@ public class AntigravityFacade {
 				"Antigravity upstream error",
 				"upstream_error"
 		);
+		return requestLogCall.upstreamError(
+				failure.accountName(), failure.status(), failure.body()
+		);
 	}
 
-	private void handleStream(
+	private ProviderOutcome handleStream(
 			AntigravityHttpClient.AntigravityResponse response,
 			String accountName,
-			Call call
+			Call call,
+			RequestLogCall requestLogCall
 	) throws Exception {
 		HttpServletResponse httpRes = call.httpRes();
 		httpRes.setCharacterEncoding("UTF-8");
@@ -226,7 +226,10 @@ public class AntigravityFacade {
 		);
 
 		out.finale(
-				state.fullContent.toString(), state.hasToolUse, reportedInput, reportedOutput
+				state.fullContent.toString(),
+				state.hasToolUse,
+				reportedInput,
+				reportedOutput
 		);
 
 		log.debug(
@@ -238,22 +241,15 @@ public class AntigravityFacade {
 				totals.usage()
 		);
 
-		logPublisher.publish(
-				call.log(accountName, 200)
-				    .promptTokens(reportedInput)
-				    .completionTokens(reportedOutput > 0 ? reportedOutput : null)
-				    .firstTokenMs(
-						    state.firstTokenMs != null
-								    ? state.firstTokenMs.intValue()
-								    : null
-				    )
-				    .streaming(true)
-				    .credits(billedCredits(totals))
-				    .build()
+		return requestLogCall.success(
+				accountName, reportedInput, reportedOutput, state.firstTokenMs,
+				billedCredits(totals)
 		);
 	}
 
-	/** Credits the upstream billed, or null when it billed none or reported nothing. */
+	/**
+	 * Credits the upstream billed, or null when it billed none or reported nothing.
+	 */
 	private static Double billedCredits(AntigravitySseReader.Totals totals) {
 		Double credits = totals.consumedCredits();
 		return credits != null && credits > 0 ? credits : null;
@@ -278,7 +274,9 @@ public class AntigravityFacade {
 		}
 	}
 
-	/** Relays one parsed chunk to the client and folds it into {@code state}. */
+	/**
+	 * Relays one parsed chunk to the client and folds it into {@code state}.
+	 */
 	private void relayChunk(
 			AntigravityStreamConverter.ParsedChunk parsed,
 			AntigravityResponseWriter out,
@@ -322,10 +320,11 @@ public class AntigravityFacade {
 		}
 	}
 
-	private void handleNonStream(
+	private ProviderOutcome handleNonStream(
 			AntigravityHttpClient.AntigravityResponse response,
 			String accountName,
-			Call call
+			Call call,
+			RequestLogCall requestLogCall
 	) throws Exception {
 		StringBuilder content = new StringBuilder();
 		AntigravitySseReader.Totals totals = AntigravitySseReader.read(
@@ -370,13 +369,12 @@ public class AntigravityFacade {
 				)
 		);
 
-		logPublisher.publish(
-				call.log(accountName, 200)
-				    .promptTokens(reportedInput)
-				    .completionTokens(outputTokens > 0 ? outputTokens : null)
-				    .streaming(false)
-				    .credits(billedCredits(totals))
-				    .build()
+		return requestLogCall.success(
+				accountName,
+				reportedInput,
+				outputTokens,
+				null,
+				billedCredits(totals)
 		);
 	}
 

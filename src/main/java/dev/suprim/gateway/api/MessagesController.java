@@ -1,6 +1,7 @@
 package dev.suprim.gateway.api;
 
 import dev.suprim.gateway.api.request.MessagesRequest;
+import dev.suprim.gateway.logging.RequestLogCall;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.model.ModelRouter;
 import dev.suprim.gateway.proxy.*;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RequiredArgsConstructor
 @RestController
@@ -36,7 +38,9 @@ class MessagesController {
 			HttpServletRequest httpReq, HttpServletResponse httpRes
 	) throws Exception {
 		VirtualKey key = RequestContext.resolveKey();
-		String keyId = key != null ? key.id() : null;
+		String keyId = Optional.ofNullable(key)
+		                       .map(VirtualKey::id)
+		                       .orElse(null);
 
 		if (key != null && !rateLimiter.isAllowed(
 				key.id(),
@@ -60,8 +64,8 @@ class MessagesController {
 		InternalRequest.Thinking thinking;
 		if (extra != null && extra.containsKey("thinking")) {
 			thinking = InternalRequest.Thinking.builder()
-					.type("enabled")
-					.build();
+			                                   .type("enabled")
+			                                   .build();
 			log.info(
 					"[Messages] model={} thinking=enabled",
 					actualModel
@@ -70,24 +74,33 @@ class MessagesController {
 			thinking = null;
 		}
 
-		providerDispatcher.resolve(provider)
-		                  .handle(
-				                  InternalRequest.builder()
-				                                 .model(actualModel)
-				                                 .messages(openAiMessages)
-				                                 .stream(request.stream())
-				                                 .tools(tools)
-				                                 .thinking(thinking)
-				                                 .clientSessionId(RequestContext.clientSessionId(httpReq))
-				                                 .build(),
-				                  actualModel,
-				                  request.stream(),
-				                  inputTokens,
-				                  keyId,
-				                  RequestContext.clientIp(httpReq),
-				                  Format.ANTHROPIC,
-				                  httpRes
-		                  );
+		String clientIp = RequestContext.clientIp(httpReq);
+		InternalRequest internalRequest =
+				InternalRequest.builder()
+				               .model(actualModel)
+				               .messages(openAiMessages)
+				               .stream(request.stream())
+				               .tools(tools)
+				               .thinking(thinking)
+				               .clientSessionId(
+						               RequestContext.clientSessionId(
+								               httpReq
+						               )
+				               )
+				               .build();
+		providerDispatcher.dispatch(
+				provider,
+				internalRequest,
+				RequestLogCall.start(
+						actualModel,
+						request.stream(),
+						inputTokens,
+						keyId,
+						clientIp,
+						Format.ANTHROPIC
+				),
+				httpRes
+		);
 	}
 
 	@PostMapping("/v1/messages/count_tokens")

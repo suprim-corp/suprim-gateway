@@ -1,6 +1,8 @@
 package dev.suprim.gateway.provider.codex;
 
 import dev.suprim.gateway.logging.LogTag;
+import dev.suprim.gateway.logging.ProviderOutcome;
+import dev.suprim.gateway.logging.RequestLogCall;
 import dev.suprim.gateway.provider.AccountCooldown;
 import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
@@ -35,7 +37,7 @@ public class CodexFacade {
 	private final AccountCooldown accountCooldown;
 	private final CodexResponseRelay responseRelay;
 
-	public void handle(
+	ProviderOutcome handle(
 			InternalRequest request,
 			String model,
 			boolean stream,
@@ -45,6 +47,20 @@ public class CodexFacade {
 			Format format,
 			HttpServletResponse httpRes
 	) throws Exception {
+		return handle(
+				request,
+				RequestLogCall.start(model, stream, inputTokens, keyId, clientIp, format),
+				httpRes
+		);
+	}
+
+	public ProviderOutcome handle(
+			InternalRequest request,
+			RequestLogCall requestLogCall,
+			HttpServletResponse httpRes
+	) throws Exception {
+		String model = requestLogCall.model();
+		int inputTokens = requestLogCall.estimatedInputTokens();
 		List<StoredAccount> accounts = credentialStore.findAllByProvider(
 				Provider.CODEX.name()
 		);
@@ -55,10 +71,9 @@ public class CodexFacade {
 					"Codex provider not connected. Visit /auth/codex to connect.",
 					"provider_not_connected"
 			);
-			return;
+			return ProviderOutcome.none();
 		}
 
-		long startTime = System.currentTimeMillis();
 		int maxAttempts = accounts.size();
 		String payload = MAPPER.writeValueAsString(
 				CodexRequestConverter.toPayload(model, request)
@@ -106,7 +121,7 @@ public class CodexFacade {
 						"Codex upstream unavailable",
 						"upstream_unavailable"
 				);
-				return;
+				return ProviderOutcome.none();
 			}
 			log.info(
 					LogTag.CODEX + "Upstream responded with status {}",
@@ -141,25 +156,19 @@ public class CodexFacade {
 			CodexResponseRelay.Call call =
 					CodexResponseRelay.Call.builder()
 					                       .accountName(account.name())
-					                       .model(model)
 					                       .inputTokens(inputTokens)
-					                       .keyId(keyId)
-					                       .clientIp(clientIp)
-					                       .startTime(startTime)
-					                       .format(format)
 					                       .requestThinkingEnabled(
 							                       request.thinkingEnabled()
 					                       )
 					                       .httpRes(httpRes)
+					                       .requestLogCall(requestLogCall)
 					                       .build();
 			if (response.status() != 200) {
-				responseRelay.handleError(response, call);
-				return;
+				return responseRelay.handleError(response, call);
 			}
 
 			try {
-				responseRelay.relay(response, call);
-				return;
+				return responseRelay.relay(response, call);
 			} catch (CodexResponseRelay.ServerOverloadedException exception) {
 				accountCooldown.coolDown(account);
 				log.warn(
@@ -176,5 +185,6 @@ public class CodexFacade {
 				"All accounts rate-limited",
 				"rate_limit_exhausted"
 		);
+		return ProviderOutcome.none();
 	}
 }

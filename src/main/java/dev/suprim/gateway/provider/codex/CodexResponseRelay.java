@@ -1,8 +1,8 @@
 package dev.suprim.gateway.provider.codex;
 
 import dev.suprim.gateway.logging.LogTag;
-import dev.suprim.gateway.logging.RequestLogEvent;
-import dev.suprim.gateway.logging.RequestLogPublisher;
+import dev.suprim.gateway.logging.ProviderOutcome;
+import dev.suprim.gateway.logging.RequestLogCall;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.StreamConverter;
 import dev.suprim.gateway.proxy.StreamingEventWriter;
@@ -10,7 +10,6 @@ import dev.suprim.gateway.proxy.kiro.KiroEvent;
 import dev.suprim.gateway.utils.ErrorResponse;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.Builder;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -25,42 +24,33 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 @Slf4j
-@RequiredArgsConstructor
 @Component
 class CodexResponseRelay {
 
 	private static final JsonMapper MAPPER = new JsonMapper();
-	private final RequestLogPublisher logPublisher;
 
 	@Builder
 	record Call(
 			String accountName,
-			String model,
 			int inputTokens,
-			String keyId,
-			String clientIp,
-			long startTime,
-			Format format,
 			boolean requestThinkingEnabled,
-			HttpServletResponse httpRes
+			HttpServletResponse httpRes,
+			RequestLogCall requestLogCall
 	) {
-		int latencyMs() {
-			return (int) (System.currentTimeMillis() - startTime);
+		String model() {
+			return requestLogCall.model();
 		}
 
-		RequestLogEvent.RequestLogEventBuilder log(int status) {
-			return RequestLogEvent.builder()
-			                      .virtualKeyId(keyId)
-			                      .accountId(accountName)
-			                      .model(model)
-			                      .requestedModel(model)
-			                      .status(status)
-			                      .latencyMs(latencyMs())
-			                      .clientIp(clientIp);
+		Format format() {
+			return requestLogCall.format();
+		}
+
+		long startTime() {
+			return requestLogCall.startedAt();
 		}
 	}
 
-	void handleError(CodexHttpClient.CodexResponse response, Call call) throws Exception {
+	ProviderOutcome handleError(CodexHttpClient.CodexResponse response, Call call) throws Exception {
 		String body;
 		try (InputStream input = response.body()) {
 			body = new String(input.readAllBytes(), StandardCharsets.UTF_8);
@@ -70,29 +60,23 @@ class CodexResponseRelay {
 				body.length() > 500 ? body.substring(0, 500) : body
 		);
 
-		logPublisher.publish(
-				call.log(response.status())
-			    .promptTokens(call.inputTokens())
-			    .streaming(false)
-			    .errorMessage(body.length() > 200 ? body.substring(0, 200) : body)
-			    .build()
-		);
 		ErrorResponse.openAi(
 				call.httpRes(), response.status(), "Codex upstream error", "upstream_error"
 		);
+		return call.requestLogCall().upstreamError(
+				call.accountName(), response.status(), body
+		);
 	}
 
-	void relay(CodexHttpClient.CodexResponse response, Call call) throws Exception {
+	ProviderOutcome relay(CodexHttpClient.CodexResponse response, Call call) throws Exception {
 		if (call.format() == Format.RESPONSES) {
-			passThrough(response, call);
-			return;
+			return passThrough(response, call);
 		}
 
 		try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body()))) {
 			String firstData = readFirstData(reader);
 			if (firstData == null) {
-				handleEmptyStream(call);
-				return;
+				return handleEmptyStream(call);
 			}
 
 			HttpServletResponse httpRes = call.httpRes();
@@ -121,8 +105,7 @@ class CodexResponseRelay {
 						throw new ServerOverloadedException();
 					}
 					if (eventWriter == null) {
-						handleStreamFailure(httpRes, call.format(), failure.get());
-						return;
+						return handleStreamFailure(call, failure.get());
 					}
 					break;
 				}
@@ -165,8 +148,7 @@ class CodexResponseRelay {
 
 			if (eventWriter == null) {
 				log.error(LogTag.CODEX + "SSE stream completed without usable output");
-				handleStreamFailure(httpRes, call.format(), null);
-				return;
+				return handleStreamFailure(call, null);
 			}
 			log.info(
 					LogTag.CODEX + "SSE summary: upstreamEvents={} mappedEvents={} hasOutput={} hasContent={} outputTokens={}",
@@ -174,41 +156,31 @@ class CodexResponseRelay {
 					eventWriter.hasContent(), outputTokens
 			);
 			eventWriter.finish(outputTokens);
-			logPublisher.publish(
-					call.log(200)
-					    .promptTokens(inputTokens)
-					    .completionTokens(outputTokens)
-					    .firstTokenMs(Optional.ofNullable(firstTokenMs)
-					                          .map(Long::intValue)
-					                          .orElse(null))
-					    .streaming(true)
-					    .build()
+			return call.requestLogCall().success(
+					call.accountName(), inputTokens, outputTokens, firstTokenMs, null
 			);
 		}
 	}
 
-	private void handleStreamFailure(
-			HttpServletResponse httpRes,
-			Format format,
-			String failure
-	) throws IOException {
+	private ProviderOutcome handleStreamFailure(Call call, String failure) throws IOException {
 		boolean contextLengthExceeded = failure != null &&
 		                                failure.startsWith("context_length_exceeded:");
 		int status = contextLengthExceeded ? 400 : 502;
 		String message = contextLengthExceeded
 		                 ? "Your input exceeds the context window of this model."
 		                 : "Codex upstream stream failed";
-		if (format == Format.ANTHROPIC) {
+		if (call.format() == Format.ANTHROPIC) {
 			ErrorResponse.anthropic(
-					httpRes, status, message,
+					call.httpRes(), status, message,
 					contextLengthExceeded ? "invalid_request_error" : "api_error"
 			);
 		} else {
 			ErrorResponse.openAi(
-					httpRes, status, message,
+					call.httpRes(), status, message,
 					contextLengthExceeded ? "invalid_request_error" : "upstream_error"
 			);
 		}
+		return call.requestLogCall().upstreamError(call.accountName(), status, message);
 	}
 
 	private String readFirstData(BufferedReader reader) throws IOException {
@@ -235,27 +207,20 @@ class CodexResponseRelay {
 		return null;
 	}
 
-	private void handleEmptyStream(Call call) throws IOException {
+	private ProviderOutcome handleEmptyStream(Call call) throws IOException {
 		String message = "Codex upstream returned an empty SSE stream";
 		log.error(LogTag.CODEX + "{}", message);
-		logPublisher.publish(
-				call.log(502)
-			    .promptTokens(call.inputTokens())
-			    .streaming(true)
-			    .errorMessage(message)
-			    .build()
-		);
 		ErrorResponse.openAi(
 				call.httpRes(), 502, message, "upstream_empty_response"
 		);
+		return call.requestLogCall().upstreamError(call.accountName(), 502, message);
 	}
 
-	private void passThrough(CodexHttpClient.CodexResponse response, Call call) throws Exception {
+	private ProviderOutcome passThrough(CodexHttpClient.CodexResponse response, Call call) throws Exception {
 		try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body()))) {
 			String firstLine = readFirstSseLine(reader);
 			if (firstLine == null) {
-				handleEmptyStream(call);
-				return;
+				return handleEmptyStream(call);
 			}
 
 			HttpServletResponse httpRes = call.httpRes();
@@ -276,12 +241,8 @@ class CodexResponseRelay {
 				}
 			}
 			writer.flush();
-			logPublisher.publish(
-					call.log(200)
-					    .promptTokens(call.inputTokens())
-					    .firstTokenMs((int) firstTokenMs)
-					    .streaming(true)
-					    .build()
+			return call.requestLogCall().success(
+					call.accountName(), call.inputTokens(), null, firstTokenMs, null
 			);
 		}
 	}

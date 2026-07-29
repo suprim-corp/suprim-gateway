@@ -1,5 +1,8 @@
 package dev.suprim.gateway.logging;
 
+import lombok.Builder;
+
+@Builder
 public record RequestLog(
         String id,
         String virtualKeyId,

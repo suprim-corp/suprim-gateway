@@ -3,7 +3,6 @@ package dev.suprim.gateway.provider.xai;
 import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
-import dev.suprim.gateway.logging.RequestLogPublisher;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.OpenAiRelayHandler;
 import dev.suprim.gateway.proxy.StreamConverter;
@@ -11,7 +10,6 @@ import dev.suprim.gateway.proxy.InternalRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.nio.file.Path;
@@ -36,9 +34,7 @@ class XaiFacadeTest {
 		store = new CredentialStore(storePath);
 		authManager = new XaiAuthManager(store);
 		AccountRotator rotator = new AccountRotator(store);
-		ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
-		RequestLogPublisher logPublisher = new RequestLogPublisher(eventPublisher);
-		facade = new XaiFacade(authManager, logPublisher, new OpenAiRelayHandler(new StreamConverter()), rotator, store);
+		facade = new XaiFacade(authManager, new OpenAiRelayHandler(new StreamConverter()), rotator, store);
 	}
 
 	@Test

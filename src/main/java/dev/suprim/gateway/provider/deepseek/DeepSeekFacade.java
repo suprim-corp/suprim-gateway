@@ -1,6 +1,8 @@
 package dev.suprim.gateway.provider.deepseek;
 
 import dev.suprim.gateway.logging.LogTag;
+import dev.suprim.gateway.logging.ProviderOutcome;
+import dev.suprim.gateway.logging.RequestLogCall;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.StreamConverter;
@@ -59,7 +61,7 @@ public class DeepSeekFacade {
 		) : baseUrl;
 	}
 
-	public void handle(
+	ProviderOutcome handle(
 			InternalRequest request,
 			String model,
 			boolean stream,
@@ -69,30 +71,42 @@ public class DeepSeekFacade {
 			Format format,
 			HttpServletResponse httpRes
 	) throws Exception {
+		return handle(
+				request,
+				RequestLogCall.start(model, stream, inputTokens, keyId, clientIp, format),
+				httpRes
+		);
+	}
+
+	public ProviderOutcome handle(
+			InternalRequest request,
+			RequestLogCall call,
+			HttpServletResponse httpRes
+	) throws Exception {
 		Set<String> triedAccounts = new HashSet<>();
 
 		while (true) {
 			StoredAccount account = accountPool.acquire(triedAccounts);
 			if (account == null) {
 				ErrorResponse.rateLimitOpenAi(httpRes);
-				return;
+				return ProviderOutcome.none();
 			}
 
 			try {
 				String token = authManager.getToken(account);
 				String chatSessionId = createChatSession(token);
-				boolean success = attemptCompletion(
+				Integer outputTokens = attemptCompletion(
 						request,
 						chatSessionId,
 						token,
 						account,
-						stream,
-						format,
-						model,
+						call.streaming(),
+						call.format(),
+						call.model(),
 						httpRes
 				);
-				if (success) {
-					return;
+				if (outputTokens != null) {
+					return call.success(account.name(), null, outputTokens, null, null);
 				}
 				triedAccounts.add(account.name());
 			} catch (IOException e) {
@@ -109,7 +123,7 @@ public class DeepSeekFacade {
 		}
 	}
 
-	private boolean attemptCompletion(
+	private Integer attemptCompletion(
 			InternalRequest request,
 			String chatSessionId,
 			String token,
@@ -162,11 +176,21 @@ public class DeepSeekFacade {
 					);
 				}
 			} else {
-				eventWriter.finish();
-				return true;
+				int outputTokens = countOutputTokens(result);
+				eventWriter.finish(outputTokens);
+				return outputTokens;
 			}
 		}
-		return false;
+		return null;
+	}
+
+	private static int countOutputTokens(DeepSeekAutoContinue.Result result) {
+		String content = result.events().stream()
+		                       .filter(event -> "content".equals(event.type()) ||
+		                                        "reasoning".equals(event.type()))
+		                       .map(event -> event.content() == null ? "" : event.content())
+		                       .collect(Collectors.joining());
+		return Math.max(0, content.length() / 4);
 	}
 
 	private String createChatSession(String token) throws IOException {

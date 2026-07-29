@@ -23,24 +23,26 @@ class RequestLogListener {
 				(event.promptTokens() != null ? event.promptTokens() : 0)
 				+ (event.completionTokens() !=
 				   null ? event.completionTokens() : 0);
-		RequestLog entry = new RequestLog(
-				UUID.randomUUID().toString(),
-				event.virtualKeyId(),
-				event.accountId(),
-				event.model(),
-				event.requestedModel(),
-				event.status(),
-				event.promptTokens(),
-				event.completionTokens(),
-				totalTokens > 0 ? totalTokens : null,
-				event.latencyMs(),
-				event.firstTokenMs(),
-				event.streaming(),
-				event.clientIp(),
-				event.errorMessage(),
-				event.credits(),
-				System.currentTimeMillis()
-		);
+		RequestLog entry = RequestLog.builder()
+		                             .id(UUID.randomUUID().toString())
+		                             .virtualKeyId(event.virtualKeyId())
+		                             .accountId(event.accountId())
+		                             .model(event.model())
+		                             .requestedModel(event.requestedModel())
+		                             .status(event.status())
+		                             .promptTokens(event.promptTokens())
+		                             .completionTokens(event.completionTokens())
+		                             .totalTokens(totalTokens >
+		                                          0 ? totalTokens : null
+		                             )
+		                             .latencyMs(event.latencyMs())
+		                             .firstTokenMs(event.firstTokenMs())
+		                             .streaming(event.streaming())
+		                             .clientIp(event.clientIp())
+		                             .errorMessage(event.errorMessage())
+		                             .credits(event.credits())
+		                             .createdAt(System.currentTimeMillis())
+		                             .build();
 		try {
 			repository.insert(entry);
 		} catch (Exception e) {

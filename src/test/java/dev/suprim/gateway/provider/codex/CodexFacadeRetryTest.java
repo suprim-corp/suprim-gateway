@@ -1,6 +1,5 @@
 package dev.suprim.gateway.provider.codex;
 
-import dev.suprim.gateway.logging.RequestLogPublisher;
 import dev.suprim.gateway.provider.AccountCooldown;
 import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
@@ -11,7 +10,6 @@ import dev.suprim.gateway.proxy.ProxyChain;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockHttpServletResponse;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -40,12 +38,10 @@ class CodexFacadeRetryTest {
 		store = mock(CredentialStore.class);
 		authManager = mock(CodexAuthManager.class);
 		rotator = mock(AccountRotator.class);
-		ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
-		RequestLogPublisher logPublisher = new RequestLogPublisher(eventPublisher);
 		ProxyChain proxyChain = mock(ProxyChain.class);
 		facade = new CodexFacade(
 				authManager, rotator, store, proxyChain, new AccountCooldown(),
-				new CodexResponseRelay(logPublisher)
+				new CodexResponseRelay()
 		);
 	}
 

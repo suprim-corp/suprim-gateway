@@ -1,6 +1,5 @@
 package dev.suprim.gateway.provider.antigravity;
 
-import dev.suprim.gateway.logging.RequestLogPublisher;
 import dev.suprim.gateway.provider.AccountCooldown;
 import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
@@ -11,7 +10,6 @@ import dev.suprim.gateway.proxy.StreamConverter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.io.ByteArrayInputStream;
@@ -33,15 +31,11 @@ class AntigravityFacadeRetryTest {
 		store = mock(CredentialStore.class);
 		authManager = mock(AntigravityAuthManager.class);
 		rotator = mock(AccountRotator.class);
-		ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
-		RequestLogPublisher logPublisher = new RequestLogPublisher(eventPublisher);
 		StreamConverter streamConverter = new StreamConverter();
 		AntigravityAccountAttempts accountAttempts = new AntigravityAccountAttempts(
 				authManager, rotator, new AccountCooldown()
 		);
-		facade = new AntigravityFacade(
-				logPublisher, streamConverter, store, accountAttempts
-		);
+		facade = new AntigravityFacade(streamConverter, store, accountAttempts);
 	}
 
 	@Test

@@ -1,6 +1,7 @@
 package dev.suprim.gateway.api;
 
 import dev.suprim.gateway.api.request.CompletionsRequest;
+import dev.suprim.gateway.logging.RequestLogCall;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.model.ModelRouter;
 import dev.suprim.gateway.proxy.*;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Optional;
 
 @RequiredArgsConstructor
 @RestController
@@ -33,7 +35,7 @@ class CompletionsController {
 			HttpServletRequest httpReq, HttpServletResponse httpRes
 	) throws Exception {
 		VirtualKey key = RequestContext.resolveKey();
-		String keyId = key != null ? key.id() : null;
+		String keyId = Optional.ofNullable(key).map(VirtualKey::id).orElse(null);
 
 		if (key != null && !rateLimiter.isAllowed(
 				key.id(),
@@ -79,10 +81,13 @@ class CompletionsController {
 										                                                                                  )
 										                                                                                  .build()
 						                                                                  )
-						                                                                  .build())
-						                                       .toList())
+						                                                                  .build()
+						                                       )
+						                                       .toList()
+				                        )
 				                        .toolCallId(m.toolCallId())
-				                        .build())
+				                        .build()
+				       )
 				       .toList();
 
 		InternalRequest internalReq =
@@ -93,12 +98,24 @@ class CompletionsController {
 				               .tools(tools)
 				               .temperature(request.temperature())
 				               .maxTokens(request.maxTokens())
-				               .clientSessionId(RequestContext.clientSessionId(httpReq))
+				               .clientSessionId(
+						               RequestContext.clientSessionId(
+								               httpReq
+						               )
+				               )
 				               .build();
 
-		providerDispatcher.resolve(provider).handle(
-				internalReq, actualModel, stream, inputTokens, keyId,
-				RequestContext.clientIp(httpReq), Format.COMPLETION,
+		providerDispatcher.dispatch(
+				provider,
+				internalReq,
+				RequestLogCall.start(
+						actualModel,
+						stream,
+						inputTokens,
+						keyId,
+						RequestContext.clientIp(httpReq),
+						Format.COMPLETION
+				),
 				httpRes
 		);
 	}

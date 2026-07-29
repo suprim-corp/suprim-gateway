@@ -1,8 +1,8 @@
 package dev.suprim.gateway.provider.xai;
 
 import dev.suprim.gateway.logging.LogTag;
-import dev.suprim.gateway.logging.RequestLogEvent;
-import dev.suprim.gateway.logging.RequestLogPublisher;
+import dev.suprim.gateway.logging.ProviderOutcome;
+import dev.suprim.gateway.logging.RequestLogCall;
 import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.Provider;
@@ -17,7 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -30,14 +30,13 @@ import java.util.Map;
 @Component
 public class XaiFacade {
 
-	private static final ObjectMapper MAPPER = new ObjectMapper();
+	private static final JsonMapper MAPPER = new JsonMapper();
 	private final XaiAuthManager authManager;
-	private final RequestLogPublisher logPublisher;
 	private final OpenAiRelayHandler relayHandler;
 	private final AccountRotator accountRotator;
 	private final CredentialStore credentialStore;
 
-	public void handle(
+	ProviderOutcome handle(
 			InternalRequest request,
 			String model,
 			boolean stream,
@@ -47,6 +46,21 @@ public class XaiFacade {
 			Format format,
 			HttpServletResponse httpRes
 	) throws Exception {
+		return handle(
+				request,
+				RequestLogCall.start(model, stream, inputTokens, keyId, clientIp, format),
+				httpRes
+		);
+	}
+
+	public ProviderOutcome handle(
+			InternalRequest request,
+			RequestLogCall call,
+			HttpServletResponse httpRes
+	) throws Exception {
+		String model = call.model();
+		boolean stream = call.streaming();
+		Format format = call.format();
 		List<StoredAccount> accounts = credentialStore.findAllByProvider(Provider.XAI.name());
 		if (accounts.isEmpty()) {
 			ErrorResponse.openAi(
@@ -55,10 +69,9 @@ public class XaiFacade {
 					"xAI provider not connected. Visit /auth/xai to connect.",
 					"provider_not_connected"
 			);
-			return;
+			return ProviderOutcome.none();
 		}
 
-		long startTime = System.currentTimeMillis();
 		int maxAttempts = accounts.size();
 
 		ObjectNode payloadNode = MAPPER.valueToTree(request);
@@ -151,34 +164,23 @@ public class XaiFacade {
 			}
 
 			if (response.status() != 200) {
-				handleError(
-						response, account.name(), model, inputTokens,
-						keyId, clientIp, startTime, httpRes
-				);
-				return;
+				return handleError(response, account.name(), call, httpRes);
 			}
 
-			if (stream) {
-				handleStream(
-						response, account.name(), model, inputTokens,
-						keyId, clientIp, startTime, format, httpRes
-				);
-			} else {
-				handleNonStream(
-						response, account.name(), model, inputTokens,
-						keyId, clientIp, startTime, format, httpRes
-				);
-			}
-			return;
+			return stream
+			       ? handleStream(response, account.name(), call, httpRes)
+			       : handleNonStream(response, account.name(), call, httpRes);
 		}
 
 		ErrorResponse.openAi(httpRes, 429, "All accounts rate-limited", "rate_limit_exhausted");
+		return ProviderOutcome.none();
 	}
 
-	private void handleError(
+	private ProviderOutcome handleError(
 			XaiHttpClient.XaiResponse response,
-			String accountName, String model, int inputTokens, String keyId, String clientIp,
-			long startTime, HttpServletResponse httpRes
+			String accountName,
+			RequestLogCall call,
+			HttpServletResponse httpRes
 	) throws Exception {
 		String body;
 		try (InputStream is = response.body()) {
@@ -189,64 +191,35 @@ public class XaiFacade {
 				body.length() > 500 ? body.substring(0, 500) : body
 		);
 
-		int latency = (int) (System.currentTimeMillis() - startTime);
-		logPublisher.publish(RequestLogEvent.builder()
-		                                    .virtualKeyId(keyId)
-		                                    .accountId(accountName)
-		                                    .model(model)
-		                                    .requestedModel(model)
-		                                    .status(response.status())
-		                                    .promptTokens(inputTokens)
-		                                    .latencyMs(latency)
-		                                    .streaming(false)
-		                                    .clientIp(clientIp)
-		                                    .errorMessage(body.length() >
-		                                                  200 ? body.substring(
-				                                    0,
-				                                    200
-		                                    ) : body)
-		                                    .build());
-
 		ErrorResponse.openAi(
 				httpRes,
 				response.status(),
 				body.length() > 200 ? body.substring(0, 200) : body,
 				"upstream_error"
-		);
+		);		return call.upstreamError(accountName, response.status(), body);
 	}
 
-	private void handleStream(
+	private ProviderOutcome handleStream(
 			XaiHttpClient.XaiResponse response,
-			String accountName, String model, int inputTokens, String keyId, String clientIp,
-			long startTime, Format format, HttpServletResponse httpRes
+			String accountName,
+			RequestLogCall call,
+			HttpServletResponse httpRes
 	) throws Exception {
 		OpenAiRelayHandler.StreamResult result = relayHandler.relayStream(
-				response.body(), format, model, inputTokens, startTime, httpRes
+				response.body(), call.format(), call.model(), call.estimatedInputTokens(),
+				call.startedAt(), httpRes
 		);
-
-		int latency = (int) (System.currentTimeMillis() - startTime);
-		logPublisher.publish(RequestLogEvent.builder()
-		                                    .virtualKeyId(keyId)
-		                                    .accountId(accountName)
-		                                    .model(model)
-		                                    .requestedModel(model)
-		                                    .status(200)
-		                                    .promptTokens(result.promptTokens())
-		                                    .completionTokens(result.completionTokens())
-		                                    .latencyMs(latency)
-		                                    .firstTokenMs(
-				                                    result.firstTokenMs() !=
-				                                    null ? result.firstTokenMs()
-				                                                 .intValue() : null)
-		                                    .streaming(true)
-		                                    .clientIp(clientIp)
-		                                    .build());
+		return call.success(
+				accountName, result.promptTokens(), result.completionTokens(),
+				result.firstTokenMs(), null
+		);
 	}
 
-	private void handleNonStream(
+	private ProviderOutcome handleNonStream(
 			XaiHttpClient.XaiResponse response,
-			String accountName, String model, int inputTokens, String keyId, String clientIp,
-			long startTime, Format format, HttpServletResponse httpRes
+			String accountName,
+			RequestLogCall call,
+			HttpServletResponse httpRes
 	) throws Exception {
 		String body;
 		try (InputStream is = response.body()) {
@@ -261,33 +234,15 @@ public class XaiFacade {
 			completionTokens = usage[1];
 		}
 
-		int inTokens = promptTokens != null ? promptTokens : inputTokens;
+		int inTokens = promptTokens != null
+		               ? promptTokens
+		               : call.estimatedInputTokens();
 		int outTokens = completionTokens != null ? completionTokens : 0;
 
 		relayHandler.writeNonStream(
-				body,
-				format,
-				model,
-				inTokens,
-				outTokens,
-				httpRes
+				body, call.format(), call.model(), inTokens, outTokens, httpRes
 		);
-
-		int latency = (int) (System.currentTimeMillis() - startTime);
-		logPublisher.publish(
-				RequestLogEvent.builder()
-				               .virtualKeyId(keyId)
-				               .accountId(accountName)
-				               .model(model)
-				               .requestedModel(model)
-				               .status(200)
-				               .promptTokens(inTokens)
-				               .completionTokens(outTokens)
-				               .latencyMs(latency)
-				               .streaming(false)
-				               .clientIp(clientIp)
-				               .build()
-		);
+		return call.success(accountName, promptTokens, completionTokens, null, null);
 	}
 
 	private static void convertAnthropicImages(

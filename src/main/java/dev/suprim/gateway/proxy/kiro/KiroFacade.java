@@ -1,6 +1,7 @@
 package dev.suprim.gateway.proxy.kiro;
 
-import dev.suprim.gateway.logging.RequestLogEvent;
+import dev.suprim.gateway.logging.ProviderOutcome;
+import dev.suprim.gateway.logging.RequestLogCall;
 import dev.suprim.gateway.logging.RequestLogPublisher;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.proxy.Format;
@@ -42,7 +43,7 @@ public class KiroFacade {
 			String clientIp
 	) {}
 
-	public void handle(
+	ProviderOutcome handle(
 			InternalRequest request,
 			String model,
 			boolean stream,
@@ -52,61 +53,70 @@ public class KiroFacade {
 			Format format,
 			HttpServletResponse httpRes
 	) throws Exception {
-		handle(
-				ProxyRequest.builder()
-				            .request(request)
-				            .format(format)
-				            .stream(stream)
-				            .model(model)
-				            .inputTokens(inputTokens)
-				            .keyId(keyId)
-				            .virtualKeyId(keyId)
-				            .clientIp(clientIp)
-				            .build(),
+		ProviderOutcome outcome = handle(
+				request,
+				RequestLogCall.start(model, stream, inputTokens, keyId, clientIp, format),
 				httpRes
 		);
+		if (outcome.event() != null) {
+			logPublisher.publish(outcome.event());
+		}
+		return outcome;
 	}
 
-	public void handle(
-			ProxyRequest req,
+	public ProviderOutcome handle(
+			InternalRequest request,
+			RequestLogCall call,
 			HttpServletResponse httpRes
 	) throws Exception {
-		long startTime = System.currentTimeMillis();
+		ProxyRequest proxyRequest = ProxyRequest.builder()
+		                                        .request(request)
+		                                        .format(call.format())
+		                                        .stream(call.streaming())
+		                                        .model(call.model())
+		                                        .inputTokens(call.estimatedInputTokens())
+		                                        .keyId(call.virtualKeyId())
+		                                        .virtualKeyId(call.virtualKeyId())
+		                                        .clientIp(call.clientIp())
+		                                        .build();
+		return handle(proxyRequest, call, httpRes);
+	}
 
+	private ProviderOutcome handle(
+			ProxyRequest req,
+			RequestLogCall call,
+			HttpServletResponse httpRes
+	) throws Exception {
 		KiroUpstreamDispatcher.DispatchResult dispatchResult;
 		try {
 			dispatchResult = upstreamDispatcher.dispatch(
 					req.request(),
 					req.stream() || req.format() == Format.RESPONSES
 			);
-		} catch (RuntimeException e) {
+		} catch (RuntimeException exception) {
 			httpRes.setStatus(503);
 			httpRes.setContentType("application/json");
 			httpRes.getWriter().write(
-					"{\"error\":{\"message\":\"" + e.getMessage() + "\",\"type\":\"service_unavailable\"}}"
+					"{\"error\":{\"message\":\"" + exception.getMessage() + "\",\"type\":\"service_unavailable\"}}"
 			);
-			return;
+			return ProviderOutcome.none();
 		}
 
 		KiroResponse response = dispatchResult.response();
 		String accountId = dispatchResult.accountId();
 		if (response.status() != 200) {
-			handleError(response, req, accountId, startTime, httpRes);
-			return;
+			return handleError(response, call, accountId, httpRes);
 		}
 
-		if (req.stream()) {
-			handleStream(httpRes, response, req, accountId, startTime);
-		} else {
-			handleNonStream(httpRes, response, req, accountId, startTime);
-		}
+		return req.stream()
+		       ? handleStream(httpRes, response, req, call, accountId)
+		       : handleNonStream(httpRes, response, req, call, accountId);
 	}
 
-	private void handleError(
+	private ProviderOutcome handleError(
 			KiroResponse response,
-			ProxyRequest req,
+			RequestLogCall call,
 			String accountId,
-			long startTime,
 			HttpServletResponse httpRes
 	) throws Exception {
 		String body;
@@ -118,26 +128,7 @@ public class KiroFacade {
 				response.status(),
 				body.length() > 500 ? body.substring(0, 500) : body
 		);
-		int latency = (int) (System.currentTimeMillis() - startTime);
-		logPublisher.publish(
-				RequestLogEvent.builder()
-				               .virtualKeyId(req.keyId())
-				               .accountId(accountId)
-				               .model(req.model())
-				               .requestedModel(req.model())
-				               .status(response.status())
-				               .promptTokens(req.inputTokens())
-				               .latencyMs(latency)
-				               .streaming(req.stream())
-				               .clientIp(req.clientIp())
-				               .errorMessage(body.length() >
-				                             200 ? body.substring(
-						               0,
-						               200
-				               ) : body)
-				               .build()
-		);
-		if (req.format() == Format.ANTHROPIC) {
+		if (call.format() == Format.ANTHROPIC) {
 			ErrorResponse.anthropic(
 					httpRes,
 					response.status(),
@@ -152,14 +143,15 @@ public class KiroFacade {
 					"upstream_error"
 			);
 		}
+		return call.upstreamError(accountId, response.status(), body);
 	}
 
-	private void handleStream(
+	private ProviderOutcome handleStream(
 			HttpServletResponse httpRes,
 			KiroResponse response,
 			ProxyRequest req,
-			String accountId,
-			long startTime
+			RequestLogCall call,
+			String accountId
 	) throws Exception {
 		httpRes.setCharacterEncoding("UTF-8");
 		httpRes.setContentType("text/event-stream; charset=utf-8");
@@ -178,33 +170,25 @@ public class KiroFacade {
 				response,
 				writer,
 				eventWriter,
-				startTime
+				call.startedAt()
 		);
 
 		eventWriter.finish(result.outputTokens());
 
-		publishLog(
-				req,
-				accountId,
-				result.outputTokens(),
-				true,
-				startTime,
-				result.firstTokenMs(),
-				result.credits() > 0 ? result.credits() : null
+		if (req.virtualKeyId() != null && result.outputTokens() > 0) {
+			keyService.incrementUsage(req.virtualKeyId(), result.outputTokens());
+		}
+		return call.success(
+				accountId, null, result.outputTokens(), result.firstTokenMs(), result.credits()
 		);
-		if (req.virtualKeyId() != null && result.outputTokens() > 0)
-			keyService.incrementUsage(
-					req.virtualKeyId(),
-					result.outputTokens()
-			);
 	}
 
-	private void handleNonStream(
+	private ProviderOutcome handleNonStream(
 			HttpServletResponse httpRes,
 			KiroResponse response,
 			ProxyRequest req,
-			String accountId,
-			long startTime
+			RequestLogCall call,
+			String accountId
 	) throws Exception {
 		StreamHandler.CollectResult collected = streamHandler.collectContent(
 				response);
@@ -228,56 +212,9 @@ public class KiroFacade {
 				)
 		);
 
-		publishLog(
-				req,
-				accountId,
-				outputTokens,
-				false,
-				startTime,
-				null,
-				credits > 0 ? credits : null
-		);
-		if (req.virtualKeyId() != null && outputTokens > 0)
+		if (req.virtualKeyId() != null && outputTokens > 0) {
 			keyService.incrementUsage(req.virtualKeyId(), outputTokens);
-	}
-
-	private void publishLog(
-			ProxyRequest req,
-			String accountId,
-			int outputTokens,
-			boolean streaming,
-			long startTime,
-			Long firstTokenMs,
-			Double credits
-	) {
-		logPublisher.publish(
-				RequestLogEvent.builder()
-				               .virtualKeyId(req.keyId())
-				               .accountId(accountId)
-				               .model(req.model())
-				               .requestedModel(req.model())
-				               .status(200)
-				               .promptTokens(req.inputTokens())
-				               .completionTokens(
-						               outputTokens >
-						               0 ? outputTokens : null
-				               )
-				               .latencyMs(
-						               (int) (
-								               System.currentTimeMillis() -
-								               startTime
-						               )
-				               )
-				               .firstTokenMs(
-						               firstTokenMs !=
-						               null ? firstTokenMs.intValue() : null
-				               )
-				               .streaming(streaming)
-				               .clientIp(req.clientIp())
-				               .credits(credits != null &&
-				                        credits > 0 ? credits : null
-				               )
-				               .build()
-		);
+		}
+		return call.success(accountId, null, outputTokens, null, credits);
 	}
 }

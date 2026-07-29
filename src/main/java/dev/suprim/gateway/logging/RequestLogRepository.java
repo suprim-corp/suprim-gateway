@@ -14,29 +14,28 @@ class RequestLogRepository {
 
 	private final JdbcTemplate jdbc;
 
-	private final RowMapper<RequestLog> mapper = (rs, rowNum) -> new RequestLog(
-			rs.getString("id"),
-			rs.getString("virtual_key_id"),
-			rs.getString("account_id"),
-			rs.getString("model"),
-			rs.getString("requested_model"),
-			rs.getInt("status"),
-			rs.getObject("prompt_tokens") !=
-			null ? rs.getInt("prompt_tokens") : null,
-			rs.getObject("completion_tokens") != null ? rs.getInt(
-					"completion_tokens") : null,
-			rs.getObject("total_tokens") !=
-			null ? rs.getInt("total_tokens") : null,
-			rs.getObject("latency_ms") != null ? rs.getInt("latency_ms") : null,
-			rs.getObject("first_token_ms") !=
-			null ? rs.getInt("first_token_ms") : null,
-			rs.getObject("streaming") != null ?
-					rs.getInt("streaming") == 1 : null,
-			rs.getString("client_ip"),
-			rs.getString("error_message"),
-			rs.getObject("credits") != null ? rs.getDouble("credits") : null,
-			rs.getLong("created_at")
-	);
+	private final RowMapper<RequestLog> mapper = (rs, rowNum) -> RequestLog.builder()
+			.id(rs.getString("id"))
+			.virtualKeyId(rs.getString("virtual_key_id"))
+			.accountId(rs.getString("account_id"))
+			.model(rs.getString("model"))
+			.requestedModel(rs.getString("requested_model"))
+			.status(rs.getInt("status"))
+			.promptTokens(rs.getObject("prompt_tokens") != null
+			              ? rs.getInt("prompt_tokens") : null)
+			.completionTokens(rs.getObject("completion_tokens") != null
+			                  ? rs.getInt("completion_tokens") : null)
+			.totalTokens(rs.getObject("total_tokens") != null
+			             ? rs.getInt("total_tokens") : null)
+			.latencyMs(rs.getObject("latency_ms") != null ? rs.getInt("latency_ms") : null)
+			.firstTokenMs(rs.getObject("first_token_ms") != null
+			              ? rs.getInt("first_token_ms") : null)
+			.streaming(rs.getObject("streaming") != null ? rs.getInt("streaming") == 1 : null)
+			.clientIp(rs.getString("client_ip"))
+			.errorMessage(rs.getString("error_message"))
+			.credits(rs.getObject("credits") != null ? rs.getDouble("credits") : null)
+			.createdAt(rs.getLong("created_at"))
+			.build();
 
 	void insert(RequestLog log) {
 		jdbc.update(

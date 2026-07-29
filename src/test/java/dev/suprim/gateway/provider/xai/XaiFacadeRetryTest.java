@@ -1,6 +1,5 @@
 package dev.suprim.gateway.provider.xai;
 
-import dev.suprim.gateway.logging.RequestLogPublisher;
 import dev.suprim.gateway.provider.AccountRotator;
 import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
@@ -11,7 +10,6 @@ import dev.suprim.gateway.proxy.StreamConverter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.io.ByteArrayInputStream;
@@ -33,10 +31,8 @@ class XaiFacadeRetryTest {
 		store = mock(CredentialStore.class);
 		authManager = mock(XaiAuthManager.class);
 		rotator = mock(AccountRotator.class);
-		ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
-		RequestLogPublisher logPublisher = new RequestLogPublisher(eventPublisher);
 		OpenAiRelayHandler relayHandler = new OpenAiRelayHandler(new StreamConverter());
-		facade = new XaiFacade(authManager, logPublisher, relayHandler, rotator, store);
+		facade = new XaiFacade(authManager, relayHandler, rotator, store);
 	}
 
 	@Test
