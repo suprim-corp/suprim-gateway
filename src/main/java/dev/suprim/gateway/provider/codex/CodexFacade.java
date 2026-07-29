@@ -153,6 +153,17 @@ public class CodexFacade {
 				continue;
 			}
 
+			if (response.status() == 401) {
+				log.warn(
+						LogTag.CODEX + "Account {} unauthorized, trying next account",
+						account.name()
+				);
+				try (InputStream is = response.body()) {
+					is.readAllBytes();
+				}
+				continue;
+			}
+
 			if (response.status() != 200) {
 				handleError(
 						response, account.name(), model, inputTokens,
