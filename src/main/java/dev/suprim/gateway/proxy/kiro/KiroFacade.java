@@ -7,6 +7,7 @@ import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.StreamConverter;
+import dev.suprim.gateway.proxy.SseHeartbeat;
 import dev.suprim.gateway.proxy.StreamHandler;
 import dev.suprim.gateway.proxy.StreamingEventWriter;
 import dev.suprim.gateway.proxy.kiro.KiroHttpClient.KiroResponse;
@@ -31,6 +32,7 @@ public class KiroFacade {
 	private final KiroAuthManager auth;
 	private final StreamHandler streamHandler;
 	private final StreamConverter streamConverter;
+	private final SseHeartbeat sseHeartbeat;
 	private final RequestLogPublisher logPublisher;
 	private final VirtualKeyService keyService;
 	private final KiroUpstreamDispatcher upstreamDispatcher;
@@ -55,7 +57,14 @@ public class KiroFacade {
 	) throws Exception {
 		ProviderOutcome outcome = handle(
 				request,
-				RequestLogCall.start(model, stream, inputTokens, keyId, clientIp, format),
+				RequestLogCall.start(
+						model,
+						stream,
+						inputTokens,
+						keyId,
+						clientIp,
+						format
+				),
 				httpRes
 		);
 		if (outcome.event() != null) {
@@ -97,7 +106,8 @@ public class KiroFacade {
 			httpRes.setStatus(503);
 			httpRes.setContentType("application/json");
 			httpRes.getWriter().write(
-					"{\"error\":{\"message\":\"" + exception.getMessage() + "\",\"type\":\"service_unavailable\"}}"
+					"{\"error\":{\"message\":\"" + exception.getMessage() +
+					"\",\"type\":\"service_unavailable\"}}"
 			);
 			return ProviderOutcome.none();
 		}
@@ -109,8 +119,8 @@ public class KiroFacade {
 		}
 
 		return req.stream()
-		       ? handleStream(httpRes, response, req, call, accountId)
-		       : handleNonStream(httpRes, response, req, call, accountId);
+				? handleStream(httpRes, response, req, call, accountId)
+				: handleNonStream(httpRes, response, req, call, accountId);
 	}
 
 	private ProviderOutcome handleError(
@@ -153,34 +163,40 @@ public class KiroFacade {
 			RequestLogCall call,
 			String accountId
 	) throws Exception {
-		httpRes.setCharacterEncoding("UTF-8");
-		httpRes.setContentType("text/event-stream; charset=utf-8");
-		httpRes.setHeader("Cache-Control", "no-cache");
-		PrintWriter writer = httpRes.getWriter();
+		try (SseHeartbeat.Session session = sseHeartbeat.open(httpRes)) {
+			PrintWriter writer = session.writer();
 
-		boolean thinkingEnabled = req.format() != Format.ANTHROPIC
-		                          || req.request().thinkingEnabled();
+			boolean thinkingEnabled = req.format() != Format.ANTHROPIC
+			                          || req.request().thinkingEnabled();
 
-		StreamingEventWriter eventWriter = new StreamingEventWriter(
-				writer, streamConverter, req.format(), req.model(),
-				thinkingEnabled, req.inputTokens()
-		);
+			StreamingEventWriter eventWriter = new StreamingEventWriter(
+					writer, streamConverter, req.format(), req.model(),
+					thinkingEnabled, req.inputTokens()
+			);
 
-		StreamHandler.StreamResult result = streamHandler.streamToWriter(
-				response,
-				writer,
-				eventWriter,
-				call.startedAt()
-		);
+			StreamHandler.StreamResult result = streamHandler.streamToWriter(
+					response,
+					writer,
+					eventWriter,
+					call.startedAt()
+			);
 
-		eventWriter.finish(result.outputTokens());
+			eventWriter.finish(result.outputTokens());
 
-		if (req.virtualKeyId() != null && result.outputTokens() > 0) {
-			keyService.incrementUsage(req.virtualKeyId(), result.outputTokens());
+			if (req.virtualKeyId() != null && result.outputTokens() > 0) {
+				keyService.incrementUsage(
+						req.virtualKeyId(),
+						result.outputTokens()
+				);
+			}
+			return call.success(
+					accountId,
+					null,
+					result.outputTokens(),
+					result.firstTokenMs(),
+					result.credits()
+			);
 		}
-		return call.success(
-				accountId, null, result.outputTokens(), result.firstTokenMs(), result.credits()
-		);
 	}
 
 	private ProviderOutcome handleNonStream(
@@ -199,7 +215,8 @@ public class KiroFacade {
 		String id = formatConverter.generateId(req.format());
 
 		boolean emitReasoning = reasoning != null &&
-				(req.format() != Format.ANTHROPIC || req.request().thinkingEnabled());
+		                        (req.format() != Format.ANTHROPIC ||
+		                         req.request().thinkingEnabled());
 
 		httpRes.setCharacterEncoding("UTF-8");
 		httpRes.setContentType("application/json; charset=utf-8");

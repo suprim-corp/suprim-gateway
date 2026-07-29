@@ -5,6 +5,8 @@ import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.OpenAiRelayHandler;
+import dev.suprim.gateway.proxy.SseHeartbeat;
+import dev.suprim.gateway.proxy.SseHeartbeatScheduler;
 import dev.suprim.gateway.proxy.StreamConverter;
 import dev.suprim.gateway.proxy.InternalRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +36,10 @@ class XaiFacadeTest {
 		store = new CredentialStore(storePath);
 		authManager = new XaiAuthManager(store);
 		AccountRotator rotator = new AccountRotator(store);
-		facade = new XaiFacade(authManager, new OpenAiRelayHandler(new StreamConverter()), rotator, store);
+		facade = new XaiFacade(authManager, new OpenAiRelayHandler(
+					new StreamConverter(),
+					new SseHeartbeat(mock(SseHeartbeatScheduler.class))
+			), rotator, store);
 	}
 
 	@Test

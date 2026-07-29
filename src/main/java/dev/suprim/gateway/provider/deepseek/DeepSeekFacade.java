@@ -5,6 +5,7 @@ import dev.suprim.gateway.logging.ProviderOutcome;
 import dev.suprim.gateway.logging.RequestLogCall;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.Format;
+import dev.suprim.gateway.proxy.SseHeartbeat;
 import dev.suprim.gateway.proxy.StreamConverter;
 import dev.suprim.gateway.proxy.StreamingEventWriter;
 import dev.suprim.gateway.proxy.InternalRequest;
@@ -40,6 +41,7 @@ public class DeepSeekFacade {
 	private final DeepSeekAccountPool accountPool;
 	private final DeepSeekAutoContinue autoContinue;
 	private final StreamConverter converter;
+	private final SseHeartbeat sseHeartbeat;
 	private final String baseUrl;
 
 	public DeepSeekFacade(
@@ -48,6 +50,7 @@ public class DeepSeekFacade {
 			DeepSeekAccountPool accountPool,
 			DeepSeekAutoContinue autoContinue,
 			StreamConverter converter,
+			SseHeartbeat sseHeartbeat,
 			String baseUrl
 	) {
 		this.httpClient = httpClient;
@@ -55,6 +58,7 @@ public class DeepSeekFacade {
 		this.accountPool = accountPool;
 		this.autoContinue = autoContinue;
 		this.converter = converter;
+		this.sseHeartbeat = sseHeartbeat;
 		this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(
 				0,
 				baseUrl.length() - 1
@@ -150,35 +154,36 @@ public class DeepSeekFacade {
 			InputStream responseStream = httpClient.executeStream(httpRequest);
 
 			httpRes.setStatus(200);
-			httpRes.setContentType("text/event-stream");
-			httpRes.setCharacterEncoding("UTF-8");
+			try (SseHeartbeat.Session session = sseHeartbeat.open(httpRes)) {
+				StreamingEventWriter eventWriter = new StreamingEventWriter(
+						session.writer(), converter, format, model,
+						format != Format.ANTHROPIC || request.thinkingEnabled()
+				);
 
-			StreamingEventWriter eventWriter = new StreamingEventWriter(
-					httpRes.getWriter(), converter, format, model,
-					format != Format.ANTHROPIC || request.thinkingEnabled()
-			);
+				Set<String> toolNames = extractToolNames(request);
+				DeepSeekToolSieve toolSieve = new DeepSeekToolSieve(
+						eventWriter.asConsumer(), toolNames
+				);
 
-			Set<String> toolNames = extractToolNames(request);
-			DeepSeekToolSieve toolSieve = new DeepSeekToolSieve(eventWriter.asConsumer(), toolNames);
+				DeepSeekAutoContinue.Result result = autoContinue.process(
+						responseStream, chatSessionId, token, powHeader,
+						toolSieve::accept
+				);
+				toolSieve.flush();
 
-			DeepSeekAutoContinue.Result result = autoContinue.process(
-					responseStream, chatSessionId, token, powHeader,
-					toolSieve::accept
-			);
-			toolSieve.flush();
-
-			if (!eventWriter.hasOutput()) {
-				if (retry < MAX_EMPTY_RETRIES - 1) {
-					log.info(
-							LogTag.DEEPSEEK +
-							"Empty output on attempt {} (status={}), retrying",
-							retry + 1, result.status()
-					);
+				if (!eventWriter.hasOutput()) {
+					if (retry < MAX_EMPTY_RETRIES - 1) {
+						log.info(
+								LogTag.DEEPSEEK +
+								"Empty output on attempt {} (status={}), retrying",
+								retry + 1, result.status()
+						);
+					}
+				} else {
+					int outputTokens = countOutputTokens(result);
+					eventWriter.finish(outputTokens);
+					return outputTokens;
 				}
-			} else {
-				int outputTokens = countOutputTokens(result);
-				eventWriter.finish(outputTokens);
-				return outputTokens;
 			}
 		}
 		return null;

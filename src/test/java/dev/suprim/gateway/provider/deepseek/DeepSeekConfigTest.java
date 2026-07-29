@@ -4,6 +4,7 @@ import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.ProxyChain;
+import dev.suprim.gateway.proxy.SseHeartbeat;
 import dev.suprim.gateway.proxy.StreamConverter;
 import org.junit.jupiter.api.Test;
 
@@ -37,7 +38,10 @@ class DeepSeekConfigTest {
 		DeepSeekAutoContinue autoContinue = config.deepSeekAutoContinue(httpClient);
 		assertNotNull(autoContinue);
 
-		DeepSeekFacade facade = config.deepSeekFacade(httpClient, authManager, pool, autoContinue, new StreamConverter());
+		DeepSeekFacade facade = config.deepSeekFacade(
+				httpClient, authManager, pool, autoContinue, new StreamConverter(),
+				mock(SseHeartbeat.class)
+		);
 		assertNotNull(facade);
 	}
 }

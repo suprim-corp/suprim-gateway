@@ -11,8 +11,10 @@ import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import dev.suprim.gateway.provider.kiro.payload.PayloadBuilder;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
+import dev.suprim.gateway.proxy.SseHeartbeat;
 import dev.suprim.gateway.proxy.StreamConverter;
 import dev.suprim.gateway.proxy.StreamHandler;
+import dev.suprim.gateway.proxy.SseHeartbeatScheduler;
 import dev.suprim.gateway.virtualkey.VirtualKeyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -83,6 +85,7 @@ class KiroFacadeRetryTest {
 				authManager,
 				streamHandler,
 				streamConverter,
+				new SseHeartbeat(mock(SseHeartbeatScheduler.class)),
 				logPublisher,
 				keyService,
 				upstreamDispatcher,

@@ -7,6 +7,8 @@ import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.ProxyChain;
+import dev.suprim.gateway.proxy.SseHeartbeat;
+import dev.suprim.gateway.proxy.SseHeartbeatScheduler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
@@ -41,7 +43,9 @@ class CodexFacadeRetryTest {
 		ProxyChain proxyChain = mock(ProxyChain.class);
 		facade = new CodexFacade(
 				authManager, rotator, store, proxyChain, new AccountCooldown(),
-				new CodexResponseRelay()
+				new CodexResponseRelay(
+						new SseHeartbeat(mock(SseHeartbeatScheduler.class))
+				)
 		);
 	}
 

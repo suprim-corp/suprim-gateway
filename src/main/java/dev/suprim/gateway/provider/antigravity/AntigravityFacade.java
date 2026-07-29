@@ -8,6 +8,7 @@ import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
+import dev.suprim.gateway.proxy.SseHeartbeat;
 import dev.suprim.gateway.proxy.kiro.KiroEvent;
 import dev.suprim.gateway.proxy.StreamConverter;
 import dev.suprim.gateway.utils.ErrorResponse;
@@ -39,6 +40,7 @@ public class AntigravityFacade {
 	private static final Map<String, String> THOUGHT_SIGNATURES = new ConcurrentHashMap<>();
 
 	private final StreamConverter streamConverter;
+	private final SseHeartbeat sseHeartbeat;
 
 	private final CredentialStore credentialStore;
 	private final AntigravityAccountAttempts accountAttempts;
@@ -193,58 +195,59 @@ public class AntigravityFacade {
 			RequestLogCall requestLogCall
 	) throws Exception {
 		HttpServletResponse httpRes = call.httpRes();
-		httpRes.setCharacterEncoding("UTF-8");
-		httpRes.setContentType("text/event-stream; charset=utf-8");
-		httpRes.setHeader("Cache-Control", "no-cache");
+		try (SseHeartbeat.Session session = sseHeartbeat.open(httpRes)) {
+			AntigravityResponseWriter out = new AntigravityResponseWriter(
+					streamConverter,
+					session.writer(),
+					call.format(),
+					generateId(call.format()),
+					call.model()
+			);
+			out.preamble(call.inputTokens());
 
-		AntigravityResponseWriter out = new AntigravityResponseWriter(
-				streamConverter,
-				httpRes.getWriter(),
-				call.format(),
-				generateId(call.format()),
-				call.model()
-		);
-		out.preamble(call.inputTokens());
+			StreamState state = new StreamState();
+			AntigravitySseReader.Totals totals = AntigravitySseReader.read(
+					response.body(),
+					parsed -> relayChunk(parsed, out, state, call.startTime())
+			);
 
-		StreamState state = new StreamState();
-		AntigravitySseReader.Totals totals = AntigravitySseReader.read(
-				response.body(),
-				parsed -> relayChunk(parsed, out, state, call.startTime())
-		);
+			// The upstream's own counts when it reported them, the local tally otherwise: the
+			// tally counts stream chunks rather than tokens, so it is only ever an estimate.
+			int reportedInput = AntigravitySseReader.reportedOr(
+					totals.usage(),
+					AntigravityStreamConverter.Usage::promptTokens,
+					call.inputTokens()
+			);
+			int reportedOutput = AntigravitySseReader.reportedOr(
+					totals.usage(),
+					AntigravityStreamConverter.Usage::completionTokens,
+					state.outputTokens
+			);
 
-		// The upstream's own counts when it reported them, the local tally otherwise: the
-		// tally counts stream chunks rather than tokens, so it is only ever an estimate.
-		int reportedInput = AntigravitySseReader.reportedOr(
-				totals.usage(),
-				AntigravityStreamConverter.Usage::promptTokens,
-				call.inputTokens()
-		);
-		int reportedOutput = AntigravitySseReader.reportedOr(
-				totals.usage(),
-				AntigravityStreamConverter.Usage::completionTokens,
-				state.outputTokens
-		);
+			out.finale(
+					state.fullContent.toString(),
+					state.hasToolUse,
+					reportedInput,
+					reportedOutput
+			);
 
-		out.finale(
-				state.fullContent.toString(),
-				state.hasToolUse,
-				reportedInput,
-				reportedOutput
-		);
+			log.debug(
+					LogTag.ANTIGRAVITY +
+					"Stream done: textChunks={}, toolCalls={}, hasToolUse={}, usage={}",
+					state.outputTokens - state.toolIndex,
+					state.toolIndex,
+					state.hasToolUse,
+					totals.usage()
+			);
 
-		log.debug(
-				LogTag.ANTIGRAVITY +
-				"Stream done: textChunks={}, toolCalls={}, hasToolUse={}, usage={}",
-				state.outputTokens - state.toolIndex,
-				state.toolIndex,
-				state.hasToolUse,
-				totals.usage()
-		);
-
-		return requestLogCall.success(
-				accountName, reportedInput, reportedOutput, state.firstTokenMs,
-				billedCredits(totals)
-		);
+			return requestLogCall.success(
+					accountName,
+					reportedInput,
+					reportedOutput,
+					state.firstTokenMs,
+					billedCredits(totals)
+			);
+		}
 	}
 
 	/**

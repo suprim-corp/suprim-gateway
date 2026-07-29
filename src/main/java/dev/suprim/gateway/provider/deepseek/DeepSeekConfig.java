@@ -4,6 +4,7 @@ import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.ProxyChain;
+import dev.suprim.gateway.proxy.SseHeartbeat;
 import dev.suprim.gateway.proxy.StreamConverter;
 
 import org.springframework.context.annotation.Bean;
@@ -45,7 +46,8 @@ class DeepSeekConfig {
 			DeepSeekAuthManager authManager,
 			DeepSeekAccountPool accountPool,
 			DeepSeekAutoContinue autoContinue,
-			StreamConverter converter
+			StreamConverter converter,
+			SseHeartbeat sseHeartbeat
 	) {
 		return new DeepSeekFacade(
 				httpClient,
@@ -53,6 +55,7 @@ class DeepSeekConfig {
 				accountPool,
 				autoContinue,
 				converter,
+				sseHeartbeat,
 				BASE_URL
 		);
 	}

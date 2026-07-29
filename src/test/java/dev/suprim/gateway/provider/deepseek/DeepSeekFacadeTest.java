@@ -3,6 +3,8 @@ package dev.suprim.gateway.provider.deepseek;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.Message;
+import dev.suprim.gateway.proxy.SseHeartbeat;
+import dev.suprim.gateway.proxy.SseHeartbeatScheduler;
 import dev.suprim.gateway.proxy.StreamConverter;
 import dev.suprim.gateway.provider.StoredAccount;
 import okhttp3.Response;
@@ -27,6 +29,10 @@ class DeepSeekFacadeTest {
 	private DeepSeekFacade facade;
 	private MockHttpServletResponse httpRes;
 
+	private static SseHeartbeat heartbeat() {
+		return new SseHeartbeat(mock(SseHeartbeatScheduler.class));
+	}
+
 	@BeforeEach
 	void setUp() throws IOException {
 		server = new MockWebServer();
@@ -44,7 +50,7 @@ class DeepSeekFacadeTest {
 		DeepSeekAccountPool pool = new DeepSeekAccountPool(List.of(account), 2);
 		DeepSeekAutoContinue autoContinue = new DeepSeekAutoContinue(httpClient, baseUrl);
 
-		facade = new DeepSeekFacade(httpClient, authManager, pool, autoContinue, new StreamConverter(), baseUrl);
+		facade = new DeepSeekFacade(httpClient, authManager, pool, autoContinue, new StreamConverter(), heartbeat(), baseUrl);
 		httpRes = new MockHttpServletResponse();
 	}
 
@@ -83,7 +89,7 @@ class DeepSeekFacadeTest {
 		DeepSeekAuthManager authManager = new DeepSeekAuthManager(httpClient, "http://localhost");
 		DeepSeekAccountPool emptyPool = new DeepSeekAccountPool(List.of(), 2);
 		DeepSeekAutoContinue autoContinue = new DeepSeekAutoContinue(httpClient, "http://localhost");
-		DeepSeekFacade emptyFacade = new DeepSeekFacade(httpClient, authManager, emptyPool, autoContinue, new StreamConverter(), "http://localhost");
+		DeepSeekFacade emptyFacade = new DeepSeekFacade(httpClient, authManager, emptyPool, autoContinue, new StreamConverter(), heartbeat(), "http://localhost");
 
 		InternalRequest request = InternalRequest.builder()
 				.model("deepseek/v4-flash")
@@ -204,7 +210,7 @@ class DeepSeekFacadeTest {
 				.name("t@t.com").accessToken("p").provider("DEEPSEEK").build();
 		DeepSeekAccountPool pool = new DeepSeekAccountPool(List.of(account), 2);
 		DeepSeekAutoContinue ac = new DeepSeekAutoContinue(client, server.url("").toString());
-		DeepSeekFacade f = new DeepSeekFacade(client, auth, pool, ac, new StreamConverter(), server.url("/").toString());
+		DeepSeekFacade f = new DeepSeekFacade(client, auth, pool, ac, new StreamConverter(), heartbeat(), server.url("/").toString());
 
 		enqueueLogin("tok");
 		enqueueCreateSession("s");
@@ -345,7 +351,7 @@ class DeepSeekFacadeTest {
 		StoredAccount account = StoredAccount.builder().name("x@x.com").accessToken("p").provider("DEEPSEEK").build();
 		DeepSeekAccountPool pool = new DeepSeekAccountPool(List.of(account), 2);
 		DeepSeekAutoContinue ac = new DeepSeekAutoContinue(mockClient, "http://localhost");
-		DeepSeekFacade f = new DeepSeekFacade(mockClient, auth, pool, ac, new StreamConverter(), "http://localhost");
+		DeepSeekFacade f = new DeepSeekFacade(mockClient, auth, pool, ac, new StreamConverter(), heartbeat(), "http://localhost");
 
 		InternalRequest request = InternalRequest.builder()
 				.model("deepseek/v4-flash")
@@ -386,7 +392,7 @@ class DeepSeekFacadeTest {
 		StoredAccount account = StoredAccount.builder().name("x@x.com").accessToken("p").provider("DEEPSEEK").build();
 		DeepSeekAccountPool pool = new DeepSeekAccountPool(List.of(account), 2);
 		DeepSeekAutoContinue ac = new DeepSeekAutoContinue(mockClient, "http://localhost");
-		DeepSeekFacade f = new DeepSeekFacade(mockClient, auth, pool, ac, new StreamConverter(), "http://localhost");
+		DeepSeekFacade f = new DeepSeekFacade(mockClient, auth, pool, ac, new StreamConverter(), heartbeat(), "http://localhost");
 
 		InternalRequest request = InternalRequest.builder()
 				.model("deepseek/v4-flash")

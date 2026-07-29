@@ -1,12 +1,11 @@
 package dev.suprim.gateway.proxy;
 
 import dev.suprim.gateway.proxy.kiro.KiroEvent;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
-
-import jakarta.servlet.http.HttpServletResponse;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -20,8 +19,9 @@ import java.util.UUID;
 @Component
 public class OpenAiRelayHandler {
 
-	private static final ObjectMapper MAPPER = new ObjectMapper();
+	private static final JsonMapper MAPPER = new JsonMapper();
 	private final StreamConverter streamConverter;
+	private final SseHeartbeat sseHeartbeat;
 
 	public record StreamResult(
 			int promptTokens,
@@ -38,11 +38,26 @@ public class OpenAiRelayHandler {
 			long startTime,
 			HttpServletResponse httpRes
 	) throws Exception {
-		httpRes.setCharacterEncoding("UTF-8");
-		httpRes.setContentType("text/event-stream; charset=utf-8");
-		httpRes.setHeader("Cache-Control", "no-cache");
-		PrintWriter writer = httpRes.getWriter();
+		try (SseHeartbeat.Session session = sseHeartbeat.open(httpRes)) {
+			return relayStream(
+					upstream,
+					format,
+					model,
+					inputTokens,
+					startTime,
+					session.writer()
+			);
+		}
+	}
 
+	private StreamResult relayStream(
+			InputStream upstream,
+			Format format,
+			String model,
+			int inputTokens,
+			long startTime,
+			PrintWriter writer
+	) throws Exception {
 		boolean responsesFormat = format == Format.RESPONSES;
 		boolean anthropicFormat = format == Format.ANTHROPIC;
 		String responseId = responsesFormat
@@ -52,7 +67,10 @@ public class OpenAiRelayHandler {
 				                .substring(0, 24)
 				: null;
 		String msgId = anthropicFormat
-				? "msg_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20)
+				? "msg_" + UUID.randomUUID()
+				               .toString()
+				               .replace("-", "")
+				               .substring(0, 20)
 				: null;
 
 		if (responsesFormat) {
@@ -61,7 +79,11 @@ public class OpenAiRelayHandler {
 			writer.write(streamConverter.toResponsesContentPartAdded());
 			writer.flush();
 		} else if (anthropicFormat) {
-			writer.write(streamConverter.toAnthropicPreamble(msgId, model, inputTokens));
+			writer.write(streamConverter.toAnthropicPreamble(
+					msgId,
+					model,
+					inputTokens
+			));
 			writer.flush();
 		}
 
@@ -169,11 +191,17 @@ public class OpenAiRelayHandler {
 						tc.arguments(),
 						tc.id()
 				);
-				writer.write(streamConverter.toAnthropicToolUse(toolEvent, toolIndex));
+				writer.write(streamConverter.toAnthropicToolUse(
+						toolEvent,
+						toolIndex
+				));
 				toolIndex++;
 			}
 
-			writer.write(streamConverter.toAnthropicFinale(outTokens, hasToolUse));
+			writer.write(streamConverter.toAnthropicFinale(
+					outTokens,
+					hasToolUse
+			));
 			writer.flush();
 		}
 
@@ -203,12 +231,20 @@ public class OpenAiRelayHandler {
 					""
 			).substring(0, 24);
 			Object responsesBody = streamConverter.toResponsesNonStreaming(
-					responseId, model, content, null, promptTokens, completionTokens
+					responseId,
+					model,
+					content,
+					null,
+					promptTokens,
+					completionTokens
 			);
 			httpRes.getWriter().write(MAPPER.writeValueAsString(responsesBody));
 		} else if (format == Format.ANTHROPIC) {
 			String content = extractFullContent(body);
-			String msgId = "msg_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+			String msgId = "msg_" + UUID.randomUUID().toString().replace(
+					"-",
+					""
+			).substring(0, 20);
 			Object anthropicBody = streamConverter.toAnthropicNonStreaming(
 					msgId, model, content, null, promptTokens, completionTokens
 			);
@@ -265,7 +301,12 @@ public class OpenAiRelayHandler {
 
 	record ToolCallChunk(String id, String name, String arguments) {
 		StreamConverter.FunctionCallItem toResponsesOutput() {
-			return StreamConverter.FunctionCallItem.of("fc_" + id, id, name, arguments);
+			return StreamConverter.FunctionCallItem.of(
+					"fc_" + id,
+					id,
+					name,
+					arguments
+			);
 		}
 	}
 

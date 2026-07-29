@@ -6,6 +6,8 @@ import dev.suprim.gateway.provider.CredentialStore;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
+import dev.suprim.gateway.proxy.SseHeartbeat;
+import dev.suprim.gateway.proxy.SseHeartbeatScheduler;
 import dev.suprim.gateway.proxy.StreamConverter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,7 +37,12 @@ class AntigravityFacadeRetryTest {
 		AntigravityAccountAttempts accountAttempts = new AntigravityAccountAttempts(
 				authManager, rotator, new AccountCooldown()
 		);
-		facade = new AntigravityFacade(streamConverter, store, accountAttempts);
+		facade = new AntigravityFacade(
+				streamConverter,
+				new SseHeartbeat(mock(SseHeartbeatScheduler.class)),
+				store,
+				accountAttempts
+		);
 	}
 
 	@Test

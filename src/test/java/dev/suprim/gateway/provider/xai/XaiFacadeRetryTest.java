@@ -6,6 +6,8 @@ import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.proxy.Format;
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.OpenAiRelayHandler;
+import dev.suprim.gateway.proxy.SseHeartbeat;
+import dev.suprim.gateway.proxy.SseHeartbeatScheduler;
 import dev.suprim.gateway.proxy.StreamConverter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,7 +33,10 @@ class XaiFacadeRetryTest {
 		store = mock(CredentialStore.class);
 		authManager = mock(XaiAuthManager.class);
 		rotator = mock(AccountRotator.class);
-		OpenAiRelayHandler relayHandler = new OpenAiRelayHandler(new StreamConverter());
+		OpenAiRelayHandler relayHandler = new OpenAiRelayHandler(
+					new StreamConverter(),
+					new SseHeartbeat(mock(SseHeartbeatScheduler.class))
+			);
 		facade = new XaiFacade(authManager, relayHandler, rotator, store);
 	}
 
