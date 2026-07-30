@@ -209,9 +209,10 @@ public class PayloadBuilder {
 		if (normalizedEffort != null && effortPath != null) {
 			fallbackBudget = null;
 		}
+		boolean thinkingEnabled = fallbackBudget != null || normalizedEffort != null;
 		return InferenceFields.builder()
-		                      .temperature(temperature)
-		                      .topP(topP)
+		                      .temperature(thinkingEnabled ? null : temperature)
+		                      .topP(thinkingEnabled ? null : topP)
 		                      .maxTokens(positive(maxTokens))
 		                      .effortPath(effortPath)
 		                      .effort(normalizedEffort)
@@ -387,6 +388,7 @@ public class PayloadBuilder {
 			throw new IllegalArgumentException(
 					"Kiro payload exceeds upstream size limit");
 		}
+		KiroPayloadDiagnostics.log(root);
 		return json;
 	}
 

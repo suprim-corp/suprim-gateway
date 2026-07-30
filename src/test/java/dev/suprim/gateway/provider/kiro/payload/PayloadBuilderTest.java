@@ -407,6 +407,29 @@ class PayloadBuilderTest {
 	}
 
 	@Test
+	void omitsSamplingFieldsWhenThinkingIsEnabled() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-opus-5")
+		                                         .messages(List.of(Message.of("user", "Hello")))
+		                                         .temperature(0.7)
+		                                         .topP(0.9)
+		                                         .maxTokens(4096)
+		                                         .thinking(InternalRequest.Thinking.builder()
+		                                                                                   .type("adaptive")
+		                                                                                   .budgetTokens(2048)
+		                                                                                   .build())
+		                                         .build();
+
+		JsonNode payload = payload(builder, request);
+		JsonNode inference = payload.get("inferenceConfig");
+
+		assertEquals(4096, inference.get("maxTokens").asInt());
+		assertFalse(inference.has("temperature"));
+		assertFalse(inference.has("topP"));
+	}
+
+	@Test
 	void emitsNativeClaudeEffortWithoutThinkingPrefix() throws Exception {
 		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
 		InternalRequest request = InternalRequest.builder()

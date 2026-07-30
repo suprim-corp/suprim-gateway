@@ -118,16 +118,10 @@ public class KiroHttpClient {
 				Map<String, String> headers = kiroHeaders.build(accessToken, isApiKey);
 				if (log.isDebugEnabled()) {
 					log.debug(
-							"[Kiro] {} isApiKey={} tokenLen={} tokenPrefix={} headers={}",
+							"[Kiro] {} isApiKey={} tokenLen={} headers={}",
 							url,
 							isApiKey,
 							accessToken == null ? -1 : accessToken.length(),
-							accessToken == null
-									? "null"
-									: accessToken.substring(
-											0,
-											Math.min(12, accessToken.length())
-									),
 							headers.keySet()
 					);
 				}
