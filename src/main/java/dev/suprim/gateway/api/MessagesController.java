@@ -64,11 +64,15 @@ class MessagesController {
 		InternalRequest.Thinking thinking = parseThinking(
 				extra == null ? null : extra.get("thinking")
 		);
-		if (thinking != null) {
+		String effort = parseEffort(
+				extra == null ? null : extra.get("output_config")
+		);
+		if (thinking != null || effort != null) {
 			log.info(
-					"[Messages] model={} thinking={}",
+					"[Messages] model={} thinking={} effort={}",
 					actualModel,
-					thinking.type()
+					thinking == null ? null : thinking.type(),
+					effort
 			);
 		}
 
@@ -83,6 +87,7 @@ class MessagesController {
 				               .topP(request.topP())
 				               .maxTokens(request.maxTokens())
 				               .thinking(thinking)
+				               .effort(effort)
 				               .clientSessionId(
 						               RequestContext.clientSessionId(
 								               httpReq
@@ -102,6 +107,17 @@ class MessagesController {
 				),
 				httpRes
 		);
+	}
+
+	private static String parseEffort(Object value) {
+		if (!(value instanceof Map<?, ?> outputConfig)) {
+			return null;
+		}
+		Object effort = outputConfig.get("effort");
+		if (!(effort instanceof String effortName) || effortName.isBlank()) {
+			return null;
+		}
+		return effortName.trim();
 	}
 
 	private static InternalRequest.Thinking parseThinking(Object value) {

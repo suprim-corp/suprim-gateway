@@ -478,7 +478,7 @@ class PayloadBuilderTest {
 	}
 
 	@Test
-	void emitsNativeClaudeEffortWithoutThinkingPrefix() throws Exception {
+	void emitsNativeClaudeEffortWithThinkingPrefix() throws Exception {
 		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
 		InternalRequest request = InternalRequest.builder()
 		                                         .model("claude-opus-5")
@@ -496,7 +496,10 @@ class PayloadBuilderTest {
 		assertEquals("adaptive", additional.at("/thinking/type").asString());
 		assertEquals("summarized", additional.at("/thinking/display").asString());
 		assertEquals("high", additional.at("/output_config/effort").asString());
-		assertFalse(payload.path("systemPrompt").asString().contains("<thinking_mode>"));
+		assertTrue(payload.path("systemPrompt").asString().contains(
+				"<thinking_mode>enabled</thinking_mode>\n" +
+				"<max_thinking_length>2048</max_thinking_length>"
+		));
 	}
 
 	@Test
@@ -505,6 +508,10 @@ class PayloadBuilderTest {
 		InternalRequest request = InternalRequest.builder()
 		                                         .model("gpt-5.6")
 		                                         .messages(List.of(Message.of("user", "Hello")))
+		                                         .thinking(InternalRequest.Thinking.builder()
+		                                                                                   .type("enabled")
+		                                                                                   .budgetTokens(2048)
+		                                                                                   .build())
 		                                         .effort("max")
 		                                         .build();
 
@@ -517,6 +524,9 @@ class PayloadBuilderTest {
 		assertTrue(payload.at(
 				"/additionalModelRequestFields/output_config"
 		).isMissingNode());
+		assertFalse(payload.path("systemPrompt").asString().contains(
+				"<thinking_mode>"
+		));
 	}
 
 	@Test

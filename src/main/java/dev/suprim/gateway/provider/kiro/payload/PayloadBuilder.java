@@ -216,7 +216,7 @@ public class PayloadBuilder {
 		String effortPath = effortPath(modelId);
 		String normalizedEffort = normalizeEffort(effort, effortPath);
 		Integer fallbackBudget = thinkingBudget(thinking);
-		if (normalizedEffort != null && effortPath != null) {
+		if (normalizedEffort != null && "reasoning".equals(effortPath)) {
 			fallbackBudget = null;
 		}
 		boolean thinkingEnabled = fallbackBudget != null || normalizedEffort != null;
