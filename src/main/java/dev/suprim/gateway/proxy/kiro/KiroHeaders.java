@@ -22,12 +22,8 @@ class KiroHeaders {
 	Map<String, String> build(String token, boolean isApiKey) {
 		Map<String, String> headers = new LinkedHashMap<>();
 		headers.put("Authorization", "Bearer " + token);
-		if (isApiKey) {
-			headers.put("Content-Type", "application/json");
-			headers.put("Accept", "*/*");
-		} else {
-			headers.put("Content-Type", "application/x-amz-json-1.0");
-		}
+		headers.put("Content-Type", "application/json");
+		headers.put("Accept", "application/vnd.amazon.eventstream");
 		headers.put(
 				"x-amz-target",
 				"AmazonCodeWhispererStreamingService.GenerateAssistantResponse"
