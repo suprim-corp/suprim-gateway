@@ -159,9 +159,7 @@ public class PayloadBuilder {
 		replaySessionStart(history, userInputMessage, replay);
 		attachTools(userInputMessage, tools);
 
-		if (!history.isEmpty()) {
-			conversationState.set("history", history);
-		}
+		conversationState.set("history", history);
 
 		if (profileArn != null && !profileArn.isBlank()) {
 			root.put("profileArn", profileArn);
@@ -391,7 +389,6 @@ public class PayloadBuilder {
 				history,
 				protectSessionStart
 		)) {
-			if (history.isEmpty()) conversationState.remove("history");
 			json = mapper.writeValueAsString(root);
 		}
 

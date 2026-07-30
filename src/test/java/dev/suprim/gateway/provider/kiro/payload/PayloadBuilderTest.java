@@ -48,7 +48,7 @@ class PayloadBuilderTest {
 		assertEquals("vibe", conversation.get("agentTaskType").asString());
 		assertTrue(!conversation.get("conversationId").asString().isBlank());
 		assertTrue(!conversation.get("agentContinuationId").asString().isBlank());
-		assertTrue(conversation.get("history") == null);
+		assertTrue(conversation.get("history").isEmpty());
 		assertEquals(
 				"Follow instructions\n\nHello",
 				conversation.at("/currentMessage/userInputMessage/content").asString()
@@ -115,7 +115,7 @@ class PayloadBuilderTest {
 		);
 		assertEquals("claude-opus-5", current.get("modelId").asString());
 		assertEquals("AI_EDITOR", current.get("origin").asString());
-		assertTrue(conversation.get("history") == null);
+		assertTrue(conversation.get("history").isEmpty());
 		assertEquals("read_file", specification.get("name").asString());
 		assertEquals("Tool: read_file", specification.get("description").asString());
 		assertEquals("object", schema.get("type").asString());
