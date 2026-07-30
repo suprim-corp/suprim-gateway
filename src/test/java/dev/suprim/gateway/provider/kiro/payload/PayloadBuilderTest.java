@@ -38,7 +38,7 @@ class PayloadBuilderTest {
 		assertTrue(!conversation.get("agentContinuationId").asString().isBlank());
 		assertTrue(conversation.get("history") == null);
 		assertEquals(
-				"Follow instructions\n\nHello",
+				"Hello",
 				conversation.at("/currentMessage/userInputMessage/content").asString()
 		);
 	}

@@ -91,11 +91,6 @@ public class PayloadBuilder {
 				historyResult.currentImages(),
 				historyResult.currentToolResults()
 		);
-		if (!systemPrompt.isEmpty()) {
-			currentContent = currentContent.isEmpty()
-					? systemPrompt
-					: systemPrompt + "\n\n" + currentContent;
-		}
 
 		ObjectNode root = buildRoot(
 				history, modelId, currentContent,
