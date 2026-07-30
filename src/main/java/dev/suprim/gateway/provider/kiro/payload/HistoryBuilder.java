@@ -75,23 +75,6 @@ final class HistoryBuilder {
 		                    .build();
 	}
 
-	/**
-	 * Prepends a system prompt as a stable first-user fallback at the start of history.
-	 */
-	static void addSystemPriming(
-			ArrayNode history,
-			String systemPrompt,
-			String modelId
-	) {
-		ObjectNode primingUser = MAPPER.createObjectNode();
-		ObjectNode primingUserMsg = primingUser.putObject("userInputMessage");
-		primingUserMsg.put("content", systemPrompt);
-		primingUserMsg.put("modelId", modelId);
-		primingUserMsg.put("origin", "AI_EDITOR");
-		history.add(primingUser);
-
-	}
-
 	private static class Context {
 		final ArrayNode history = MAPPER.createArrayNode();
 		final String modelId;

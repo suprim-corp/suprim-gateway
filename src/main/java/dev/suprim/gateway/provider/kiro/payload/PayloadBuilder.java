@@ -67,16 +67,6 @@ public class PayloadBuilder {
 		);
 		ArrayNode history = historyResult.history();
 
-		if (!systemPrompt.isEmpty()) {
-			HistoryBuilder.addSystemPriming(history, systemPrompt, modelId);
-			ArrayNode reordered = mapper.createArrayNode();
-			reordered.add(history.get(history.size() - 1));
-			for (int i = 0; i < history.size() - 1; i++) {
-				reordered.add(history.get(i));
-			}
-			history = reordered;
-		}
-
 		if (history.size() > 2) {
 			log.debug("[Payload] history[0] keys: {}", history.get(0).propertyNames());
 			log.debug("[Payload] history[1] keys: {}", history.get(1).propertyNames());
@@ -101,6 +91,11 @@ public class PayloadBuilder {
 				historyResult.currentImages(),
 				historyResult.currentToolResults()
 		);
+		if (!systemPrompt.isEmpty()) {
+			currentContent = currentContent.isEmpty()
+					? systemPrompt
+					: systemPrompt + "\n\n" + currentContent;
+		}
 
 		ObjectNode root = buildRoot(
 				history, modelId, currentContent,
@@ -126,7 +121,14 @@ public class PayloadBuilder {
 		ObjectNode root = mapper.createObjectNode();
 		ObjectNode conversationState = root.putObject("conversationState");
 		conversationState.put("chatTriggerType", "MANUAL");
-		conversationState.put("conversationId", KiroSessionReplay.conversationId(clientSessionId, modelId));
+		KiroSessionReplay.SessionIds sessionIds = KiroSessionReplay.ids(
+				clientSessionId,
+				modelId
+		);
+		conversationState.put("conversationId", sessionIds.conversationId());
+		conversationState.put("agentContinuationId", sessionIds.continuationId());
+		conversationState.put("agentTaskType", "vibe");
+		root.put("agentMode", "vibe");
 		if (!systemPrompt.isEmpty()) {
 			root.put("systemPrompt", systemPrompt);
 		}
