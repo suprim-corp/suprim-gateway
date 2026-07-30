@@ -104,7 +104,9 @@ public class PayloadBuilder {
 				tools, profileArn, systemPrompt, clientSessionId
 		);
 
-		return truncatePayload(root, history, systemPrompt);
+		String payload = truncatePayload(root, history, systemPrompt);
+		log.debug("[Payload] body={}", payload);
+		return payload;
 	}
 
 	private ObjectNode buildRoot(
