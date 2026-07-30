@@ -46,6 +46,47 @@ class KiroPayloadDiagnosticsTest {
 		}
 	}
 
+	@Test
+	void correlatesInvalidRequestWithoutLoggingSensitiveValues() {
+		Logger logger = (Logger) LoggerFactory.getLogger(KiroPayloadDiagnostics.class);
+		Level previous = logger.getLevel();
+		ListAppender<ILoggingEvent> appender = new ListAppender<>();
+		appender.start();
+		logger.setLevel(Level.DEBUG);
+		logger.addAppender(appender);
+		try {
+			ObjectNode root = payload();
+			root.put("systemPrompt", "system-secret");
+			root.at("/conversationState/currentMessage/userInputMessage")
+			    .asObject()
+			    .put("content", "system-secret\n\nuser-secret");
+
+			KiroPayloadDiagnostics.logInvalidRequest(
+					root.toString(),
+					"CodeWhisperer",
+					"account",
+					"REQUEST_BODY_INVALID",
+					"Improperly formed request."
+			);
+
+			String logs = appender.list.stream()
+			                      .map(ILoggingEvent::getFormattedMessage)
+			                      .reduce("", (left, right) -> left + "\n" + right);
+			assertTrue(logs.contains("[PayloadInvalid]"));
+			assertTrue(logs.contains("reason=REQUEST_BODY_INVALID"));
+			assertTrue(logs.contains("fingerprint="));
+			assertTrue(logs.contains("systemPromptInSessionStart=true"));
+			assertTrue(logs.contains("toolCount=1"));
+			assertFalse(logs.contains("system-secret"));
+			assertFalse(logs.contains("user-secret"));
+			assertFalse(logs.contains("arn:secret"));
+			assertFalse(logs.contains("conversation-secret"));
+		} finally {
+			logger.detachAppender(appender);
+			logger.setLevel(previous);
+		}
+	}
+
 	private static ObjectNode payload() {
 		JsonMapper mapper = new JsonMapper();
 		ObjectNode root = mapper.createObjectNode();

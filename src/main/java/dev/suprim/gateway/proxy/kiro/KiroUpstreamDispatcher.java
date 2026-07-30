@@ -9,12 +9,16 @@ import dev.suprim.gateway.provider.Provider;
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.provider.kiro.KiroAccountModelAvailability;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
+import dev.suprim.gateway.provider.kiro.payload.KiroPayloadDiagnostics;
 import dev.suprim.gateway.provider.kiro.payload.PayloadBuilder;
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.kiro.KiroHttpClient.KiroResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.MissingNode;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -162,7 +166,12 @@ public class KiroUpstreamDispatcher {
 
 			KiroResponse response = endpointAttempt.response();
 			if (response != null) {
-				InspectedResponse inspected = inspectInvalidModelResponse(response);
+				InspectedResponse inspected = inspectInvalidModelResponse(
+						response,
+						payload,
+						endpointAttempt.endpoint(),
+						account.name()
+				);
 				response = inspected.response();
 				if (inspected.invalidModel()) {
 					invalidModelResult = new DispatchResult(
@@ -236,18 +245,22 @@ public class KiroUpstreamDispatcher {
 	 * whether refreshing its token is worth trying, as opposed to the account
 	 * being rate limited and needing rotation.
 	 */
-	private record EndpointAttempt(KiroResponse response, boolean tokenRejected) {
+	private record EndpointAttempt(
+			KiroResponse response,
+			boolean tokenRejected,
+			String endpoint
+	) {
 
-		static EndpointAttempt served(KiroResponse response) {
-			return new EndpointAttempt(response, false);
+		static EndpointAttempt served(KiroResponse response, String endpoint) {
+			return new EndpointAttempt(response, false, endpoint);
 		}
 
 		static EndpointAttempt rateLimited() {
-			return new EndpointAttempt(null, false);
+			return new EndpointAttempt(null, false, null);
 		}
 
 		static EndpointAttempt rejectedToken() {
-			return new EndpointAttempt(null, true);
+			return new EndpointAttempt(null, true, null);
 		}
 	}
 
@@ -291,7 +304,7 @@ public class KiroUpstreamDispatcher {
 					isApiKey
 			);
 			if (response.status() == 200) {
-				return EndpointAttempt.served(response);
+				return EndpointAttempt.served(response, ep.name());
 			}
 			if (response.status() == 429 || response.status() == 503) {
 				log.warn(
@@ -325,7 +338,7 @@ public class KiroUpstreamDispatcher {
 			);
 			if (response.status() == 200) {
 				preferredEndpoint.put(accountKey, i);
-				return EndpointAttempt.served(response);
+				return EndpointAttempt.served(response, ep.name());
 			}
 			if (response.status() == 403) {
 				log.warn(
@@ -345,12 +358,17 @@ public class KiroUpstreamDispatcher {
 				drain(response.body());
 				return EndpointAttempt.rateLimited();
 			}
-			return EndpointAttempt.served(response);
+			return EndpointAttempt.served(response, ep.name());
 		}
 		return EndpointAttempt.rejectedToken();
 	}
 
-	private InspectedResponse inspectInvalidModelResponse(KiroResponse response) throws Exception {
+	private InspectedResponse inspectInvalidModelResponse(
+			KiroResponse response,
+			String payload,
+			String endpoint,
+			String account
+	) throws Exception {
 		if (response.status() != 400) {
 			return new InspectedResponse(response, false);
 		}
@@ -364,12 +382,30 @@ public class KiroUpstreamDispatcher {
 		                                               .body(new ByteArrayInputStream(error))
 		                                               .contentType(response.contentType())
 		                                               .build();
+		String errorBody = new String(error, StandardCharsets.UTF_8);
+		JsonNode parsedError = parseError(errorBody);
+		String reason = parsedError.path("reason").asString();
+		if ("REQUEST_BODY_INVALID".equals(reason)) {
+			KiroPayloadDiagnostics.logInvalidRequest(
+					payload,
+					endpoint,
+					account,
+					reason,
+					parsedError.path("message").asString()
+			);
+		}
 		return new InspectedResponse(
 				replayableResponse,
-				new String(error, StandardCharsets.UTF_8).contains(
-						"\"reason\":\"INVALID_MODEL_ID\""
-				)
+				"INVALID_MODEL_ID".equals(reason)
 		);
+	}
+
+	private static JsonNode parseError(String body) {
+		try {
+			return new JsonMapper().readTree(body);
+		} catch (Exception ignored) {
+			return MissingNode.getInstance();
+		}
 	}
 
 	private record InspectedResponse(KiroResponse response, boolean invalidModel) {}

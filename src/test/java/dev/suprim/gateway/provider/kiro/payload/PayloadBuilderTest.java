@@ -50,7 +50,7 @@ class PayloadBuilderTest {
 		assertTrue(!conversation.get("agentContinuationId").asString().isBlank());
 		assertTrue(conversation.get("history") == null);
 		assertEquals(
-				"Hello",
+				"Follow instructions\n\nHello",
 				conversation.at("/currentMessage/userInputMessage/content").asString()
 		);
 	}
@@ -109,7 +109,10 @@ class PayloadBuilderTest {
 		));
 		assertTrue(payload.get("systemPrompt").asString().endsWith("S".repeat(4096)));
 		assertEquals("arn:aws:codewhisperer:us-east-1:000000000000:profile/fake", payload.get("profileArn").asString());
-		assertEquals("Inspect the file", current.get("content").asString());
+		assertEquals(
+				payload.get("systemPrompt").asString() + "\n\nInspect the file",
+				current.get("content").asString()
+		);
 		assertEquals("claude-opus-5", current.get("modelId").asString());
 		assertEquals("AI_EDITOR", current.get("origin").asString());
 		assertTrue(conversation.get("history") == null);
@@ -120,6 +123,51 @@ class PayloadBuilderTest {
 		assertEquals("path", schema.at("/required/0").asString());
 		assertFalse(schema.has("additionalProperties"));
 		assertFalse(schema.at("/properties/path").has("additionalProperties"));
+	}
+
+	@Test
+	void prefixesSystemPromptToFirstHistoricalUserOnly() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		JsonNode payload = payload(builder, request(
+				"history-session",
+				"claude-opus-5",
+				"system",
+				List.of(
+						Message.of("user", "first"),
+						Message.of("assistant", "answer"),
+						Message.of("user", "current")
+				)
+		));
+
+		assertEquals(
+				"system\n\nfirst",
+				payload.at("/conversationState/history/0/userInputMessage/content")
+				       .asString()
+		);
+		assertEquals(
+				"current",
+				payload.at("/conversationState/currentMessage/userInputMessage/content")
+				       .asString()
+		);
+	}
+
+	@Test
+	void preservesLargeSystemPromptWithoutTruncation() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		String systemPrompt = "é".repeat(100_000);
+		JsonNode payload = payload(builder, request(
+				"large-system",
+				"claude-opus-5",
+				systemPrompt,
+				List.of(Message.of("user", "Hello"))
+		));
+
+		assertEquals(systemPrompt, payload.path("systemPrompt").asString());
+		assertEquals(
+				systemPrompt + "\n\nHello",
+				payload.at("/conversationState/currentMessage/userInputMessage/content")
+				       .asString()
+		);
 	}
 
 	@Test
@@ -152,7 +200,7 @@ class PayloadBuilderTest {
 				followUp.at("/conversationState/agentContinuationId").asString()
 		);
 		assertEquals(
-				"first",
+				"system\n\nfirst",
 				followUp.at("/conversationState/history/0/userInputMessage/content").asString()
 		);
 		assertEquals(

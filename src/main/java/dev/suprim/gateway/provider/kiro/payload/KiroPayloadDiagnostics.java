@@ -4,10 +4,14 @@ import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.MissingNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
@@ -16,7 +20,7 @@ import java.util.Set;
  * Emits a safe structural view of the exact Kiro request body for upstream validation errors.
  */
 @Slf4j
-final class KiroPayloadDiagnostics {
+public final class KiroPayloadDiagnostics {
 
 	private static final JsonMapper MAPPER = new JsonMapper();
 	private static final Set<String> SENSITIVE_FIELDS = Set.of(
@@ -43,12 +47,136 @@ final class KiroPayloadDiagnostics {
 			return;
 		}
 
+		log.debug("[PayloadDebug] summary={}", summary(root));
 		ObjectNode safeBody = sanitize(root, "");
 		log.debug("[PayloadDebug] body={}", safeBody);
 		logTree(root, "$", 0);
 		logTools(root);
 		logSuspiciousFields(root);
 	}
+
+	public static void logInvalidRequest(
+			String payload,
+			String endpoint,
+			String account,
+			String reason,
+			String message
+	) {
+		try {
+			JsonNode parsed = MAPPER.readTree(payload);
+			if (!parsed.isObject()) {
+				log.warn(
+						"[PayloadInvalid] endpoint={} account={} reason={} message={} payloadBytes={} fingerprint={} rootType={}",
+						endpoint, account, bounded(reason), bounded(message),
+						utf8Bytes(payload), fingerprint(payload), type(parsed)
+				);
+				return;
+			}
+			ObjectNode root = (ObjectNode) parsed;
+			log.warn(
+					"[PayloadInvalid] endpoint={} account={} reason={} message={} summary={}",
+					endpoint, account, bounded(reason), bounded(message), summary(root)
+			);
+			logSuspiciousFields(root);
+			logTools(root);
+		} catch (Exception exception) {
+			log.warn(
+					"[PayloadInvalid] endpoint={} account={} reason={} message={} payloadBytes={} fingerprint={} parseError={}",
+					endpoint, account, bounded(reason), bounded(message),
+					utf8Bytes(payload), fingerprint(payload),
+					exception.getClass().getSimpleName()
+			);
+		}
+	}
+
+	private static PayloadSummary summary(ObjectNode root) {
+		String payload = root.toString();
+		String systemPrompt = root.path("systemPrompt").asString();
+		JsonNode history = root.at("/conversationState/history");
+		JsonNode current = root.at(
+				"/conversationState/currentMessage/userInputMessage"
+		);
+		JsonNode firstHistoryUser = firstHistoryUser(history);
+		JsonNode sessionStart = firstHistoryUser.isMissingNode()
+				? current
+				: firstHistoryUser;
+		JsonNode tools = current.at("/userInputMessageContext/tools");
+		return new PayloadSummary(
+				fingerprint(payload),
+				utf8Bytes(payload),
+				current.path("modelId").asString(),
+				history.isArray() ? history.size() : 0,
+				tools.isArray() ? tools.size() : 0,
+				bytes(tools),
+				root.has("systemPrompt"),
+				systemPrompt.length(),
+				utf8Bytes(systemPrompt),
+				firstHistoryUser.isMissingNode() ? "current" : "history",
+				sessionStart.path("content").asString().length(),
+				utf8Bytes(sessionStart.path("content").asString()),
+				!systemPrompt.isEmpty() && sessionStart.path("content")
+				                                      .asString()
+				                                      .startsWith(systemPrompt),
+				current.path("content").asString().length(),
+				utf8Bytes(current.path("content").asString()),
+				root.has("inferenceConfig"),
+				root.has("additionalModelRequestFields")
+		);
+	}
+
+	private static JsonNode firstHistoryUser(JsonNode history) {
+		if (history.isArray()) {
+			for (JsonNode entry : history) {
+				JsonNode user = entry.get("userInputMessage");
+				if (user != null) {
+					return user;
+				}
+			}
+		}
+		return MissingNode.getInstance();
+	}
+
+	private static String fingerprint(String payload) {
+		try {
+			byte[] digest = MessageDigest.getInstance("SHA-256").digest(
+					payload.getBytes(StandardCharsets.UTF_8)
+			);
+			return HexFormat.of().formatHex(digest, 0, 8);
+		} catch (NoSuchAlgorithmException exception) {
+			throw new IllegalStateException(exception);
+		}
+	}
+
+	private static int utf8Bytes(String value) {
+		return value.getBytes(StandardCharsets.UTF_8).length;
+	}
+
+	private static String bounded(String value) {
+		if (value == null) {
+			return "";
+		}
+		return value.length() <= 200 ? value : value.substring(0, 200);
+	}
+
+	private record PayloadSummary(
+			String fingerprint,
+			int payloadBytes,
+			String model,
+			int historyItems,
+			int toolCount,
+			int toolsBytes,
+			boolean hasSystemPrompt,
+			int systemPromptChars,
+			int systemPromptBytes,
+			String sessionStartLocation,
+			int sessionStartChars,
+			int sessionStartBytes,
+			boolean systemPromptInSessionStart,
+			int currentContentChars,
+			int currentContentBytes,
+			boolean hasInferenceConfig,
+			boolean hasAdditionalModelRequestFields
+	) {}
 
 	private static ObjectNode sanitize(ObjectNode source, String path) {
 		ObjectNode safe = MAPPER.createObjectNode();

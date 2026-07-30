@@ -104,6 +104,39 @@ class KiroUpstreamDispatcherTest {
 	}
 
 	@Test
+	void dispatch_preservesRequestBodyInvalidResponseAfterDiagnostics() throws Exception {
+		StoredAccount account = StoredAccount.builder()
+		                                     .name("solo").provider("KIRO")
+		                                     .authType("API_KEY").accessToken("api-key-1")
+		                                     .build();
+		when(store.findAllByProvider("KIRO")).thenReturn(List.of(account));
+		when(rotator.next(eq("KIRO"), anyList())).thenReturn(account);
+		when(authManager.getAccessToken(account)).thenReturn("api-key-1");
+		when(payloadBuilder.buildOpenAiPayload(any(), any())).thenReturn(
+				"{\"conversationState\":{\"currentMessage\":{\"userInputMessage\":" +
+				"{\"content\":\"safe\",\"modelId\":\"claude-opus-5\",\"origin\":\"AI_EDITOR\"}}}}"
+		);
+		String error = "{\"message\":\"Improperly formed request.\",\"reason\":\"REQUEST_BODY_INVALID\"}";
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(),
+				eq("api-key-1"), any(), anyBoolean()))
+				.thenReturn(new KiroResponse(
+						400,
+						new ByteArrayInputStream(error.getBytes()),
+						"application/json"
+				));
+
+		KiroUpstreamDispatcher.DispatchResult result = dispatcher.dispatch(
+				InternalRequest.builder()
+				               .model("claude-opus-5")
+				               .messages(List.of())
+				               .build(),
+				true
+		);
+
+		assertEquals(error, new String(result.response().body().readAllBytes()));
+	}
+
+	@Test
 	void dispatch_withoutCachedModel_doesNotCallUpstream() throws Exception {
 		StoredAccount acc = StoredAccount.builder()
 		                                  .name("solo").provider("KIRO")

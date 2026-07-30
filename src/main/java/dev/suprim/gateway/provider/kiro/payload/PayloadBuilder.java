@@ -100,12 +100,24 @@ public class PayloadBuilder {
 		ArrayNode history = historyResult.history();
 
 		ObjectNode userInputMessage = historyResult.currentMessage();
+		ObjectNode historyStart = firstUserMessage(history);
+		ObjectNode sessionStart = (historyStart == null
+				? userInputMessage
+				: historyStart).deepCopy();
+		prefixSystemPrompt(sessionStart, systemPrompt);
 		KiroSessionReplay.ReplayState replay = KiroSessionReplay.resolve(
 				clientSessionId,
 				modelId,
 				systemPrompt,
-				userInputMessage
+				sessionStart
 		);
+		if (replay.created()) {
+			if (historyStart == null) {
+				userInputMessage = sessionStart;
+			} else {
+				historyStart.setAll(sessionStart);
+			}
+		}
 		ObjectNode root = buildRoot(
 				history,
 				userInputMessage,
@@ -394,6 +406,29 @@ public class PayloadBuilder {
 
 	private static int payloadBytes(String payload) {
 		return payload.getBytes(StandardCharsets.UTF_8).length;
+	}
+
+	private static ObjectNode firstUserMessage(ArrayNode history) {
+		for (JsonNode entry : history) {
+			if (entry.has("userInputMessage")) {
+				return (ObjectNode) entry.get("userInputMessage");
+			}
+		}
+		return null;
+	}
+
+	private static void prefixSystemPrompt(
+			ObjectNode userInputMessage,
+			String systemPrompt
+	) {
+		if (systemPrompt.isEmpty()) {
+			return;
+		}
+		String content = userInputMessage.path("content").asString();
+		userInputMessage.put(
+				"content",
+				content.isEmpty() ? systemPrompt : systemPrompt + "\n\n" + content
+		);
 	}
 
 	private static String extractSystemPrompt(List<Message> messages) {
