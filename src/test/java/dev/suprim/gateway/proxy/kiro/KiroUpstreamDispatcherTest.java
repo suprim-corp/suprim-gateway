@@ -62,7 +62,7 @@ class KiroUpstreamDispatcherTest {
 		when(authManager.getAccessToken(acc)).thenReturn("api-key-1");
 
 		KiroResponse expected = new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()), "text/event-stream");
-		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), any(), anyBoolean()))
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), anyBoolean()))
 				.thenReturn(expected);
 
 		InternalRequest request = InternalRequest.builder().model("claude-sonnet-4-20250514").messages(List.of()).build();
@@ -85,7 +85,7 @@ class KiroUpstreamDispatcherTest {
 		when(rotator.next(eq("KIRO"), anyList())).thenReturn(account);
 		when(authManager.getAccessToken(account)).thenReturn("api-key-1");
 		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(),
-				eq("api-key-1"), any(), anyBoolean()))
+				eq("api-key-1"), anyBoolean()))
 				.thenReturn(new KiroResponse(
 						400,
 						new ByteArrayInputStream("{\"message\":\"bad payload\"}".getBytes()),
@@ -118,7 +118,7 @@ class KiroUpstreamDispatcherTest {
 		);
 		String error = "{\"message\":\"Improperly formed request.\",\"reason\":\"REQUEST_BODY_INVALID\"}";
 		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(),
-				eq("api-key-1"), any(), anyBoolean()))
+				eq("api-key-1"), anyBoolean()))
 				.thenReturn(new KiroResponse(
 						400,
 						new ByteArrayInputStream(error.getBytes()),
@@ -170,9 +170,9 @@ class KiroUpstreamDispatcherTest {
 		when(authManager.getAccessToken(acc1)).thenReturn("api-key-1");
 		when(authManager.getAccessToken(acc2)).thenReturn("api-key-2");
 
-		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), any(), anyBoolean()))
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), anyBoolean()))
 				.thenReturn(new KiroResponse(429, new ByteArrayInputStream("limited".getBytes()), "application/json"));
-		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-2"), any(), anyBoolean()))
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-2"), anyBoolean()))
 				.thenReturn(new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()), "text/event-stream"));
 
 		InternalRequest request = InternalRequest.builder().model("claude-sonnet-4-20250514").messages(List.of()).build();
@@ -200,13 +200,13 @@ class KiroUpstreamDispatcherTest {
 		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc1, acc2);
 		when(authManager.getAccessToken(acc1)).thenReturn("api-key-1");
 		when(authManager.getAccessToken(acc2)).thenReturn("api-key-2");
-		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), any(), anyBoolean()))
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), anyBoolean()))
 				.thenReturn(new KiroResponse(
 						400,
 						new ByteArrayInputStream("{\"reason\":\"INVALID_MODEL_ID\"}".getBytes()),
 						"application/json"
 				));
-		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-2"), any(), anyBoolean()))
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-2"), anyBoolean()))
 				.thenReturn(new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()), "text/event-stream"));
 
 		InternalRequest request = InternalRequest.builder().model("claude-sonnet-5").messages(List.of()).build();
@@ -235,9 +235,9 @@ class KiroUpstreamDispatcherTest {
 		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc1, acc2);
 		when(authManager.getAccessToken(acc1)).thenReturn("api-key-1");
 		when(authManager.getAccessToken(acc2)).thenReturn("api-key-2");
-		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), any(), anyBoolean()))
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), anyBoolean()))
 				.thenReturn(new KiroResponse(400, new ByteArrayInputStream(error.getBytes()), "application/json"));
-		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-2"), any(), anyBoolean()))
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-2"), anyBoolean()))
 				.thenReturn(new KiroResponse(400, new ByteArrayInputStream(error.getBytes()), "application/json"));
 
 		InternalRequest request = InternalRequest.builder().model("claude-sonnet-5").messages(List.of()).build();
@@ -266,11 +266,11 @@ class KiroUpstreamDispatcherTest {
 		when(authManager.getAccessToken(acc1)).thenReturn("old-token");
 		when(authManager.forceRefresh(acc1)).thenReturn("refreshed-token");
 		when(authManager.getAccessToken(acc2)).thenReturn("second-token");
-		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("old-token"), any(), anyBoolean()))
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("old-token"), anyBoolean()))
 				.thenReturn(new KiroResponse(403, new ByteArrayInputStream(new byte[0]), "application/json"));
-		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("refreshed-token"), any(), anyBoolean()))
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("refreshed-token"), anyBoolean()))
 				.thenReturn(new KiroResponse(403, new ByteArrayInputStream(new byte[0]), "application/json"));
-		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("second-token"), any(), anyBoolean()))
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("second-token"), anyBoolean()))
 				.thenReturn(new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()), "text/event-stream"));
 
 		InternalRequest request = InternalRequest.builder().model("claude-sonnet-4-20250514").messages(List.of()).build();
@@ -279,8 +279,8 @@ class KiroUpstreamDispatcherTest {
 		assertEquals("k2", result.accountId());
 		verify(authManager).forceRefresh(acc1);
 		verify(authManager, never()).forceRefresh();
-		verify(kiroClient, times(3)).request(anyString(), anyString(), anyString(), anyBoolean(), eq("old-token"), any(), anyBoolean());
-		verify(kiroClient, times(3)).request(anyString(), anyString(), anyString(), anyBoolean(), eq("refreshed-token"), any(), anyBoolean());
+		verify(kiroClient, times(3)).request(anyString(), anyString(), anyString(), anyBoolean(), eq("old-token"), anyBoolean());
+		verify(kiroClient, times(3)).request(anyString(), anyString(), anyString(), anyBoolean(), eq("refreshed-token"), anyBoolean());
 		ArgumentCaptor<List<StoredAccount>> candidates = ArgumentCaptor.forClass(List.class);
 		verify(rotator, times(2)).next(eq("KIRO"), candidates.capture());
 		assertEquals(List.of(acc1, acc2), candidates.getAllValues().get(0));
@@ -307,7 +307,7 @@ class KiroUpstreamDispatcherTest {
 		when(authManager.getAccessToken(acc2)).thenReturn("second-token");
 		when(authManager.forceRefresh(acc1)).thenReturn("first-token-refreshed");
 		when(authManager.forceRefresh(acc2)).thenReturn("second-token-refreshed");
-		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), anyString(), any(), anyBoolean()))
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), anyString(), anyBoolean()))
 				.thenReturn(new KiroResponse(403, new ByteArrayInputStream(new byte[0]), "application/json"));
 
 		InternalRequest request = InternalRequest.builder().model("claude-sonnet-4-20250514").messages(List.of()).build();
@@ -339,7 +339,7 @@ class KiroUpstreamDispatcherTest {
 				"arn:aws:codewhisperer:us-east-1:999:profile/CONNECTED"
 		);
 		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(),
-				eq("sso-token"), any(), anyBoolean()))
+				eq("sso-token"), anyBoolean()))
 				.thenReturn(new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()),
 						"text/event-stream"));
 
@@ -382,11 +382,11 @@ class KiroUpstreamDispatcherTest {
 		when(authManager.getAccessToken(first)).thenReturn("token-1");
 		when(authManager.getAccessToken(second)).thenReturn("token-2");
 		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(),
-				eq("token-1"), any(), anyBoolean()))
+				eq("token-1"), anyBoolean()))
 				.thenReturn(new KiroResponse(429, new ByteArrayInputStream("limited".getBytes()),
 						"application/json"));
 		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(),
-				eq("token-2"), any(), anyBoolean()))
+				eq("token-2"), anyBoolean()))
 				.thenReturn(new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()),
 						"text/event-stream"));
 
@@ -421,7 +421,7 @@ class KiroUpstreamDispatcherTest {
 		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc);
 		when(authManager.getAccessToken(acc)).thenReturn("api-key-1");
 		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(),
-				eq("api-key-1"), any(), anyBoolean()))
+				eq("api-key-1"), anyBoolean()))
 				.thenReturn(new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()),
 						"text/event-stream"));
 
@@ -449,11 +449,83 @@ class KiroUpstreamDispatcherTest {
 		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc1);
 		when(authManager.getAccessToken(acc1)).thenReturn("api-key-1");
 
-		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), any(), anyBoolean()))
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), anyBoolean()))
 				.thenReturn(new KiroResponse(429, new ByteArrayInputStream("limited".getBytes()), "application/json"));
 
 		InternalRequest request = InternalRequest.builder().model("claude-sonnet-4-20250514").messages(List.of()).build();
 
 		assertThrows(RuntimeException.class, () -> dispatcher.dispatch(request, true));
+	}
+
+	/**
+	 * An AWS SSO token is refused by the kiro.dev gateway and gets REQUEST_BODY_INVALID from
+	 * CodeWhisperer, so the Q surface goes first and kiro.dev is the last resort.
+	 */
+	@Test
+	void dispatch_awsSsoAccount_triesQSurfaceFirstAndRuntimeLast() throws Exception {
+		StoredAccount account = StoredAccount.builder()
+		                                     .name("sso").provider("KIRO")
+		                                     .authType("AWS_SSO_OIDC")
+		                                     .accessToken("sso-token")
+		                                     .build();
+
+		assertEquals(
+				List.of(
+						"https://q.us-east-1.amazonaws.com/generateAssistantResponse",
+						"https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
+						"https://runtime.us-east-1.kiro.dev/generateAssistantResponse"
+				),
+				endpointsTried(account)
+		);
+	}
+
+	/** A Kiro OIDC or social login keeps the kiro.dev gateway first: it accepts that token. */
+	@Test
+	void dispatch_oauthAccount_triesRuntimeFirst() throws Exception {
+		StoredAccount account = StoredAccount.builder()
+		                                     .name("desktop").provider("KIRO")
+		                                     .authType("KIRO_DESKTOP")
+		                                     .accessToken("desktop-token")
+		                                     .build();
+
+		assertEquals(
+				List.of(
+						"https://runtime.us-east-1.kiro.dev/generateAssistantResponse",
+						"https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
+						"https://q.us-east-1.amazonaws.com/generateAssistantResponse"
+				),
+				endpointsTried(account)
+		);
+	}
+
+	/**
+	 * The endpoint URLs an account is tried against, in order. Every surface answers 403 so the
+	 * dispatcher walks the whole list instead of stopping at the first one.
+	 */
+	private List<String> endpointsTried(StoredAccount account) throws Exception {
+		when(store.findAllByProvider("KIRO")).thenReturn(List.of(account));
+		when(rotator.next(eq("KIRO"), anyList())).thenReturn(account);
+		when(authManager.getAccessToken(account)).thenReturn(account.accessToken());
+		when(authManager.forceRefresh(account)).thenReturn(account.accessToken());
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(),
+				any(), anyBoolean()))
+				.thenAnswer(invocation -> new KiroResponse(
+						403,
+						new ByteArrayInputStream("denied".getBytes()),
+						"application/json"
+				));
+
+		assertThrows(RuntimeException.class, () -> dispatcher.dispatch(
+				InternalRequest.builder()
+				               .model("claude-sonnet-4-20250514")
+				               .messages(List.of())
+				               .build(),
+				true
+		));
+
+		ArgumentCaptor<String> urls = ArgumentCaptor.forClass(String.class);
+		verify(kiroClient, atLeast(3)).request(anyString(), urls.capture(),
+				anyString(), anyBoolean(), any(), anyBoolean());
+		return urls.getAllValues().subList(0, 3);
 	}
 }

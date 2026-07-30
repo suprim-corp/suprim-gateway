@@ -109,14 +109,14 @@ class KiroFacadeRetryTest {
 		when(authManager.getAccessToken(acc2)).thenReturn("key2");
 		when(authManager.getDisplayName()).thenReturn("wrong-account");
 		when(kiroClient.request(
-				anyString(), anyString(), anyString(), anyBoolean(), eq("key1"), any(), anyBoolean()
+				anyString(), anyString(), anyString(), anyBoolean(), eq("key1"), anyBoolean()
 		)).thenReturn(new KiroHttpClient.KiroResponse(
 				429,
 				new ByteArrayInputStream("rate limited".getBytes()),
 				"application/json"
 		));
 		when(kiroClient.request(
-				anyString(), anyString(), anyString(), anyBoolean(), eq("key2"), any(), anyBoolean()
+				anyString(), anyString(), anyString(), anyBoolean(), eq("key2"), anyBoolean()
 		)).thenReturn(new KiroHttpClient.KiroResponse(
 				200,
 				new ByteArrayInputStream("data: {}\n".getBytes()),
@@ -143,7 +143,7 @@ class KiroFacadeRetryTest {
 		when(authManager.getAccessToken(account)).thenReturn("key1");
 		when(authManager.getDisplayName()).thenReturn("wrong-account");
 		when(kiroClient.request(
-				anyString(), anyString(), anyString(), anyBoolean(), eq("key1"), any(), anyBoolean()
+				anyString(), anyString(), anyString(), anyBoolean(), eq("key1"), anyBoolean()
 		)).thenReturn(new KiroHttpClient.KiroResponse(
 				400,
 				new ByteArrayInputStream("upstream error".getBytes()),

@@ -20,6 +20,12 @@ public class Kiro {
 	public static final String API_HOST_TEMPLATE = "https://runtime.%s.kiro.dev";
 	public static final String Q_HOST_TEMPLATE = "https://q.%s.amazonaws.com";
 	public static final String CODEWHISPERER_HOST = "https://codewhisperer.us-east-1.amazonaws.com";
+
+	/**
+	 * Marks a URL as the CodeWhisperer surface, whatever its region. It is the only Kiro surface
+	 * that expects {@code x-amz-target}.
+	 */
+	public static final String CODEWHISPERER_URL_MARKER = "://codewhisperer.";
 	public static final String RUNTIME_HOST = "https://runtime.us-east-1.kiro.dev";
 	public static final String Q_HOST = "https://q.us-east-1.amazonaws.com";
 	public static final String GENERATE_PATH = "/generateAssistantResponse";

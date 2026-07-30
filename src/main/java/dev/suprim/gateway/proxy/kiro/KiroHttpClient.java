@@ -41,7 +41,7 @@ public class KiroHttpClient {
 			boolean stream,
 			String accessToken
 	) throws Exception {
-		return request(method, url, body, stream, accessToken, null, false);
+		return request(method, url, body, stream, accessToken, false);
 	}
 
 	public KiroResponse request(
@@ -50,18 +50,6 @@ public class KiroHttpClient {
 			String body,
 			boolean stream,
 			String accessToken,
-			String amzTarget
-	) throws Exception {
-		return request(method, url, body, stream, accessToken, amzTarget, false);
-	}
-
-	public KiroResponse request(
-			String method,
-			String url,
-			String body,
-			boolean stream,
-			String accessToken,
-			String amzTarget,
 			boolean isApiKey
 	) throws Exception {
 		int maxRetries = stream ? config.firstTokenMaxRetries() : 3;
@@ -83,7 +71,6 @@ public class KiroHttpClient {
 						stream,
 						maxRetries,
 						accessToken,
-						amzTarget,
 						isApiKey
 				);
 			} catch (IOException e) {
@@ -107,7 +94,6 @@ public class KiroHttpClient {
 			boolean stream,
 			int maxRetries,
 			String accessToken,
-			String amzTarget,
 			boolean isApiKey
 	) throws Exception {
 		HttpResponse<InputStream> lastResponse = null;
@@ -115,7 +101,11 @@ public class KiroHttpClient {
 
 		for (int attempt = 0; attempt < maxRetries; attempt++) {
 			try {
-				Map<String, String> headers = kiroHeaders.build(accessToken, isApiKey);
+				Map<String, String> headers = kiroHeaders.build(
+						accessToken,
+						isApiKey,
+						url
+				);
 				if (log.isDebugEnabled()) {
 					log.debug(
 							"[Kiro] {} isApiKey={} tokenLen={} headers={}",
@@ -128,11 +118,6 @@ public class KiroHttpClient {
 
 				HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
 				                                            .uri(URI.create(url));
-				if (amzTarget != null) {
-					headers.put("x-amz-target", amzTarget);
-				} else {
-					headers.remove("x-amz-target");
-				}
 				headers.forEach(reqBuilder::header);
 
 				if ("POST".equals(method) && body != null) {

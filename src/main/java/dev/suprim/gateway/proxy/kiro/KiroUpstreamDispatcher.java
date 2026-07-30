@@ -26,7 +26,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -35,27 +37,48 @@ import java.util.stream.Collectors;
 @Component
 public class KiroUpstreamDispatcher {
 
-	private static final List<KiroEndpoint> ENDPOINTS = List.of(
-			new KiroEndpoint(
-					Kiro.RUNTIME_HOST + Kiro.GENERATE_PATH,
-					Kiro.AMZ_TARGET,
-					"Kiro Runtime"
-			),
-			new KiroEndpoint(
-					Kiro.CODEWHISPERER_HOST + Kiro.GENERATE_PATH,
-					Kiro.AMZ_TARGET,
-					"CodeWhisperer"
-			),
-			new KiroEndpoint(
-					Kiro.Q_HOST + Kiro.GENERATE_PATH,
-					"",
-					"Kiro IDE"
-			),
-			new KiroEndpoint(
-					Kiro.Q_HOST + Kiro.GENERATE_PATH,
-					Kiro.AMZ_TARGET_Q,
-					"AmazonQ"
-			)
+	private static final KiroEndpoint RUNTIME = new KiroEndpoint(
+			Kiro.RUNTIME_HOST + Kiro.GENERATE_PATH,
+			"Kiro Runtime"
+	);
+	private static final KiroEndpoint CODE_WHISPERER = new KiroEndpoint(
+			Kiro.CODEWHISPERER_HOST + Kiro.GENERATE_PATH,
+			"CodeWhisperer"
+	);
+	private static final KiroEndpoint AMAZON_Q = new KiroEndpoint(
+			Kiro.Q_HOST + Kiro.GENERATE_PATH,
+			"AmazonQ"
+	);
+
+	/**
+	 * Kiro OIDC and social logins (builder-id, Google, GitHub): the kiro.dev gateway is the
+	 * surface built for their tokens, so it stays first.
+	 */
+	private static final List<KiroEndpoint> OAUTH_ENDPOINTS = List.of(
+			RUNTIME,
+			CODE_WHISPERER,
+			AMAZON_Q
+	);
+
+	/**
+	 * AWS SSO access tokens — IAM Identity Center, enterprise external IdP and API keys.
+	 * <p>
+	 * The kiro.dev gateway only accepts Kiro OIDC/social tokens and rejects this family outright,
+	 * and CodeWhisperer authenticates the token but answers {@code REQUEST_BODY_INVALID} to a
+	 * payload the Q surface accepts. Q therefore goes first and kiro.dev is kept as a last resort.
+	 */
+	private static final List<KiroEndpoint> AWS_SSO_ENDPOINTS = List.of(
+			AMAZON_Q,
+			CODE_WHISPERER,
+			RUNTIME
+	);
+
+	/** Auth types whose stored token is an AWS SSO access token rather than a Kiro OIDC one. */
+	private static final Set<String> AWS_SSO_AUTH_TYPES = Set.of(
+			"aws_sso_oidc",
+			"idc",
+			"external_idp",
+			"api_key"
 	);
 
 	private final KiroHttpClient kiroClient;
@@ -282,6 +305,20 @@ public class KiroUpstreamDispatcher {
 				: account.profileArn();
 	}
 
+	/**
+	 * The endpoints to try for one account, ordered by the surface its token is accepted on.
+	 *
+	 * @see #AWS_SSO_ENDPOINTS
+	 */
+	private static List<KiroEndpoint> endpointsFor(StoredAccount account) {
+		String authType = account.authType();
+		return authType != null &&
+		       AWS_SSO_AUTH_TYPES.contains(authType.trim()
+		                                           .toLowerCase(Locale.ROOT))
+				? AWS_SSO_ENDPOINTS
+				: OAUTH_ENDPOINTS;
+	}
+
 	private EndpointAttempt tryAllEndpoints(
 			String payload,
 			boolean stream,
@@ -289,6 +326,7 @@ public class KiroUpstreamDispatcher {
 			StoredAccount account
 	) throws Exception {
 		boolean isApiKey = "api_key".equalsIgnoreCase(account.authType());
+		List<KiroEndpoint> endpoints = endpointsFor(account);
 		String accountKey = Optional.ofNullable(account.name())
 		                            .orElseGet(() ->
 				                            account.accessToken()
@@ -297,15 +335,13 @@ public class KiroUpstreamDispatcher {
 		Integer preferred = preferredEndpoint.get(accountKey);
 
 		if (preferred != null) {
-			KiroEndpoint ep = ENDPOINTS.get(preferred);
-			String amzTarget = ep.amzTarget().isEmpty() ? null : ep.amzTarget();
+			KiroEndpoint ep = endpoints.get(preferred);
 			KiroResponse response = kiroClient.request(
 					"POST",
 					ep.url(),
 					payload,
 					stream,
 					accessToken,
-					amzTarget,
 					isApiKey
 			);
 			if (response.status() == 200) {
@@ -329,16 +365,14 @@ public class KiroUpstreamDispatcher {
 			preferredEndpoint.remove(accountKey);
 		}
 
-		for (int i = 0; i < ENDPOINTS.size(); i++) {
-			KiroEndpoint ep = ENDPOINTS.get(i);
-			String amzTarget = ep.amzTarget().isEmpty() ? null : ep.amzTarget();
+		for (int i = 0; i < endpoints.size(); i++) {
+			KiroEndpoint ep = endpoints.get(i);
 			KiroResponse response = kiroClient.request(
 					"POST",
 					ep.url(),
 					payload,
 					stream,
 					accessToken,
-					amzTarget,
 					isApiKey
 			);
 			if (response.status() == 200) {
@@ -434,5 +468,5 @@ public class KiroUpstreamDispatcher {
 		}
 	}
 
-	private record KiroEndpoint(String url, String amzTarget, String name) {}
+	private record KiroEndpoint(String url, String name) {}
 }
