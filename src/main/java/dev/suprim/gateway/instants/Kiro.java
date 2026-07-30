@@ -20,6 +20,7 @@ public class Kiro {
 	public static final String API_HOST_TEMPLATE = "https://runtime.%s.kiro.dev";
 	public static final String Q_HOST_TEMPLATE = "https://q.%s.amazonaws.com";
 	public static final String CODEWHISPERER_HOST = "https://codewhisperer.us-east-1.amazonaws.com";
+	public static final String RUNTIME_HOST = "https://runtime.us-east-1.kiro.dev";
 	public static final String Q_HOST = "https://q.us-east-1.amazonaws.com";
 	public static final String GENERATE_PATH = "/generateAssistantResponse";
 	public static final String USAGE_LIMITS_PATH = "/getUsageLimits?origin=AI_EDITOR&resourceType=AGENTIC_REQUEST&isEmailRequired=true";

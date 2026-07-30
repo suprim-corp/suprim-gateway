@@ -37,6 +37,11 @@ public class KiroUpstreamDispatcher {
 
 	private static final List<KiroEndpoint> ENDPOINTS = List.of(
 			new KiroEndpoint(
+					Kiro.RUNTIME_HOST + Kiro.GENERATE_PATH,
+					Kiro.AMZ_TARGET,
+					"Kiro Runtime"
+			),
+			new KiroEndpoint(
 					Kiro.CODEWHISPERER_HOST + Kiro.GENERATE_PATH,
 					Kiro.AMZ_TARGET,
 					"CodeWhisperer"

@@ -17,7 +17,10 @@ class KiroHeadersTest {
 		for (boolean apiKey : new boolean[]{false, true}) {
 			Map<String, String> values = headers.build("token", apiKey);
 
-			assertEquals("application/json", values.get("Content-Type"));
+			assertEquals(
+					"application/x-amz-json-1.0",
+					values.get("Content-Type")
+			);
 			assertEquals(
 					"application/vnd.amazon.eventstream",
 					values.get("Accept")
