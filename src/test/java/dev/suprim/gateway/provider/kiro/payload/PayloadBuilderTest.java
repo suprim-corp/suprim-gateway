@@ -241,12 +241,37 @@ class PayloadBuilderTest {
 		);
 	}
 
+	/**
+	 * The upstream caps the root {@code systemPrompt} at 100 000 bytes and answers a longer one
+	 * with {@code REQUEST_BODY_INVALID}. Past the cap the field is dropped rather than truncated,
+	 * and the full text still reaches the model through the session-start message.
+	 */
 	@Test
-	void preservesLargeSystemPromptWithoutTruncation() throws Exception {
+	void dropsRootSystemPromptPastTheUpstreamCapButKeepsTheTextInContent()
+			throws Exception {
 		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
 		String systemPrompt = "é".repeat(100_000);
 		JsonNode payload = payload(builder, request(
 				"large-system",
+				"claude-opus-5",
+				systemPrompt,
+				List.of(Message.of("user", "Hello"))
+		));
+
+		assertFalse(payload.has("systemPrompt"));
+		assertEquals(
+				systemPrompt + "\n\nHello",
+				payload.at("/conversationState/currentMessage/userInputMessage/content")
+				       .asString()
+		);
+	}
+
+	@Test
+	void keepsRootSystemPromptWhenItFitsTheUpstreamCap() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		String systemPrompt = "a".repeat(99_000);
+		JsonNode payload = payload(builder, request(
+				"fitting-system",
 				"claude-opus-5",
 				systemPrompt,
 				List.of(Message.of("user", "Hello"))
