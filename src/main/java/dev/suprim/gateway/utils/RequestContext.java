@@ -23,4 +23,13 @@ public final class RequestContext {
 		String xff = req.getHeader("X-Forwarded-For");
 		return xff != null ? xff.split(",")[0].trim() : req.getRemoteAddr();
 	}
+
+	/** Returns only an explicit client-provided conversation identifier. */
+	public static String clientSessionId(HttpServletRequest req) {
+		String sessionId = req.getHeader("X-Session-Id");
+		if (sessionId == null || sessionId.isBlank()) {
+			sessionId = req.getHeader("Session-Id");
+		}
+		return sessionId == null || sessionId.isBlank() ? null : sessionId.trim();
+	}
 }

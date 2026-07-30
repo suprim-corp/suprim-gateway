@@ -76,7 +76,7 @@ final class HistoryBuilder {
 	}
 
 	/**
-	 * Prepends a system prompt as a priming user/assistant pair at the start of history.
+	 * Prepends a system prompt as a stable first-user fallback at the start of history.
 	 */
 	static void addSystemPriming(
 			ArrayNode history,
@@ -90,12 +90,6 @@ final class HistoryBuilder {
 		primingUserMsg.put("origin", "AI_EDITOR");
 		history.add(primingUser);
 
-		ObjectNode primingAssistant = MAPPER.createObjectNode();
-		ObjectNode primingAssistantMsg = primingAssistant.putObject(
-				"assistantResponseMessage"
-		);
-		primingAssistantMsg.put("content", "I will follow these instructions.");
-		history.add(primingAssistant);
 	}
 
 	private static class Context {

@@ -69,11 +69,13 @@ public class CodexFacade {
 		long startTime = System.currentTimeMillis();
 		int maxAttempts = accounts.size();
 
+		String clientSessionId = request.clientSessionId();
 		ObjectNode payloadNode = CodexRequestConverter.toPayload(
 				model,
 				request.messages(),
 				request.tools(),
-				true
+				true,
+				clientSessionId
 		);
 		if (request.temperature() != null) {
 			payloadNode.put("temperature", request.temperature());

@@ -15,7 +15,8 @@ public record InternalRequest(
 		List<Tool> tools,
 		Double temperature,
 		@JsonProperty("max_tokens") Integer maxTokens,
-		@JsonProperty("thinking") Thinking thinking
+		@JsonProperty("thinking") Thinking thinking,
+		String clientSessionId
 ) {
 
 	public boolean thinkingEnabled() {

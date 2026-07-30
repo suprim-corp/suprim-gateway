@@ -45,14 +45,15 @@ public class PayloadBuilder {
 		String model = request.model();
 		List<Tool> tools = request.tools();
 
-		return buildKiroPayload(messages, model, tools, profileArn);
+		return buildKiroPayload(messages, model, tools, profileArn, request.clientSessionId());
 	}
 
 	private String buildKiroPayload(
 			List<Message> messages,
 			String model,
 			List<Tool> tools,
-			String profileArn
+			String profileArn,
+			String clientSessionId
 	) throws Exception {
 		String modelId = modelResolver.resolve(model);
 
@@ -68,9 +69,8 @@ public class PayloadBuilder {
 		if (!systemPrompt.isEmpty()) {
 			HistoryBuilder.addSystemPriming(history, systemPrompt, modelId);
 			ArrayNode reordered = mapper.createArrayNode();
-			reordered.add(history.get(history.size() - 2));
 			reordered.add(history.get(history.size() - 1));
-			for (int i = 0; i < history.size() - 2; i++) {
+			for (int i = 0; i < history.size() - 1; i++) {
 				reordered.add(history.get(i));
 			}
 			history = reordered;
@@ -105,7 +105,7 @@ public class PayloadBuilder {
 				history, modelId, currentContent,
 				historyResult.currentImages(),
 				historyResult.currentToolResults(),
-				tools, profileArn, systemPrompt
+				tools, profileArn, systemPrompt, clientSessionId
 		);
 
 		return truncatePayload(root, history, systemPrompt);
@@ -119,12 +119,16 @@ public class PayloadBuilder {
 			List<Message> currentToolResults,
 			List<Tool> tools,
 			String profileArn,
-			String systemPrompt
+			String systemPrompt,
+			String clientSessionId
 	) {
 		ObjectNode root = mapper.createObjectNode();
 		ObjectNode conversationState = root.putObject("conversationState");
 		conversationState.put("chatTriggerType", "MANUAL");
-		conversationState.put("conversationId", UUID.randomUUID().toString());
+		conversationState.put("conversationId", KiroSessionReplay.conversationId(clientSessionId, modelId));
+		if (!systemPrompt.isEmpty()) {
+			root.put("systemPrompt", systemPrompt);
+		}
 
 		ObjectNode currentMessage = conversationState.putObject("currentMessage");
 		ObjectNode userInputMessage = currentMessage.putObject(
@@ -217,7 +221,7 @@ public class PayloadBuilder {
 
 		while (json.length() > MAX_PAYLOAD_BYTES && history.size() > 2) {
 			int removeIdx =
-					!systemPrompt.isEmpty() && history.size() > 2 ? 2 : 0;
+					!systemPrompt.isEmpty() && history.size() > 1 ? 1 : 0;
 			history.remove(removeIdx);
 			if (history.isEmpty()) conversationState.remove("history");
 			json = mapper.writeValueAsString(root);
@@ -268,7 +272,7 @@ public class PayloadBuilder {
 					sb.append(content).append("\n\n");
 				}
 			}
-			return ToolResultAppender.truncate(sb.toString().trim());
+			return sb.toString().trim();
 		}
 
 		return ".";

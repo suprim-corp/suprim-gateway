@@ -30,6 +30,7 @@ final class ToolResultBlockParser {
 						       .role("tool")
 						       .content(text)
 						       .toolCallId(toolUseId)
+						       .toolError(block.has("is_error") && block.get("is_error").asBoolean())
 						       .build()
 				);
 			}

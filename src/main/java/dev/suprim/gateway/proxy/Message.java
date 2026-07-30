@@ -13,7 +13,8 @@ public record Message(
 		Object content,
 		String name,
 		@JsonProperty("tool_calls") List<ToolCall> toolCalls,
-		@JsonProperty("tool_call_id") String toolCallId
+		@JsonProperty("tool_call_id") String toolCallId,
+		Boolean toolError
 ) {
 
 	public static Message of(String role, String content) {

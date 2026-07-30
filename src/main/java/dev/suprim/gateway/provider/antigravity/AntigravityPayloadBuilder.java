@@ -9,6 +9,7 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -57,8 +58,12 @@ class AntigravityPayloadBuilder {
 		}
 
 		ObjectNode reqNode = root.putObject("request");
+		if (request.clientSessionId() != null && !request.clientSessionId().isBlank()) {
+			reqNode.put("sessionId", request.clientSessionId().trim());
+		}
 		ArrayNode contents = reqNode.putArray("contents");
 		ObjectNode systemInstruction = null;
+		ArrayNode systemParts = null;
 
 		for (Message msg : messages) {
 			String role = msg.role();
@@ -67,9 +72,11 @@ class AntigravityPayloadBuilder {
 				String text = Optional.ofNullable(msg.content())
 				                      .map(Object::toString)
 				                      .orElse("");
-				systemInstruction = MAPPER.createObjectNode();
-				ArrayNode parts = systemInstruction.putArray("parts");
-				parts.addObject().put("text", text);
+				if (systemInstruction == null) {
+					systemInstruction = MAPPER.createObjectNode();
+					systemParts = systemInstruction.putArray("parts");
+				}
+				systemParts.addObject().put("text", text);
 				continue;
 			}
 
@@ -186,12 +193,18 @@ class AntigravityPayloadBuilder {
 			ArrayNode toolsArray = reqNode.putArray("tools");
 			ObjectNode toolObj = toolsArray.addObject();
 			ArrayNode declarations = toolObj.putArray("functionDeclarations");
+			Set<String> declarationNames = new HashSet<>();
 			for (Tool tool : request.tools()) {
-				if (tool.function() == null) {
+				if (tool == null || tool.function() == null ||
+				    tool.function().name() == null) {
+					continue;
+				}
+				String name = sanitizeFunctionName(tool.function().name());
+				if (name.isEmpty() || !declarationNames.add(name)) {
 					continue;
 				}
 				ObjectNode decl = declarations.addObject();
-				decl.put("name", tool.function().name());
+				decl.put("name", name);
 				if (tool.function().description() != null) {
 					decl.put("description", tool.function().description());
 				}
@@ -238,6 +251,10 @@ class AntigravityPayloadBuilder {
 			"nullable",
 			"anyOf", "allOf", "oneOf"
 	);
+
+	private static String sanitizeFunctionName(String name) {
+		return name.replaceAll("[^A-Za-z0-9_-]", "_");
+	}
 
 	private static JsonNode stripUnsupportedFields(JsonNode node) {
 		if (node.isObject()) {
