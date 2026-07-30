@@ -126,6 +126,96 @@ class PayloadBuilderTest {
 	}
 
 	@Test
+	void movesOversizedToolDescriptionIntoSystemPrompt() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		String longDescription = "D".repeat(10_001);
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-opus-5")
+		                                         .clientSessionId("long-description-session")
+		                                         .tools(List.of(tool("workflow", longDescription)))
+		                                         .messages(List.of(
+				                                         Message.of("system", "Follow instructions"),
+				                                         Message.of("user", "Run it")
+		                                         ))
+		                                         .build();
+
+		JsonNode payload = payload(builder, request);
+		String systemPrompt = payload.get("systemPrompt").asString();
+		JsonNode specification = payload.at(
+				"/conversationState/currentMessage/userInputMessage/userInputMessageContext/tools/0/toolSpecification"
+		);
+
+		assertEquals(
+				"Follow instructions\n\n## Tool: workflow\n\n" + longDescription,
+				systemPrompt
+		);
+		assertEquals(
+				"[Full documentation in system prompt under '## Tool: workflow']",
+				specification.get("description").asString()
+		);
+		assertFalse(specification.at("/inputSchema/json").has("required"));
+		assertFalse(payload.at("/conversationState/history").toString().contains(
+				"toolSpecification"
+		));
+	}
+
+	@Test
+	void keepsSystemPromptUntouchedForInlineToolDescriptions() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-opus-5")
+		                                         .clientSessionId("inline-description-session")
+		                                         .tools(List.of(tool("workflow", "D".repeat(10_000))))
+		                                         .messages(List.of(
+				                                         Message.of("system", "Follow instructions"),
+				                                         Message.of("user", "Run it")
+		                                         ))
+		                                         .build();
+
+		JsonNode payload = payload(builder, request);
+		JsonNode specification = payload.at(
+				"/conversationState/currentMessage/userInputMessage/userInputMessageContext/tools/0/toolSpecification"
+		);
+
+		assertEquals("Follow instructions", payload.get("systemPrompt").asString());
+		assertEquals("D".repeat(10_000), specification.get("description").asString());
+	}
+
+	@Test
+	void omitsEmptyRequiredFromToolSchemas() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		JsonNode parameters = new JsonMapper().readTree("""
+				{
+				  "type": "object",
+				  "properties": {
+				    "target": {"type": "object", "properties": {}, "required": []}
+				  },
+				  "required": []
+				}
+				""");
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-opus-5")
+		                                         .clientSessionId("empty-required-session")
+		                                         .tools(List.of(Tool.builder()
+		                                                            .type("function")
+		                                                            .function(Tool.Function.builder()
+		                                                                                   .name("cron_list")
+		                                                                                   .parameters(parameters)
+		                                                                                   .build())
+		                                                            .build()))
+		                                         .messages(List.of(Message.of("user", "list")))
+		                                         .build();
+
+		JsonNode payload = payload(builder, request);
+		String tools = payload.at(
+				"/conversationState/currentMessage/userInputMessage/userInputMessageContext/tools"
+		).toString();
+
+		assertFalse(tools.contains("\"required\":[]"));
+		assertFalse(tools.contains("additionalProperties"));
+	}
+
+	@Test
 	void prefixesSystemPromptToFirstHistoricalUserOnly() throws Exception {
 		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
 		JsonNode payload = payload(builder, request(
@@ -606,6 +696,10 @@ class PayloadBuilderTest {
 	}
 
 	private static Tool tool(String name) throws Exception {
+		return tool(name, "Tool: " + name);
+	}
+
+	private static Tool tool(String name, String description) throws Exception {
 		JsonNode parameters = new JsonMapper().readTree(
 				"{\"type\":\"object\",\"properties\":{}}"
 		);
@@ -613,7 +707,7 @@ class PayloadBuilderTest {
 		           .type("function")
 		           .function(Tool.Function.builder()
 		                                  .name(name)
-		                                  .description("Tool: " + name)
+		                                  .description(description)
 		                                  .parameters(parameters)
 		                                  .build())
 		           .build();

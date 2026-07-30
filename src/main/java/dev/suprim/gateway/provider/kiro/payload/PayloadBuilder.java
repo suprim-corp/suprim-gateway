@@ -2,6 +2,7 @@ package dev.suprim.gateway.provider.kiro.payload;
 
 import dev.suprim.gateway.api.request.MessagesRequest;
 import dev.suprim.gateway.model.ModelResolver;
+import dev.suprim.gateway.provider.kiro.model.KiroTool;
 import dev.suprim.gateway.provider.kiro.utils.ToolConverter;
 import dev.suprim.gateway.proxy.ContentExtractor;
 import dev.suprim.gateway.proxy.Message;
@@ -85,9 +86,15 @@ public class PayloadBuilder {
 				thinking,
 				effort
 		);
-		String systemPrompt = withThinkingPrefix(
-				extractSystemPrompt(messages),
-				inference.fallbackBudget()
+		ToolConverter.ConversionResult convertedTools = ToolConverter.convert(
+				tools
+		);
+		String systemPrompt = withToolDocumentation(
+				withThinkingPrefix(
+						extractSystemPrompt(messages),
+						inference.fallbackBudget()
+				),
+				convertedTools.documentation()
 		);
 		List<Message> nonSystemMessages = filterNonSystem(messages);
 
@@ -121,7 +128,7 @@ public class PayloadBuilder {
 		ObjectNode root = buildRoot(
 				history,
 				userInputMessage,
-				tools, profileArn, systemPrompt, replay
+				convertedTools.tools(), profileArn, systemPrompt, replay
 		);
 		attachInference(root, inference);
 
@@ -131,7 +138,7 @@ public class PayloadBuilder {
 	private ObjectNode buildRoot(
 			ArrayNode history,
 			ObjectNode userInputMessage,
-			List<Tool> tools,
+			List<KiroTool> tools,
 			String profileArn,
 			String systemPrompt,
 			KiroSessionReplay.ReplayState replay
@@ -191,8 +198,8 @@ public class PayloadBuilder {
 		}
 	}
 
-	private void attachTools(ObjectNode userInputMessage, List<Tool> tools) {
-		if (tools == null || tools.isEmpty()) {
+	private void attachTools(ObjectNode userInputMessage, List<KiroTool> tools) {
+		if (tools.isEmpty()) {
 			return;
 		}
 
@@ -200,7 +207,7 @@ public class PayloadBuilder {
 				? (ObjectNode) userInputMessage.get("userInputMessageContext")
 				: userInputMessage.putObject("userInputMessageContext");
 		ArrayNode toolsNode = context.putArray("tools");
-		for (JsonNode tool : mapper.valueToTree(ToolConverter.convert(tools))) {
+		for (JsonNode tool : mapper.valueToTree(tools)) {
 			toolsNode.add(tool);
 		}
 	}
@@ -257,6 +264,18 @@ public class PayloadBuilder {
 		          .put("type", "adaptive")
 		          .put("display", "summarized");
 		additional.putObject("output_config").put("effort", fields.effort());
+	}
+
+	private static String withToolDocumentation(
+			String systemPrompt,
+			String documentation
+	) {
+		if (documentation.isEmpty()) {
+			return systemPrompt;
+		}
+		return systemPrompt.isEmpty()
+				? documentation
+				: systemPrompt + "\n\n" + documentation;
 	}
 
 	private static String withThinkingPrefix(String systemPrompt, Integer budget) {

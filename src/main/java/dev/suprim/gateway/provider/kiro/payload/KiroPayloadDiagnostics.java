@@ -343,7 +343,10 @@ public final class KiroPayloadDiagnostics {
 			);
 		}
 		JsonNode required = schema.get("required");
-		if (required == null || !required.isArray()) {
+		if (required == null) {
+			return;
+		}
+		if (!required.isArray() || required.isEmpty()) {
 			log.warn(
 					"[PayloadDebug] suspicious=tool-required-invalid tool={}",
 					toolIndex

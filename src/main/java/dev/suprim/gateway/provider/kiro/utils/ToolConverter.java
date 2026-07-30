@@ -9,26 +9,47 @@ import java.util.List;
 public class ToolConverter {
 	private ToolConverter() {}
 
-	private static final int MAX_DESCRIPTION_LEN = 10237;
+	/**
+	 * Upstream rejects a tool specification whose description grows past roughly ten
+	 * thousand characters. Longer descriptions are moved to the system prompt instead of
+	 * being truncated, so the model keeps the full documentation.
+	 */
+	static final int MAX_INLINE_DESCRIPTION_CHARS = 10_000;
+	private static final String DOCUMENTATION_SECTION_PREFIX = "## Tool: ";
 
-	public static List<KiroTool> convert(List<Tool> tools) {
+	/**
+	 * @param tools         converted tool specifications, in input order
+	 * @param documentation offloaded descriptions to append to the system prompt, empty
+	 *                      when every description fits inline. Deterministic for a given
+	 *                      tool list because session identity is keyed on the system prompt.
+	 */
+	public record ConversionResult(
+			List<KiroTool> tools,
+			String documentation
+	) {}
+
+	public static ConversionResult convert(List<Tool> tools) {
 		if (tools == null || tools.isEmpty()) {
-			return List.of();
+			return new ConversionResult(List.of(), "");
 		}
 
 		List<KiroTool> result = new ArrayList<>(tools.size());
+		StringBuilder documentation = new StringBuilder();
 
 		for (Tool tool : tools) {
-			KiroTool kiroTool = convert(tool);
+			KiroTool kiroTool = convert(tool, documentation);
 			if (kiroTool != null) {
 				result.add(kiroTool);
 			}
 		}
 
-		return result;
+		return new ConversionResult(
+				List.copyOf(result),
+				documentation.toString()
+		);
 	}
 
-	public static KiroTool convert(Tool tool) {
+	private static KiroTool convert(Tool tool, StringBuilder documentation) {
 		if (!"function".equals(tool.type())) {
 			return null;
 		}
@@ -40,12 +61,7 @@ public class ToolConverter {
 			return null;
 		}
 
-		String description = function.description();
-		if (description == null || description.isBlank()) {
-			description = "Tool: " + function.name();
-		} else if (description.length() > MAX_DESCRIPTION_LEN) {
-			description = description.substring(0, MAX_DESCRIPTION_LEN) + "...";
-		}
+		String description = describe(function, documentation);
 
 		KiroTool.InputSchema inputSchema =
 				KiroTool.InputSchema.builder()
@@ -69,5 +85,25 @@ public class ToolConverter {
 				                                         .build()
 		               )
 		               .build();
+	}
+
+	private static String describe(
+			Tool.Function function,
+			StringBuilder documentation
+	) {
+		String description = function.description();
+		if (description == null || description.isBlank()) {
+			return "Tool: " + function.name();
+		}
+		if (description.length() <= MAX_INLINE_DESCRIPTION_CHARS) {
+			return description;
+		}
+
+		String section = DOCUMENTATION_SECTION_PREFIX + function.name();
+		if (!documentation.isEmpty()) {
+			documentation.append("\n\n");
+		}
+		documentation.append(section).append("\n\n").append(description);
+		return "[Full documentation in system prompt under '" + section + "']";
 	}
 }

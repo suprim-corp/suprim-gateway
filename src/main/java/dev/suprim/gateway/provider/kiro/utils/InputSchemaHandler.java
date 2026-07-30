@@ -9,6 +9,10 @@ import java.util.Map;
 public class InputSchemaHandler {
 	private static final JsonMapper MAPPER = new JsonMapper();
 
+	/**
+	 * Normalizes a tool JSON Schema for the Kiro upstream, which rejects an empty
+	 * {@code required} array. A missing {@code required} is therefore never filled in.
+	 */
 	public static JsonNode buildSchemaJson(JsonNode parameters) {
 		if (parameters != null && parameters.isObject()) {
 			ObjectNode schemaNode = parameters.deepCopy().asObject();
@@ -19,16 +23,12 @@ public class InputSchemaHandler {
 			if (!schemaNode.has("properties")) {
 				schemaNode.putObject("properties");
 			}
-			if (!schemaNode.has("required")) {
-				schemaNode.putArray("required");
-			}
 			return schemaNode;
 		}
 
 		ObjectNode emptyObj = MAPPER.createObjectNode();
 		emptyObj.put("type", "object");
 		emptyObj.putObject("properties");
-		emptyObj.putArray("required");
 		return emptyObj;
 	}
 
