@@ -61,17 +61,15 @@ class MessagesController {
 		String actualModel = ModelRouter.stripPrefix(request.model());
 
 		Map<String, Object> extra = request.additionalProperties();
-		InternalRequest.Thinking thinking;
-		if (extra != null && extra.containsKey("thinking")) {
-			thinking = InternalRequest.Thinking.builder()
-			                                   .type("enabled")
-			                                   .build();
+		InternalRequest.Thinking thinking = parseThinking(
+				extra == null ? null : extra.get("thinking")
+		);
+		if (thinking != null) {
 			log.info(
-					"[Messages] model={} thinking=enabled",
-					actualModel
+					"[Messages] model={} thinking={}",
+					actualModel,
+					thinking.type()
 			);
-		} else {
-			thinking = null;
 		}
 
 		String clientIp = RequestContext.clientIp(httpReq);
@@ -81,6 +79,9 @@ class MessagesController {
 				               .messages(openAiMessages)
 				               .stream(request.stream())
 				               .tools(tools)
+				               .temperature(request.temperature())
+				               .topP(request.topP())
+				               .maxTokens(request.maxTokens())
 				               .thinking(thinking)
 				               .clientSessionId(
 						               RequestContext.clientSessionId(
@@ -101,6 +102,24 @@ class MessagesController {
 				),
 				httpRes
 		);
+	}
+
+	private static InternalRequest.Thinking parseThinking(Object value) {
+		if (!(value instanceof Map<?, ?> thinking)) {
+			return null;
+		}
+		Object type = thinking.get("type");
+		if (!(type instanceof String typeName) || typeName.isBlank()) {
+			return null;
+		}
+		Object budget = thinking.get("budget_tokens");
+		Integer budgetTokens = budget instanceof Number number
+				? number.intValue()
+				: null;
+		return InternalRequest.Thinking.builder()
+		                               .type(typeName.trim().toLowerCase())
+		                               .budgetTokens(budgetTokens)
+		                               .build();
 	}
 
 	@PostMapping("/v1/messages/count_tokens")

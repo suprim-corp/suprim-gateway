@@ -211,7 +211,14 @@ public class KiroFacade {
 		String content = collected.content();
 		String reasoning = collected.reasoning();
 		double credits = collected.credits();
-		int outputTokens = streamHandler.countTokens(content);
+		StreamHandler.Usage usage = collected.usage();
+		int estimatedOutputTokens = streamHandler.countTokens(content);
+		int outputTokens = usage != null && usage.outputTokens() != null
+				? usage.outputTokens()
+				: estimatedOutputTokens;
+		int inputTokens = usage != null && usage.promptTokens() != null
+				? usage.promptTokens()
+				: req.inputTokens();
 		String id = formatConverter.generateId(req.format());
 
 		boolean emitReasoning = reasoning != null &&
@@ -225,7 +232,9 @@ public class KiroFacade {
 				formatConverter.nonStreamBody(
 						req.format(), id, req.model(), content,
 						emitReasoning ? reasoning : null,
-						req.inputTokens(), outputTokens
+						inputTokens,
+						outputTokens,
+						usage
 				)
 		);
 

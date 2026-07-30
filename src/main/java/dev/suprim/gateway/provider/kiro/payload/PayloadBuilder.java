@@ -7,27 +7,30 @@ import dev.suprim.gateway.proxy.ContentExtractor;
 import dev.suprim.gateway.proxy.Message;
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.Tool;
+import lombok.Builder;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
-import java.util.UUID;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @RequiredArgsConstructor
 @Component
+@Slf4j
 public class PayloadBuilder {
 
 	private static final int MAX_PAYLOAD_BYTES = 900_000;
-	private static final Logger log = LoggerFactory.getLogger(PayloadBuilder.class);
-	private final ObjectMapper mapper = new ObjectMapper();
+	private final JsonMapper mapper = new JsonMapper();
 	private final ModelResolver modelResolver;
 
 	/**
@@ -46,7 +49,18 @@ public class PayloadBuilder {
 		String model = request.model();
 		List<Tool> tools = request.tools();
 
-		return buildKiroPayload(messages, model, tools, profileArn, request.clientSessionId());
+		return buildKiroPayload(
+				messages,
+				model,
+				tools,
+				profileArn,
+				request.clientSessionId(),
+				request.temperature(),
+				request.topP(),
+				request.maxTokens(),
+				request.thinking(),
+				request.effort()
+		);
 	}
 
 	private String buildKiroPayload(
@@ -54,91 +68,84 @@ public class PayloadBuilder {
 			String model,
 			List<Tool> tools,
 			String profileArn,
-			String clientSessionId
+			String clientSessionId,
+			Double temperature,
+			Double topP,
+			Integer maxTokens,
+			InternalRequest.Thinking thinking,
+			String effort
 	) throws Exception {
 		String modelId = modelResolver.resolve(model);
 
-		String systemPrompt = extractSystemPrompt(messages);
+		InferenceFields inference = requestFields(
+				modelId,
+				temperature,
+				topP,
+				maxTokens,
+				thinking,
+				effort
+		);
+		String systemPrompt = withThinkingPrefix(
+				extractSystemPrompt(messages),
+				inference.fallbackBudget()
+		);
 		List<Message> nonSystemMessages = filterNonSystem(messages);
 
+		boolean toolsEnabled = tools != null && !tools.isEmpty();
 		HistoryBuilder.HistoryResult historyResult = HistoryBuilder.build(
 				nonSystemMessages,
-				modelId
+				modelId,
+				toolsEnabled
 		);
 		ArrayNode history = historyResult.history();
 
-		if (history.size() > 2) {
-			log.debug("[Payload] history[0] keys: {}", history.get(0).propertyNames());
-			log.debug("[Payload] history[1] keys: {}", history.get(1).propertyNames());
-			JsonNode entry2 = history.get(2);
-			log.debug("[Payload] history[2] keys: {}", entry2.propertyNames());
-			JsonNode userMsg2 = entry2.get("userInputMessage");
-			if (userMsg2 != null) {
-				String content2 = userMsg2.has("content") ? userMsg2.get("content").asString() : "null";
-				log.debug("[Payload] history[2] content (first 100): {}", content2.length() > 100 ? content2.substring(0, 100) : content2);
-				JsonNode ctx2 = userMsg2.get("userInputMessageContext");
-				if (ctx2 != null) {
-					log.debug("[Payload] history[2] ctx keys: {}", ctx2.propertyNames());
-					if (ctx2.has("toolResults")) {
-						log.debug("[Payload] history[2] toolResults count: {}", ctx2.get("toolResults").size());
-					}
-				}
-			}
-		}
-
-		String currentContent = resolveCurrentContent(
-				historyResult.currentContent(),
-				historyResult.currentImages(),
-				historyResult.currentToolResults()
+		ObjectNode userInputMessage = historyResult.currentMessage();
+		KiroSessionReplay.ReplayState replay = KiroSessionReplay.resolve(
+				clientSessionId,
+				modelId,
+				systemPrompt,
+				userInputMessage
 		);
-
 		ObjectNode root = buildRoot(
-				history, modelId, currentContent,
-				historyResult.currentImages(),
-				historyResult.currentToolResults(),
-				tools, profileArn, systemPrompt, clientSessionId
+				history,
+				userInputMessage,
+				tools, profileArn, systemPrompt, replay
 		);
+		attachInference(root, inference);
 
-		String payload = truncatePayload(root, history, systemPrompt);
-		log.debug("[Payload] body={}", payload);
-		return payload;
+		return truncatePayload(root, history, !replay.created());
 	}
 
 	private ObjectNode buildRoot(
 			ArrayNode history,
-			String modelId,
-			String currentContent,
-			List<ContentExtractor.KiroImage> currentImages,
-			List<Message> currentToolResults,
+			ObjectNode userInputMessage,
 			List<Tool> tools,
 			String profileArn,
 			String systemPrompt,
-			String clientSessionId
+			KiroSessionReplay.ReplayState replay
 	) {
 		ObjectNode root = mapper.createObjectNode();
 		ObjectNode conversationState = root.putObject("conversationState");
 		conversationState.put("chatTriggerType", "MANUAL");
-		KiroSessionReplay.SessionIds sessionIds = KiroSessionReplay.ids(
-				clientSessionId,
-				modelId
+		conversationState.putObject("currentMessage").set(
+				"userInputMessage",
+				userInputMessage
 		);
-		conversationState.put("conversationId", sessionIds.conversationId());
-		conversationState.put("agentContinuationId", sessionIds.continuationId());
+
+		KiroSessionReplay.SessionState session = replay.session();
+		conversationState.put("conversationId", session.ids().conversationId());
+		conversationState.put(
+				"agentContinuationId",
+				session.ids().continuationId()
+		);
 		conversationState.put("agentTaskType", "vibe");
 		root.put("agentMode", "vibe");
 		if (!systemPrompt.isEmpty()) {
 			root.put("systemPrompt", systemPrompt);
 		}
 
-		ObjectNode currentMessage = conversationState.putObject("currentMessage");
-		ObjectNode userInputMessage = currentMessage.putObject(
-				"userInputMessage");
-		userInputMessage.put("content", currentContent);
-		userInputMessage.put("modelId", modelId);
-		userInputMessage.put("origin", "AI_EDITOR");
-		ImageAppender.append(userInputMessage, currentImages);
-
-		attachContext(userInputMessage, tools, currentToolResults, history);
+		replaySessionStart(history, userInputMessage, replay);
+		attachTools(userInputMessage, tools);
 
 		if (!history.isEmpty()) {
 			conversationState.set("history", history);
@@ -151,53 +158,197 @@ public class PayloadBuilder {
 		return root;
 	}
 
-	private void attachContext(
-			ObjectNode userInputMessage,
-			List<Tool> tools,
-			List<Message> currentToolResults,
-			ArrayNode history
+	private static void replaySessionStart(
+			ArrayNode history,
+			ObjectNode currentMessage,
+			KiroSessionReplay.ReplayState replay
 	) {
-		boolean hasTools = tools != null && !tools.isEmpty();
-		boolean hasToolResults =
-				currentToolResults != null && !currentToolResults.isEmpty();
-
-		if (!hasTools && !hasToolResults) return;
-
-		ObjectNode ctx = userInputMessage.putObject("userInputMessageContext");
-		if (hasTools) {
-			ArrayNode toolsArr = ctx.putArray("tools");
-			for (JsonNode kiroToolNode : mapper.valueToTree(ToolConverter.convert(
-					tools))) {
-				toolsArr.add(kiroToolNode);
-			}
+		if (replay.created()) {
+			return;
 		}
-		if (hasToolResults) {
-			int allowedCount = countLastAssistantToolUses(history);
-			log.debug(
-					"[Payload] toolResults={}, allowedByHistory={}",
-					currentToolResults.size(),
-					allowedCount
-			);
-			if (allowedCount > 0) {
-				ArrayNode resultsNode = ctx.putArray("toolResults");
-				int count = Math.min(
-						currentToolResults.size(),
-						allowedCount
-				);
-				for (int i = 0; i < count; i++) {
-					ToolResultAppender.appendResult(
-							resultsNode,
-							currentToolResults.get(i)
-					);
-				}
-			}
+
+		ObjectNode frozenStart = replay.session().frozenSessionStart();
+		if (history.isEmpty()) {
+			history.addObject().set("userInputMessage", frozenStart);
+		} else if (history.get(0).has("userInputMessage")) {
+			((ObjectNode) history.get(0)).set("userInputMessage", frozenStart);
+		} else {
+			history.insertObject(0).set("userInputMessage", frozenStart);
+		}
+
+		if (currentMessage.equals(frozenStart)) {
+			history.remove(0);
 		}
 	}
+
+	private void attachTools(ObjectNode userInputMessage, List<Tool> tools) {
+		if (tools == null || tools.isEmpty()) {
+			return;
+		}
+
+		ObjectNode context = userInputMessage.has("userInputMessageContext")
+				? (ObjectNode) userInputMessage.get("userInputMessageContext")
+				: userInputMessage.putObject("userInputMessageContext");
+		ArrayNode toolsNode = context.putArray("tools");
+		for (JsonNode tool : mapper.valueToTree(ToolConverter.convert(tools))) {
+			toolsNode.add(tool);
+		}
+	}
+
+	private static InferenceFields requestFields(
+			String modelId,
+			Double temperature,
+			Double topP,
+			Integer maxTokens,
+			InternalRequest.Thinking thinking,
+			String effort
+	) {
+		String effortPath = effortPath(modelId);
+		String normalizedEffort = normalizeEffort(effort, effortPath);
+		Integer fallbackBudget = thinkingBudget(thinking);
+		if (normalizedEffort != null && effortPath != null) {
+			fallbackBudget = null;
+		}
+		return InferenceFields.builder()
+		                      .temperature(temperature)
+		                      .topP(topP)
+		                      .maxTokens(positive(maxTokens))
+		                      .effortPath(effortPath)
+		                      .effort(normalizedEffort)
+		                      .fallbackBudget(fallbackBudget)
+		                      .build();
+	}
+
+	private static void attachInference(ObjectNode root, InferenceFields fields) {
+		if (fields.maxTokens() != null || fields.temperature() != null ||
+		    fields.topP() != null) {
+			ObjectNode inference = root.putObject("inferenceConfig");
+			if (fields.maxTokens() != null) {
+				inference.put("maxTokens", fields.maxTokens());
+			}
+			if (fields.temperature() != null) {
+				inference.put("temperature", fields.temperature());
+			}
+			if (fields.topP() != null) {
+				inference.put("topP", fields.topP());
+			}
+		}
+
+		if (fields.effortPath() == null || fields.effort() == null) {
+			return;
+		}
+		ObjectNode additional = root.putObject("additionalModelRequestFields");
+		if ("reasoning".equals(fields.effortPath())) {
+			additional.putObject("reasoning").put("effort", fields.effort());
+			return;
+		}
+		additional.putObject("thinking")
+		          .put("type", "adaptive")
+		          .put("display", "summarized");
+		additional.putObject("output_config").put("effort", fields.effort());
+	}
+
+	private static String withThinkingPrefix(String systemPrompt, Integer budget) {
+		if (budget == null) {
+			return systemPrompt;
+		}
+		String prefix = "<thinking_mode>enabled</thinking_mode>\n" +
+		                "<max_thinking_length>" + budget +
+		                "</max_thinking_length>";
+		if (systemPrompt.contains("<thinking_mode>")) {
+			return systemPrompt;
+		}
+		return systemPrompt.isEmpty() ? prefix : prefix + "\n" + systemPrompt;
+	}
+
+	private static Integer thinkingBudget(InternalRequest.Thinking thinking) {
+		if (thinking == null || thinking.type() == null) {
+			return null;
+		}
+		String type = thinking.type().trim().toLowerCase();
+		if (Set.of("disabled", "none", "off").contains(type)) {
+			return null;
+		}
+		Integer budget = thinking.budgetTokens();
+		if (budget == null) {
+			return 16_000;
+		}
+		return Math.max(1, Math.min(32_000, budget));
+	}
+
+	private static Integer positive(Integer value) {
+		return value != null && value > 0 ? value : null;
+	}
+
+	private static String normalizeEffort(String effort, String effortPath) {
+		if (effort == null || effort.isBlank() || effortPath == null) {
+			return null;
+		}
+		String normalized = effort.trim().toLowerCase();
+		if (Set.of("none", "off", "disabled").contains(normalized)) {
+			return null;
+		}
+		if ("reasoning".equals(effortPath)) {
+			if ("max".equals(normalized)) {
+				return "xhigh";
+			}
+			return Set.of("low", "medium", "high", "xhigh").contains(normalized)
+					? normalized
+					: null;
+		}
+		if (Set.of("xhigh", "max").contains(normalized)) {
+			return "high";
+		}
+		return Set.of("low", "medium", "high").contains(normalized)
+				? normalized
+				: null;
+	}
+
+	private static String effortPath(String modelId) {
+		String normalized = modelId.toLowerCase().replace('-', '.');
+		if (Pattern.compile(
+				"(?:^|[/.])gpt[/.]5[/.]6(?:[/.]|$)"
+		).matcher(normalized).find()) {
+			return "reasoning";
+		}
+		if (!normalized.contains("claude")) {
+			return null;
+		}
+		Matcher matcher = Pattern.compile(
+				"(?:^|[/.])claude(?:[/.][a-z]+)*[/.](\\d+)(?:[/.](\\d+))?(?:[/.]|$)"
+		).matcher(normalized);
+		if (!matcher.find()) {
+			return null;
+		}
+		int major = Integer.parseInt(matcher.group(1));
+		String minorText = matcher.group(2);
+		if (major < 4) {
+			return null;
+		}
+		if (major > 4) {
+			return "output_config";
+		}
+		if (minorText == null) {
+			return null;
+		}
+		int minor = Integer.parseInt(minorText);
+		return minor > 5 && minor < 1_000 ? "output_config" : null;
+	}
+
+	@Builder
+	private record InferenceFields(
+			Double temperature,
+			Double topP,
+			Integer maxTokens,
+			String effortPath,
+			String effort,
+			Integer fallbackBudget
+	) {}
 
 	private String truncatePayload(
 			ObjectNode root,
 			ArrayNode history,
-			String systemPrompt
+			boolean protectSessionStart
 	) throws Exception {
 		ObjectNode conversationState = (ObjectNode) root.get("conversationState");
 		String json = mapper.writeValueAsString(root);
@@ -210,27 +361,31 @@ public class PayloadBuilder {
 		).isMissingNode();
 
 		log.debug(
-				"[Payload] size={}, history={}, hasTools={}, hasToolResults={}, profileArn={}",
-				payloadBytes(json), history.size(), hasTools, hasToolResults,
-				root.get("profileArn") == null
-						? "<absent>"
-						: root.get("profileArn").asString()
+				"[Payload] model={}, size={}, history={}, hasTools={}, hasToolResults={}, hasSystemPrompt={}, hasProfileArn={}",
+				root.at("/conversationState/currentMessage/userInputMessage/modelId")
+				    .asString(),
+				payloadBytes(json),
+				history.size(),
+				hasTools,
+				hasToolResults,
+				root.has("systemPrompt"),
+				root.has("profileArn")
 		);
 
-		validateToolUseMismatch(history);
+		validateHistory(history);
 
-		while (payloadBytes(json) > MAX_PAYLOAD_BYTES && history.size() > 2) {
-			int removeIdx =
-					!systemPrompt.isEmpty() && history.size() > 1 ? 1 : 0;
-			history.remove(removeIdx);
+		while (payloadBytes(json) > MAX_PAYLOAD_BYTES && removeOldestTurn(
+				history,
+				protectSessionStart
+		)) {
 			if (history.isEmpty()) conversationState.remove("history");
 			json = mapper.writeValueAsString(root);
 		}
 
-		fixToolResultMismatches(history);
-		json = mapper.writeValueAsString(root);
+		validateHistory(history);
 		if (payloadBytes(json) > MAX_PAYLOAD_BYTES) {
-			throw new IllegalArgumentException("Kiro payload exceeds upstream size limit");
+			throw new IllegalArgumentException(
+					"Kiro payload exceeds upstream size limit");
 		}
 		return json;
 	}
@@ -263,107 +418,101 @@ public class PayloadBuilder {
 		return result;
 	}
 
-	private static String resolveCurrentContent(
-			String currentContent,
-			List<ContentExtractor.KiroImage> currentImages,
-			List<Message> currentToolResults
+	private static boolean removeOldestTurn(
+			ArrayNode history,
+			boolean protectSessionStart
 	) {
-		if (!currentContent.isEmpty()) return currentContent;
+		int start = protectSessionStart ? 1 : 0;
+		if (history.size() <= start) {
+			return false;
+		}
 
-		if (currentToolResults != null && !currentToolResults.isEmpty()) {
-			StringBuilder sb = new StringBuilder("Tool results:\n\n");
-			for (Message tr : currentToolResults) {
-				String content = ContentExtractor.fromMessage(tr);
-				if (content != null && !content.isEmpty()) {
-					sb.append(content).append("\n\n");
+		int count = history.get(start).has("userInputMessage") ? 1 : 0;
+		if (protectSessionStart &&
+		    history.get(start).has("assistantResponseMessage")) {
+			count = 1;
+			if (start + count < history.size() &&
+			    history.get(start + count).has("userInputMessage")) {
+				count++;
+			}
+		} else if (start + count < history.size() &&
+		           history.get(start + count).has("assistantResponseMessage")) {
+			count++;
+			if (start + count < history.size() &&
+			    hasToolResults(history.get(start + count))) {
+				count++;
+			}
+		}
+		if (count == 0) {
+			count = 1;
+		}
+		for (int i = 0; i < count; i++) {
+			history.remove(start);
+		}
+		return true;
+	}
+
+	private static boolean hasToolResults(JsonNode entry) {
+		return entry.at(
+				"/userInputMessage/userInputMessageContext/toolResults"
+		).isArray();
+	}
+
+	private static void validateHistory(ArrayNode history) {
+		boolean expectUser = !history.isEmpty() && history.get(0).has(
+				"userInputMessage"
+		);
+		Set<String> availableToolUses = new HashSet<>();
+		for (JsonNode entry : history) {
+			boolean user = entry.has("userInputMessage");
+			if (user != expectUser) {
+				throw new IllegalArgumentException(
+						"Kiro history roles must alternate"
+				);
+			}
+			expectUser = !expectUser;
+
+			JsonNode userMessage = entry.get("userInputMessage");
+			if (userMessage != null) {
+				if (!userMessage.hasNonNull("modelId")) {
+					throw new IllegalArgumentException(
+							"Kiro history user message requires modelId"
+					);
 				}
-			}
-			return sb.toString().trim();
-		}
-
-		return ".";
-	}
-
-	private static int countLastAssistantToolUses(ArrayNode history) {
-		for (int i = history.size() - 1; i >= 0; i--) {
-			JsonNode entry = history.get(i);
-			JsonNode assistantMsg = entry.get("assistantResponseMessage");
-			if (assistantMsg != null) {
-				JsonNode toolUses = assistantMsg.get("toolUses");
-				return toolUses != null ? toolUses.size() : 0;
-			}
-		}
-		return 0;
-	}
-
-	private void fixToolResultMismatches(ArrayNode history) {
-		int lastToolUseCount = 0;
-		for (int i = 0; i < history.size(); i++) {
-			JsonNode entry = history.get(i);
-			JsonNode assistantMsg = entry.get("assistantResponseMessage");
-			if (assistantMsg != null) {
-				JsonNode toolUses = assistantMsg.get("toolUses");
-				lastToolUseCount = toolUses != null ? toolUses.size() : 0;
-				continue;
-			}
-			JsonNode userMsg = entry.get("userInputMessage");
-			if (userMsg != null) {
-				JsonNode ctx = userMsg.get("userInputMessageContext");
-				if (ctx != null && ctx.has("toolResults")) {
-					JsonNode toolResults = ctx.get("toolResults");
-					if (toolResults != null && toolResults.size() > lastToolUseCount) {
-						log.warn(
-								"[Payload] Fixing mismatch at history[{}]: toolResults={} > toolUses={}",
-								i, toolResults.size(), lastToolUseCount
-						);
-						if (lastToolUseCount == 0) {
-							((ObjectNode) ctx).remove("toolResults");
-						} else {
-							ArrayNode capped = mapper.createArrayNode();
-							for (int j = 0; j < lastToolUseCount; j++) {
-								capped.add(toolResults.get(j));
-							}
-							((ObjectNode) ctx).set("toolResults", capped);
+				JsonNode tools = userMessage.at("/userInputMessageContext/tools");
+				if (!tools.isMissingNode()) {
+					throw new IllegalArgumentException(
+							"Kiro history cannot contain tool definitions"
+					);
+				}
+				JsonNode results = userMessage.at(
+						"/userInputMessageContext/toolResults"
+				);
+				if (results.isArray()) {
+					for (JsonNode result : results) {
+						if (!availableToolUses.remove(
+								result.path("toolUseId")
+								      .asString()
+						)
+						) {
+							throw new IllegalArgumentException(
+									"Kiro tool result has no matching tool use"
+							);
 						}
 					}
 				}
-				// Check content for "Tool results:" pattern that Bedrock might interpret
-				JsonNode contentNode = userMsg.get("content");
-				if (contentNode != null && lastToolUseCount == 0) {
-					String content = contentNode.asString();
-					if (content != null && content.startsWith("Tool results:")) {
-						log.warn("[Payload] Clearing 'Tool results:' content at history[{}] (no preceding toolUses)", i);
-						((ObjectNode) userMsg).put("content", ".");
-					}
-				}
-				lastToolUseCount = 0;
-			}
-		}
-	}
-
-	private void validateToolUseMismatch(ArrayNode history) {
-		int lastToolUseCount = 0;
-		for (int i = 0; i < history.size(); i++) {
-			JsonNode entry = history.get(i);
-			JsonNode assistantMsg = entry.get("assistantResponseMessage");
-			if (assistantMsg != null) {
-				JsonNode toolUses = assistantMsg.get("toolUses");
-				lastToolUseCount = toolUses != null ? toolUses.size() : 0;
 				continue;
 			}
-			JsonNode userMsg = entry.get("userInputMessage");
-			if (userMsg != null) {
-				JsonNode ctx = userMsg.get("userInputMessageContext");
-				if (ctx != null) {
-					JsonNode toolResults = ctx.get("toolResults");
-					if (toolResults != null && toolResults.size() > lastToolUseCount) {
-						log.warn(
-								"[Payload] MISMATCH at history[{}]: toolResults={} > previousToolUses={}",
-								i, toolResults.size(), lastToolUseCount
-						);
+
+			availableToolUses.clear();
+			JsonNode uses = entry.at("/assistantResponseMessage/toolUses");
+			if (uses.isArray()) {
+				for (JsonNode use : uses) {
+					String id = use.path("toolUseId").asString();
+					if (!id.isBlank()) {
+						availableToolUses.add(id);
 					}
 				}
-				lastToolUseCount = 0;
 			}
 		}
 	}

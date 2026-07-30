@@ -167,7 +167,11 @@ public class StreamConverter {
 	) throws Exception {
 		return toAnthropicEvent(
 				"message_start",
-				AnthropicSsePayloads.MessageStart.of(id, model, inputTokens)
+				AnthropicSsePayloads.MessageStart.of(
+						id,
+						model,
+						AnthropicSsePayloads.Usage.start(inputTokens, null, null)
+				)
 		)
 		       + toAnthropicEvent(
 				"content_block_start",
@@ -234,6 +238,26 @@ public class StreamConverter {
 			int inputTokens,
 			int outputTokens
 	) {
+		return toAnthropicNonStreaming(
+				id,
+				model,
+				content,
+				reasoning,
+				StreamHandler.Usage.builder()
+				                   .promptTokens(inputTokens)
+				                   .outputTokens(outputTokens)
+				                   .credits(0)
+				                   .build()
+		);
+	}
+
+	public AnthropicSsePayloads.AnthropicResponse toAnthropicNonStreaming(
+			String id,
+			String model,
+			String content,
+			String reasoning,
+			StreamHandler.Usage usage
+	) {
 		List<Object> contentBlocks = new ArrayList<>();
 		if (reasoning != null) {
 			contentBlocks.add(
@@ -245,7 +269,10 @@ public class StreamConverter {
 		contentBlocks.add(AnthropicSsePayloads.TextContentBlock.of(content));
 
 		return AnthropicSsePayloads.AnthropicResponse.of(
-				id, model, contentBlocks, inputTokens, outputTokens
+				id,
+				model,
+				contentBlocks,
+				usage
 		);
 	}
 

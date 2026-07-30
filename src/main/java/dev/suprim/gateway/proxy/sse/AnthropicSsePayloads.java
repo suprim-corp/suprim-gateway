@@ -2,6 +2,7 @@ package dev.suprim.gateway.proxy.sse;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import dev.suprim.gateway.proxy.StreamHandler;
 import lombok.Builder;
 
 import java.util.List;
@@ -19,11 +20,11 @@ public final class AnthropicSsePayloads {
 		public static MessageStart of(
 				String id,
 				String model,
-				int inputTokens
+				Usage usage
 		) {
 			return MessageStart.builder()
 			                   .type("message_start")
-			                   .message(MessageInfo.of(id, model, inputTokens))
+			                   .message(MessageInfo.of(id, model, usage))
 			                   .build();
 		}
 	}
@@ -40,7 +41,7 @@ public final class AnthropicSsePayloads {
 		public static MessageInfo of(
 				String id,
 				String model,
-				int inputTokens
+				Usage usage
 		) {
 			return MessageInfo.builder()
 			                  .id(id)
@@ -48,31 +49,34 @@ public final class AnthropicSsePayloads {
 			                  .role("assistant")
 			                  .content(List.of())
 			                  .model(model)
-			                  .usage(
-					                  Usage.builder()
-					                       .inputTokens(inputTokens)
-					                       .outputTokens(0)
-					                       .build()
-					  )
+			                  .usage(usage)
 			                  .build();
 		}
 	}
 
 	@Builder
+	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record Usage(
-			@JsonProperty("input_tokens") int inputTokens,
-			@JsonProperty("output_tokens") int outputTokens
+			@JsonProperty("input_tokens") Integer inputTokens,
+			@JsonProperty("output_tokens") Integer outputTokens,
+			@JsonProperty("cache_read_input_tokens") Integer cacheReadInputTokens,
+			@JsonProperty("cache_creation_input_tokens") Integer cacheCreationInputTokens
 	) {
-		public static Usage zero() {
+		public static Usage start(
+				int inputTokens,
+				Integer cacheReadInputTokens,
+				Integer cacheCreationInputTokens
+		) {
 			return Usage.builder()
-			            .inputTokens(0)
+			            .inputTokens(inputTokens)
 			            .outputTokens(0)
+			            .cacheReadInputTokens(cacheReadInputTokens)
+			            .cacheCreationInputTokens(cacheCreationInputTokens)
 			            .build();
 		}
 
-		public static Usage of(int outputTokens) {
+		public static Usage output(int outputTokens) {
 			return Usage.builder()
-			            .inputTokens(0)
 			            .outputTokens(outputTokens)
 			            .build();
 		}
@@ -230,7 +234,7 @@ public final class AnthropicSsePayloads {
 					                            .stopReason("end_turn")
 					                            .build()
 			                   )
-			                   .usage(Usage.of(0))
+			                   .usage(Usage.output(0))
 			                   .build();
 		}
 
@@ -245,7 +249,7 @@ public final class AnthropicSsePayloads {
 					                            .stopReason(stopReason)
 					                            .build()
 			                   )
-			                   .usage(Usage.of(outputTokens))
+			                   .usage(Usage.output(outputTokens))
 			                   .build();
 		}
 	}
@@ -270,8 +274,7 @@ public final class AnthropicSsePayloads {
 				String id,
 				String model,
 				List<Object> content,
-				int inputTokens,
-				int outputTokens
+				StreamHandler.Usage usage
 		) {
 			return AnthropicResponse.builder()
 			                        .id(id)
@@ -280,11 +283,16 @@ public final class AnthropicSsePayloads {
 			                        .content(content)
 			                        .model(model)
 			                        .stopReason("end_turn")
-			                        .usage(
-					                        Usage.builder()
-					                             .inputTokens(inputTokens)
-					                             .outputTokens(outputTokens)
-					                             .build()
+			                        .usage(Usage.builder()
+			                                    .inputTokens(usage.promptTokens())
+			                                    .outputTokens(usage.outputTokens())
+			                                    .cacheReadInputTokens(
+					                                    usage.cacheReadTokens()
+			                                    )
+			                                    .cacheCreationInputTokens(
+					                                    usage.cacheCreationTokens()
+			                                    )
+			                                    .build()
 			                        )
 			                        .build();
 		}

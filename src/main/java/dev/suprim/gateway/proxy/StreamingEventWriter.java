@@ -8,6 +8,7 @@ import java.io.PrintWriter;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Reusable streaming writer that emits KiroEvents in the correct format
@@ -29,6 +30,7 @@ public class StreamingEventWriter {
 	private boolean hasContent = false;
 	private boolean hasOutput = false;
 	private boolean hasToolUse = false;
+	private KiroEvent.Usage usage;
 	private int blockIndex = 0;
 
 	public StreamingEventWriter(
@@ -86,6 +88,12 @@ public class StreamingEventWriter {
 	}
 
 	public void write(KiroEvent event) throws Exception {
+		if ("usage".equals(event.type())) {
+			if (!messagePreambleSent && event.usage() != null) {
+				usage = mergeUsage(usage, event.usage());
+			}
+			return;
+		}
 		if (!"content".equals(event.type()) &&
 		    !"reasoning".equals(event.type()) &&
 		    !"tool_use".equals(event.type())
@@ -125,7 +133,17 @@ public class StreamingEventWriter {
 			writer.write(
 					converter.toAnthropicEvent(
 							"message_start",
-							AnthropicSsePayloads.MessageStart.of(id, model, inputTokens)
+							AnthropicSsePayloads.MessageStart.of(
+								id,
+								model,
+								AnthropicSsePayloads.Usage.start(
+										usage != null && usage.promptTokens() != null
+												? usage.promptTokens()
+												: inputTokens,
+										usage == null ? null : usage.cacheReadTokens(),
+										usage == null ? null : usage.cacheCreationTokens()
+								)
+						)
 					)
 			);
 		}
@@ -320,6 +338,46 @@ public class StreamingEventWriter {
 						outputTokens
 				)
 		);
+	}
+
+	private static KiroEvent.Usage mergeUsage(
+			KiroEvent.Usage current,
+			KiroEvent.Usage update
+	) {
+		return KiroEvent.Usage.builder()
+		                      .promptTokens(update.promptTokens() != null
+				                      ? update.promptTokens()
+				                      : value(current, KiroEvent.Usage::promptTokens))
+		                      .outputTokens(update.outputTokens() != null
+				                      ? update.outputTokens()
+				                      : value(current, KiroEvent.Usage::outputTokens))
+		                      .cacheReadTokens(update.cacheReadTokens() != null
+				                      ? update.cacheReadTokens()
+				                      : value(current, KiroEvent.Usage::cacheReadTokens))
+		                      .cacheCreationTokens(update.cacheCreationTokens() != null
+				                      ? update.cacheCreationTokens()
+				                      : value(current, KiroEvent.Usage::cacheCreationTokens))
+		                      .contextPercentage(update.contextPercentage() != null
+				                      ? update.contextPercentage()
+				                      : decimalValue(
+						                      current,
+						                      KiroEvent.Usage::contextPercentage
+				                      ))
+		                      .build();
+	}
+
+	private static Integer value(
+			KiroEvent.Usage usage,
+			Function<KiroEvent.Usage, Integer> accessor
+	) {
+		return usage == null ? null : accessor.apply(usage);
+	}
+
+	private static Double decimalValue(
+			KiroEvent.Usage usage,
+			Function<KiroEvent.Usage, Double> accessor
+	) {
+		return usage == null ? null : accessor.apply(usage);
 	}
 
 	private void finishCompletion(int outputTokens) throws Exception {

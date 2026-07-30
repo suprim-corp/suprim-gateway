@@ -5,7 +5,7 @@ import lombok.Builder;
 @Builder
 public record KiroEvent(
 		String type, String content, String toolName, String toolInput,
-		String toolUseId, boolean toolStop, Double credits
+		String toolUseId, boolean toolStop, Double credits, Usage usage
 ) {
 
 	public static KiroEvent content(String text) {
@@ -29,4 +29,34 @@ public record KiroEvent(
 	public static KiroEvent metering(double credits) {
 		return KiroEvent.builder().type("metering").credits(credits).build();
 	}
+
+	public static KiroEvent usage(
+			Integer promptTokens,
+			Integer outputTokens,
+			Integer cacheReadTokens,
+			Integer cacheCreationTokens,
+			Double contextPercentage
+	) {
+		return KiroEvent.builder()
+		                .type("usage")
+		                .usage(
+				                Usage.builder()
+				                     .promptTokens(promptTokens)
+				                     .outputTokens(outputTokens)
+				                     .cacheReadTokens(cacheReadTokens)
+				                     .cacheCreationTokens(cacheCreationTokens)
+				                     .contextPercentage(contextPercentage)
+				                     .build()
+		                )
+		                .build();
+	}
+
+	@Builder
+	public record Usage(
+			Integer promptTokens,
+			Integer outputTokens,
+			Integer cacheReadTokens,
+			Integer cacheCreationTokens,
+			Double contextPercentage
+	) {}
 }

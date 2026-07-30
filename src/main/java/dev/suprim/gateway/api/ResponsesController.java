@@ -75,7 +75,13 @@ class ResponsesController {
 				               .stream(stream)
 				               .tools(tools)
 				               .temperature(request.temperature())
+				               .topP(request.topP())
 				               .maxTokens(request.maxOutputTokens())
+				               .effort(
+						               request.reasoning() == null
+								               ? null
+								               : request.reasoning().effort()
+				               )
 				               .clientSessionId(
 						               resolveClientSessionId(
 								               request,

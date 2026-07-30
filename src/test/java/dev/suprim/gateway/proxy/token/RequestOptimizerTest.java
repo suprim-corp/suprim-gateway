@@ -48,6 +48,30 @@ class RequestOptimizerTest {
 	}
 
 	@Test
+	void preservesInferenceFieldsWhenRebuildingRequest() {
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("model")
+		                                         .messages(List.of(Message.of("user", "hello")))
+		                                         .temperature(0.25)
+		                                         .topP(0.8)
+		                                         .maxTokens(4096)
+		                                         .thinking(InternalRequest.Thinking.builder()
+		                                                                                   .type("enabled")
+		                                                                                   .budgetTokens(2048)
+		                                                                                   .build())
+		                                         .effort("high")
+		                                         .build();
+
+		InternalRequest optimized = optimizer.optimize(Provider.KIRO, request).request();
+
+		assertEquals(request.temperature(), optimized.temperature());
+		assertEquals(request.topP(), optimized.topP());
+		assertEquals(request.maxTokens(), optimized.maxTokens());
+		assertEquals(request.thinking(), optimized.thinking());
+		assertEquals(request.effort(), optimized.effort());
+	}
+
+	@Test
 	void appliesExplicitWebToolEquivalenceRulesIdempotently() {
 		Tool webSearch = tool("WebSearch");
 		Tool exa = tool("mcp__exa__web_search_exa");

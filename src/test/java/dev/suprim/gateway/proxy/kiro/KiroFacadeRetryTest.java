@@ -63,7 +63,13 @@ class KiroFacadeRetryTest {
 		VirtualKeyService keyService = mock(VirtualKeyService.class);
 
 		when(streamHandler.collectContent(any())).thenReturn(
-				new StreamHandler.CollectResult("hello", null, 0.0));
+				StreamHandler.CollectResult.builder()
+				                           .content("hello")
+				                           .credits(0.0)
+				                           .usage(StreamHandler.Usage.builder()
+				                                                     .credits(0.0)
+				                                                     .build())
+				                           .build());
 		when(streamHandler.countTokens(anyString())).thenReturn(5);
 		when(payloadBuilder.buildOpenAiPayload(any(), any())).thenReturn("{\"test\":true}");
 		when(modelAvailability.eligibleAccounts(anyString(), anyList())).thenAnswer(

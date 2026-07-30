@@ -8,15 +8,12 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
- * Converts OpenAI-style messages into Kiro conversation history format.
- *
- * <p>The last user message is extracted as "current message" (not placed in history),
- * while all preceding messages become history entries. Tool results are batched
- * until a non-tool message follows.</p>
+ * Converts client messages into alternating Kiro history and one current user turn.
  */
 final class HistoryBuilder {
 
@@ -24,112 +21,171 @@ final class HistoryBuilder {
 
 	private HistoryBuilder() {}
 
-	/**
-	 * Result of building history: the history array, the current message content,
-	 * any images attached to the current message, and any pending tool results.
-	 */
 	@Builder
-	record HistoryResult(
-			ArrayNode history,
-			String currentContent,
-			List<ContentExtractor.KiroImage> currentImages,
-			List<Message> currentToolResults
-	) {}
+	record HistoryResult(ArrayNode history, ObjectNode currentMessage) {}
 
-	/**
-	 * Builds Kiro history from non-system messages.
-	 *
-	 * @param nonSystemMessages messages with system messages already removed
-	 * @param modelId           resolved Kiro model identifier
-	 * @return history array + current message state
-	 */
 	static HistoryResult build(
-			List<Message> nonSystemMessages,
-			String modelId
+			List<Message> messages,
+			String modelId,
+			boolean toolsEnabled
 	) {
-		Context ctx = new Context(modelId);
+		ArrayNode entries = MAPPER.createArrayNode();
+		Set<String> pendingToolUseIds = new HashSet<>();
+		Set<String> consumedToolUseIds = new HashSet<>();
 
-		for (int i = 0; i < nonSystemMessages.size(); i++) {
-			Message msg = nonSystemMessages.get(i);
-			boolean isLast = (i == nonSystemMessages.size() - 1);
-			boolean nextIsTool = i + 1 < nonSystemMessages.size()
-			                     && "tool".equals(
-					nonSystemMessages.get(i + 1)
-					                 .role()
-			);
-
-			switch (msg.role()) {
-				case "user" -> ctx.handleUser(msg, isLast);
-				case "assistant" -> ctx.history.add(
-						AssistantEntryBuilder.build(msg)
-				);
-				case "tool" -> ctx.handleTool(msg, isLast, nextIsTool);
+		for (Message message : messages) {
+			switch (message.role()) {
+				case "user" -> {
+					pendingToolUseIds.clear();
+					appendMerged(
+							entries,
+							UserEntryBuilder.build(message, modelId)
+					);
+				}
+				case "assistant" -> {
+					pendingToolUseIds.clear();
+					ObjectNode entry = AssistantEntryBuilder.build(
+							message,
+							toolsEnabled
+					);
+					collectToolUseIds(entry, pendingToolUseIds);
+					appendMerged(entries, entry);
+				}
+				case "tool" -> {
+					String toolUseId = message.toolCallId();
+					if (toolsEnabled && toolUseId != null &&
+					    pendingToolUseIds.contains(toolUseId) &&
+					    consumedToolUseIds.add(toolUseId)) {
+						appendMerged(
+								entries,
+								ToolResultEntryBuilder.build(
+										List.of(message),
+										modelId
+								)
+						);
+					} else {
+						appendMerged(
+								entries, UserEntryBuilder.build(
+										Message.of(
+												"user",
+												toolResultText(message)
+										),
+										modelId
+								)
+						);
+					}
+				}
 			}
 		}
 
+		ObjectNode currentMessage = currentMessage(entries, modelId);
 		return HistoryResult.builder()
-		                    .history(ctx.history)
-		                    .currentContent(ctx.currentContent)
-		                    .currentImages(ctx.currentImages)
-		                    .currentToolResults(ctx.currentToolResults)
+		                    .history(entries)
+		                    .currentMessage(currentMessage)
 		                    .build();
 	}
 
-	private static class Context {
-		final ArrayNode history = MAPPER.createArrayNode();
-		final String modelId;
-		String currentContent = "";
-		List<ContentExtractor.KiroImage> currentImages = List.of();
-		List<Message> currentToolResults;
+	private static ObjectNode currentMessage(
+			ArrayNode entries,
+			String modelId
+	) {
+		if (!entries.isEmpty() && entries.get(entries.size() - 1).has(
+				"userInputMessage")) {
+			ObjectNode entry = (ObjectNode) entries.remove(entries.size() - 1);
+			return ((ObjectNode) entry.get("userInputMessage")).deepCopy();
+		}
+		return (ObjectNode) UserEntryBuilder.build(
+				Message.of("user", "."), modelId
+		).get("userInputMessage");
+	}
 
-		Context(String modelId) {
-			this.modelId = modelId;
+	private static void appendMerged(ArrayNode entries, ObjectNode entry) {
+		if (entries.isEmpty()) {
+			entries.add(entry);
+			return;
 		}
 
-		void handleUser(Message msg, boolean isLast) {
-			if (isLast) {
-				currentContent = ContentExtractor.fromMessage(msg);
-				if (currentContent == null) {
-					currentContent = "";
-				}
-				currentImages = ContentExtractor.extractImages(msg);
-			} else {
-				history.add(UserEntryBuilder.build(msg, modelId));
-			}
+		ObjectNode previous = (ObjectNode) entries.get(entries.size() - 1);
+		if (entry.has("userInputMessage") && previous.has("userInputMessage")) {
+			mergeUser(
+					(ObjectNode) previous.get("userInputMessage"),
+					(ObjectNode) entry.get("userInputMessage")
+			);
+		} else if (entry.has("assistantResponseMessage") &&
+		           previous.has("assistantResponseMessage")) {
+			mergeAssistant(
+					(ObjectNode) previous.get("assistantResponseMessage"),
+					(ObjectNode) entry.get("assistantResponseMessage")
+			);
+		} else {
+			entries.add(entry);
+		}
+	}
+
+	private static void mergeUser(ObjectNode target, ObjectNode source) {
+		target.put("content", joinContent(target, source));
+		appendArray(target, source, "images");
+		ObjectNode sourceContext = source.has("userInputMessageContext")
+				? (ObjectNode) source.get("userInputMessageContext")
+				: null;
+		if (sourceContext == null) {
+			return;
 		}
 
-		void handleTool(Message msg, boolean isLast, boolean nextIsTool) {
-			if (currentToolResults == null) {
-				currentToolResults = new ArrayList<>();
-			}
+		ObjectNode targetContext = target.has("userInputMessageContext")
+				? (ObjectNode) target.get("userInputMessageContext")
+				: target.putObject("userInputMessageContext");
+		appendArray(targetContext, sourceContext, "toolResults");
+	}
 
-			currentToolResults.add(msg);
+	private static void mergeAssistant(ObjectNode target, ObjectNode source) {
+		target.put("content", joinContent(target, source));
+		appendArray(target, source, "toolUses");
+	}
 
-			if (!nextIsTool && !isLast) {
-				int allowed = countPreviousToolUses();
-				if (allowed > 0) {
-					List<Message> capped = currentToolResults.subList(
-							0,
-							Math.min(currentToolResults.size(), allowed)
-					);
-					history.add(
-							ToolResultEntryBuilder.build(capped, modelId)
-					);
-				}
-				currentToolResults = null;
-			}
+	private static String joinContent(ObjectNode first, ObjectNode second) {
+		String left = first.path("content").asString().trim();
+		String right = second.path("content").asString().trim();
+		if (left.isEmpty()) {
+			return right;
 		}
-
-		private int countPreviousToolUses() {
-			for (int i = history.size() - 1; i >= 0; i--) {
-				JsonNode entry = history.get(i);
-				JsonNode assistantMsg = entry.get("assistantResponseMessage");
-				if (assistantMsg != null) {
-					JsonNode toolUses = assistantMsg.get("toolUses");
-					return toolUses != null ? toolUses.size() : 0;
-				}
-			}
-			return 0;
+		if (right.isEmpty()) {
+			return left;
 		}
+		return left + "\n\n" + right;
+	}
+
+	private static void appendArray(
+			ObjectNode target,
+			ObjectNode source,
+			String field
+	) {
+		JsonNode sourceArray = source.get(field);
+		if (sourceArray == null || !sourceArray.isArray()) {
+			return;
+		}
+		ArrayNode targetArray = target.has(field)
+				? (ArrayNode) target.get(field)
+				: target.putArray(field);
+		targetArray.addAll((ArrayNode) sourceArray);
+	}
+
+	private static void collectToolUseIds(
+			ObjectNode entry,
+			Set<String> toolUseIds
+	) {
+		JsonNode uses = entry.at("/assistantResponseMessage/toolUses");
+		if (!uses.isArray()) {
+			return;
+		}
+		for (JsonNode use : uses) {
+			String id = use.path("toolUseId").asString();
+			if (!id.isBlank()) toolUseIds.add(id);
+		}
+	}
+
+	private static String toolResultText(Message message) {
+		String content = ContentExtractor.fromMessage(message);
+		return "[Tool result: " + (content == null ? "" : content) + "]";
 	}
 }

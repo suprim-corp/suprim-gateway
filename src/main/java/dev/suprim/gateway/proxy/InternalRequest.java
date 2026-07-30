@@ -14,8 +14,10 @@ public record InternalRequest(
 		boolean stream,
 		List<Tool> tools,
 		Double temperature,
+		@JsonProperty("top_p") Double topP,
 		@JsonProperty("max_tokens") Integer maxTokens,
 		@JsonProperty("thinking") Thinking thinking,
+		String effort,
 		String clientSessionId
 ) {
 

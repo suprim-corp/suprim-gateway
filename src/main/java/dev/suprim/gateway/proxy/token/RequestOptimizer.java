@@ -42,8 +42,10 @@ public class RequestOptimizer {
 			                                         .stream(request.stream())
 			                                         .tools(tools)
 			                                         .temperature(request.temperature())
+			                                         .topP(request.topP())
 			                                         .maxTokens(request.maxTokens())
 			                                         .thinking(request.thinking())
+			                                         .effort(request.effort())
 			                                         .clientSessionId(request.clientSessionId())
 			                                         .build();
 			return result(optimized, before, characterCount(optimized));

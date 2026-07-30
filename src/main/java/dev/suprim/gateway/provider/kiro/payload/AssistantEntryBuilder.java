@@ -15,7 +15,7 @@ final class AssistantEntryBuilder {
 
 	private AssistantEntryBuilder() {}
 
-	static ObjectNode build(Message msg) {
+	static ObjectNode build(Message msg, boolean toolsEnabled) {
 		ObjectNode entry = MAPPER.createObjectNode();
 		ObjectNode assistantMsg = entry.putObject("assistantResponseMessage");
 		String content = ContentExtractor.fromMessage(msg);
@@ -23,12 +23,38 @@ final class AssistantEntryBuilder {
 
 		List<Message.ToolCall> toolCalls = msg.toolCalls();
 		if (toolCalls != null && !toolCalls.isEmpty()) {
-			ArrayNode toolUsesNode = assistantMsg.putArray("toolUses");
-			for (Message.ToolCall tc : toolCalls) {
-				appendToolUse(toolUsesNode, tc);
+			if (!toolsEnabled) {
+				assistantMsg.put("content", appendToolCallText(content, toolCalls));
+				return entry;
 			}
+			ArrayNode toolUsesNode = assistantMsg.putArray("toolUses");
+			for (Message.ToolCall toolCall : toolCalls) {
+				if (toolCall.id() != null && !toolCall.id().isBlank()) {
+					appendToolUse(toolUsesNode, toolCall);
+				}
+			}
+			if (toolUsesNode.isEmpty()) assistantMsg.remove("toolUses");
 		}
 		return entry;
+	}
+
+	private static String appendToolCallText(
+			String content,
+			List<Message.ToolCall> toolCalls
+	) {
+		StringBuilder text = new StringBuilder(content == null ? "" : content);
+		for (Message.ToolCall toolCall : toolCalls) {
+			Message.Function function = toolCall.function();
+			String name = function == null || function.name() == null
+					? "unknown"
+					: function.name();
+			String input = function == null || function.arguments() == null
+					? "{}"
+					: function.arguments();
+			if (!text.isEmpty()) text.append('\n');
+			text.append("[Tool call: ").append(name).append(' ').append(input).append(']');
+		}
+		return text.toString();
 	}
 
 	private static void appendToolUse(

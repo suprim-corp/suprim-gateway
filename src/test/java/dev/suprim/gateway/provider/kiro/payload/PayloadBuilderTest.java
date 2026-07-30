@@ -3,16 +3,28 @@ package dev.suprim.gateway.provider.kiro.payload;
 import dev.suprim.gateway.model.ModelResolver;
 import dev.suprim.gateway.proxy.InternalRequest;
 import dev.suprim.gateway.proxy.Message;
+import dev.suprim.gateway.proxy.Tool;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PayloadBuilderTest {
+
+	@AfterEach
+	void clearSessions() {
+		KiroSessionReplay.clear();
+	}
 
 	@Test
 	void firstSystemRequestUsesKiroAgentPayloadWithoutSyntheticHistory() throws Exception {
@@ -40,6 +52,545 @@ class PayloadBuilderTest {
 		assertEquals(
 				"Hello",
 				conversation.at("/currentMessage/userInputMessage/content").asString()
+		);
+	}
+
+	@Test
+	void buildsClaudeCodePayloadContract() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		JsonNode parameters = new JsonMapper().readTree("""
+				{
+				  "properties": {
+				    "path": {"type": "string", "additionalProperties": false}
+				  },
+				  "required": ["path"],
+				  "additionalProperties": false
+				}
+				""");
+		Tool tool = Tool.builder()
+		                .type("function")
+		                .function(Tool.Function.builder()
+		                                       .name("read_file")
+		                                       .parameters(parameters)
+		                                       .build())
+		                .build();
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-opus-5")
+		                                         .clientSessionId("claude-code-session")
+		                                         .thinking(InternalRequest.Thinking.builder()
+		                                                                                   .type("enabled")
+		                                                                                   .budgetTokens(1024)
+		                                                                                   .build())
+		                                         .tools(List.of(tool))
+		                                         .messages(List.of(
+				                                         Message.of("system", "S".repeat(4096)),
+				                                         Message.of("user", "Inspect the file")
+		                                         ))
+		                                         .build();
+
+		JsonNode payload = new JsonMapper().readTree(
+				builder.buildOpenAiPayload(request, "arn:aws:codewhisperer:us-east-1:000000000000:profile/fake")
+		);
+		JsonNode conversation = payload.get("conversationState");
+		JsonNode current = conversation.at("/currentMessage/userInputMessage");
+		JsonNode specification = current.at(
+				"/userInputMessageContext/tools/0/toolSpecification"
+		);
+		JsonNode schema = specification.at("/inputSchema/json");
+
+		assertEquals("MANUAL", conversation.get("chatTriggerType").asString());
+		assertEquals("vibe", payload.get("agentMode").asString());
+		assertEquals("vibe", conversation.get("agentTaskType").asString());
+		assertFalse(conversation.get("conversationId").asString().isBlank());
+		assertFalse(conversation.get("agentContinuationId").asString().isBlank());
+		assertTrue(payload.get("systemPrompt").asString().startsWith(
+				"<thinking_mode>enabled</thinking_mode>\n" +
+				"<max_thinking_length>1024</max_thinking_length>\n"
+		));
+		assertTrue(payload.get("systemPrompt").asString().endsWith("S".repeat(4096)));
+		assertEquals("arn:aws:codewhisperer:us-east-1:000000000000:profile/fake", payload.get("profileArn").asString());
+		assertEquals("Inspect the file", current.get("content").asString());
+		assertEquals("claude-opus-5", current.get("modelId").asString());
+		assertEquals("AI_EDITOR", current.get("origin").asString());
+		assertTrue(conversation.get("history") == null);
+		assertEquals("read_file", specification.get("name").asString());
+		assertEquals("Tool: read_file", specification.get("description").asString());
+		assertEquals("object", schema.get("type").asString());
+		assertTrue(schema.get("properties").isObject());
+		assertEquals("path", schema.at("/required/0").asString());
+		assertFalse(schema.has("additionalProperties"));
+		assertFalse(schema.at("/properties/path").has("additionalProperties"));
+	}
+
+	@Test
+	void replaysExactFirstUserTurnAcrossCompactedFollowUp() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		JsonNode first = new JsonMapper().readTree(
+				builder.buildOpenAiPayload(
+						request("session", "claude-opus-5", "system", List.of(
+								Message.of("user", "first")
+						)),
+						null
+				)
+		);
+		JsonNode followUp = new JsonMapper().readTree(
+				builder.buildOpenAiPayload(
+						request("session", "claude-opus-5", "system", List.of(
+								Message.of("assistant", "answer"),
+								Message.of("user", "follow-up")
+						)),
+						null
+				)
+		);
+
+		assertEquals(
+				first.at("/conversationState/conversationId").asString(),
+				followUp.at("/conversationState/conversationId").asString()
+		);
+		assertEquals(
+				first.at("/conversationState/agentContinuationId").asString(),
+				followUp.at("/conversationState/agentContinuationId").asString()
+		);
+		assertEquals(
+				"first",
+				followUp.at("/conversationState/history/0/userInputMessage/content").asString()
+		);
+		assertEquals(
+				"answer",
+				followUp.at("/conversationState/history/1/assistantResponseMessage/content").asString()
+		);
+		assertEquals(
+				"follow-up",
+				followUp.at("/conversationState/currentMessage/userInputMessage/content").asString()
+		);
+	}
+
+	@Test
+	void resetsSessionWhenSystemOrModelChanges() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		JsonNode original = payload(builder, request(
+				"session", "claude-opus-5", "system-a", List.of(Message.of("user", "first"))
+		));
+		JsonNode changedSystem = payload(builder, request(
+				"session", "claude-opus-5", "system-b", List.of(Message.of("user", "first"))
+		));
+		JsonNode changedModel = payload(builder, request(
+				"session", "claude-sonnet-5", "system-a", List.of(Message.of("user", "first"))
+		));
+
+		assertNotEquals(
+				original.at("/conversationState/conversationId").asString(),
+				changedSystem.at("/conversationState/conversationId").asString()
+		);
+		assertNotEquals(
+				original.at("/conversationState/conversationId").asString(),
+				changedModel.at("/conversationState/conversationId").asString()
+		);
+	}
+
+	@Test
+	void anonymousRequestsNeverShareSessionState() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = request(
+				null, "claude-opus-5", "system", List.of(Message.of("user", "first"))
+		);
+
+		JsonNode first = payload(builder, request);
+		JsonNode second = payload(builder, request);
+
+		assertNotEquals(
+				first.at("/conversationState/conversationId").asString(),
+				second.at("/conversationState/conversationId").asString()
+		);
+	}
+
+	@Test
+	void matchesToolResultsByIdAndSalvagesDuplicateAndOrphanResults() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		Tool tool = tool("read_file");
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-opus-5")
+		                                         .clientSessionId("tool-session")
+		                                         .tools(List.of(tool))
+		                                         .messages(List.of(
+				                                         Message.of("user", "read"),
+				                                         assistantToolCall("call-1", "read_file"),
+				                                         toolResult("call-1", "ok", false),
+				                                         toolResult("call-1", "duplicate", false),
+				                                         toolResult("missing", "orphan", true)
+		                                         ))
+		                                         .build();
+
+		JsonNode payload = payload(builder, request);
+		JsonNode history = payload.at("/conversationState/history");
+		JsonNode current = payload.at("/conversationState/currentMessage/userInputMessage");
+
+		assertEquals(
+				"call-1",
+				history.at("/1/assistantResponseMessage/toolUses/0/toolUseId").asString(),
+				payload.toPrettyString()
+		);
+		assertEquals("call-1", current.at("/userInputMessageContext/toolResults/0/toolUseId").asString());
+		assertEquals("success", current.at("/userInputMessageContext/toolResults/0/status").asString());
+		assertTrue(current.get("content").asString().contains("[Tool result: duplicate]"));
+		assertTrue(current.get("content").asString().contains("[Tool result: orphan]"));
+		assertEquals(1, current.at("/userInputMessageContext/tools").size());
+		assertEquals(1, current.at("/userInputMessageContext/toolResults").size());
+	}
+
+	@Test
+	void flattensToolInteractionsWhenToolsAreOmitted() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-opus-5")
+		                                         .clientSessionId("no-tools-session")
+		                                         .messages(List.of(
+				                                         Message.of("user", "read"),
+				                                         assistantToolCall("call-1", "read_file"),
+				                                         toolResult("call-1", "contents", false)
+		                                         ))
+		                                         .build();
+
+		JsonNode payload = payload(builder, request);
+		String serialized = payload.toString();
+
+		assertFalse(serialized.contains("toolUses"));
+		assertFalse(serialized.contains("toolResults"));
+		assertTrue(serialized.contains("[Tool call: read_file {}]"));
+		assertTrue(serialized.contains("[Tool result: contents]"));
+	}
+
+	@Test
+	void mergesConsecutiveRolesAndKeepsCurrentUser() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = request(
+				"merged-session",
+				"claude-opus-5",
+				null,
+				List.of(
+						Message.of("user", "one"),
+						Message.of("user", "two"),
+						Message.of("assistant", "three"),
+						Message.of("assistant", "four"),
+						Message.of("user", "five")
+				)
+		);
+
+		JsonNode payload = payload(builder, request);
+		JsonNode history = payload.at("/conversationState/history");
+
+		assertEquals(2, history.size());
+		assertEquals("one\n\ntwo", history.at("/0/userInputMessage/content").asString());
+		assertEquals("three\n\nfour", history.at("/1/assistantResponseMessage/content").asString());
+		assertEquals("five", payload.at("/conversationState/currentMessage/userInputMessage/content").asString());
+	}
+
+	@Test
+	void usesMinimalCurrentMessageWhenConversationEndsWithAssistant() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = request(
+				"assistant-session",
+				"claude-opus-5",
+				null,
+				List.of(Message.of("user", "question"), Message.of("assistant", "answer"))
+		);
+
+		JsonNode payload = payload(builder, request);
+
+		assertEquals(".", payload.at("/conversationState/currentMessage/userInputMessage/content").asString());
+		assertEquals("claude-opus-5", payload.at("/conversationState/currentMessage/userInputMessage/modelId").asString());
+	}
+
+	@Test
+	void truncatesWholeOldestTurns() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		String large = "x".repeat(310_000);
+		InternalRequest request = request(
+				"truncate-session",
+				"claude-opus-5",
+				null,
+				List.of(
+						Message.of("user", "old-user-" + large),
+						Message.of("assistant", "old-assistant-" + large),
+						Message.of("user", "keep-user-" + large),
+						Message.of("assistant", "keep-assistant"),
+						Message.of("user", "current")
+				)
+		);
+
+		JsonNode payload = payload(builder, request);
+		JsonNode history = payload.at("/conversationState/history");
+
+		assertEquals(2, history.size());
+		assertTrue(history.at("/0/userInputMessage/content").asString().startsWith("keep-user-"));
+		assertEquals("keep-assistant", history.at("/1/assistantResponseMessage/content").asString());
+		assertEquals("current", payload.at("/conversationState/currentMessage/userInputMessage/content").asString());
+	}
+
+	@Test
+	void truncationPreservesFrozenSessionStart() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		payload(builder, request(
+				"replay-truncation",
+				"claude-opus-5",
+				null,
+				List.of(Message.of("user", "first"))
+		));
+		String large = "x".repeat(310_000);
+		JsonNode payload = payload(builder, request(
+				"replay-truncation",
+				"claude-opus-5",
+				null,
+				List.of(
+						Message.of("user", "compacted"),
+						Message.of("assistant", "old-1-" + large),
+						Message.of("user", "old-2-" + large),
+						Message.of("assistant", "old-3-" + large),
+						Message.of("user", "current")
+				)
+		));
+
+		assertEquals(
+				"first",
+				payload.at("/conversationState/history/0/userInputMessage/content").asString()
+		);
+		assertEquals(
+				"current",
+				payload.at("/conversationState/currentMessage/userInputMessage/content").asString()
+		);
+	}
+
+	@Test
+	void truncationDropsToolUseWithItsResultCarrier() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		String large = "x".repeat(460_000);
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-opus-5")
+		                                         .clientSessionId("tool-truncation")
+		                                         .tools(List.of(tool("read_file")))
+		                                         .messages(List.of(
+				                                         Message.of("user", "old-" + large),
+				                                         assistantToolCall("call-1", "read_file"),
+				                                         toolResult("call-1", "result", false),
+				                                         Message.of("assistant", "answer-" + large),
+				                                         Message.of("user", "current")
+		                                         ))
+		                                         .build();
+
+		JsonNode payload = payload(builder, request);
+		String history = payload.at("/conversationState/history").toString();
+
+		assertFalse(history.contains("call-1"));
+		assertEquals(
+				"current",
+				payload.at("/conversationState/currentMessage/userInputMessage/content").asString()
+		);
+	}
+
+	@Test
+	void emitsExplicitInferenceConfig() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-opus-5")
+		                                         .messages(List.of(Message.of("user", "Hello")))
+		                                         .temperature(0.25)
+		                                         .topP(0.8)
+		                                         .maxTokens(4096)
+		                                         .build();
+
+		JsonNode payload = payload(builder, request);
+		JsonNode inference = payload.get("inferenceConfig");
+
+		assertEquals(4096, inference.get("maxTokens").asInt());
+		assertEquals(0.25, inference.get("temperature").asDouble());
+		assertEquals(0.8, inference.get("topP").asDouble());
+	}
+
+	@Test
+	void emitsNativeClaudeEffortWithoutThinkingPrefix() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-opus-5")
+		                                         .messages(List.of(Message.of("user", "Hello")))
+		                                         .thinking(InternalRequest.Thinking.builder()
+		                                                                                   .type("enabled")
+		                                                                                   .budgetTokens(2048)
+		                                                                                   .build())
+		                                         .effort("max")
+		                                         .build();
+
+		JsonNode payload = payload(builder, request);
+		JsonNode additional = payload.get("additionalModelRequestFields");
+
+		assertEquals("adaptive", additional.at("/thinking/type").asString());
+		assertEquals("summarized", additional.at("/thinking/display").asString());
+		assertEquals("high", additional.at("/output_config/effort").asString());
+		assertFalse(payload.path("systemPrompt").asString().contains("<thinking_mode>"));
+	}
+
+	@Test
+	void emitsNativeGptEffortSchema() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("gpt-5.6")
+		                                         .messages(List.of(Message.of("user", "Hello")))
+		                                         .effort("max")
+		                                         .build();
+
+		JsonNode payload = payload(builder, request);
+
+		assertEquals(
+				"xhigh",
+				payload.at("/additionalModelRequestFields/reasoning/effort").asString()
+		);
+		assertTrue(payload.at(
+				"/additionalModelRequestFields/output_config"
+		).isMissingNode());
+	}
+
+	@Test
+	void appliesBoundedThinkingPrefixOnceForUnsupportedModel() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-sonnet-4.5")
+		                                         .messages(List.of(
+				                                         Message.of(
+						                                         "system",
+						                                         "<thinking_mode>enabled</thinking_mode>\nExisting"
+				                                         ),
+				                                         Message.of("user", "Hello")
+		                                         ))
+		                                         .thinking(InternalRequest.Thinking.builder()
+		                                                                                   .type("enabled")
+		                                                                                   .budgetTokens(99_999)
+		                                                                                   .build())
+		                                         .build();
+
+		JsonNode payload = payload(builder, request);
+		String systemPrompt = payload.get("systemPrompt").asString();
+
+		assertEquals(1, systemPrompt.split("<thinking_mode>", -1).length - 1);
+		assertFalse(payload.has("additionalModelRequestFields"));
+	}
+
+	@Test
+	void omitsDisabledAndInvalidInferenceValues() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-opus-5")
+		                                         .messages(List.of(Message.of("user", "Hello")))
+		                                         .maxTokens(0)
+		                                         .thinking(InternalRequest.Thinking.builder()
+		                                                                                   .type("disabled")
+		                                                                                   .budgetTokens(2048)
+		                                                                                   .build())
+		                                         .effort("invalid")
+		                                         .build();
+
+		JsonNode payload = payload(builder, request);
+
+		assertFalse(payload.has("inferenceConfig"));
+		assertFalse(payload.has("additionalModelRequestFields"));
+		assertFalse(payload.has("systemPrompt"));
+	}
+
+	@Test
+	void omitsProfileForApiKeyAccount() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = requestWithUserContent("Hello");
+
+		JsonNode payload = new JsonMapper().readTree(
+				builder.buildOpenAiPayload(request, null)
+		);
+
+		assertFalse(payload.has("profileArn"));
+	}
+
+	@Test
+	void enforcesPayloadLimitUsingUtf8Bytes() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		String underLimitPayload = builder.buildOpenAiPayload(
+				requestWithUserContent("é".repeat(449_000)),
+				null
+		);
+
+		assertTrue(underLimitPayload.getBytes(StandardCharsets.UTF_8).length < 900_000);
+		assertThrows(
+				IllegalArgumentException.class,
+				() -> builder.buildOpenAiPayload(
+						requestWithUserContent("é".repeat(450_000)),
+						null
+				)
+		);
+	}
+
+	private static Tool tool(String name) throws Exception {
+		JsonNode parameters = new JsonMapper().readTree(
+				"{\"type\":\"object\",\"properties\":{}}"
+		);
+		return Tool.builder()
+		           .type("function")
+		           .function(Tool.Function.builder()
+		                                  .name(name)
+		                                  .description("Tool: " + name)
+		                                  .parameters(parameters)
+		                                  .build())
+		           .build();
+	}
+
+	private static Message assistantToolCall(String id, String name) {
+		return Message.builder()
+		              .role("assistant")
+		              .content("")
+		              .toolCalls(List.of(Message.ToolCall.builder()
+		                                                    .id(id)
+		                                                    .type("function")
+		                                                    .function(Message.Function.builder()
+		                                                                              .name(name)
+		                                                                              .arguments("{}")
+		                                                                              .build())
+		                                                    .build()))
+		              .build();
+	}
+
+	private static Message toolResult(String id, String content, boolean error) {
+		return Message.builder()
+		              .role("tool")
+		              .toolCallId(id)
+		              .content(content)
+		              .toolError(error)
+		              .build();
+	}
+
+	private static JsonNode payload(
+			PayloadBuilder builder,
+			InternalRequest request
+	) throws Exception {
+		return new JsonMapper().readTree(builder.buildOpenAiPayload(request, null));
+	}
+
+	private static InternalRequest request(
+			String sessionId,
+			String model,
+			String system,
+			List<Message> messages
+	) {
+		List<Message> requestMessages = new ArrayList<>();
+		if (system != null) requestMessages.add(Message.of("system", system));
+		requestMessages.addAll(messages);
+		return InternalRequest.builder()
+		                      .model(model)
+		                      .clientSessionId(sessionId)
+		                      .messages(requestMessages)
+		                      .build();
+	}
+
+	private static InternalRequest requestWithUserContent(String content) {
+		return request(
+				"payload-size-session-" + content.length(),
+				"claude-opus-5",
+				null,
+				List.of(Message.of("user", content))
 		);
 	}
 }

@@ -119,6 +119,28 @@ public class KiroFormatConverter {
 			int inputTokens,
 			int outputTokens
 	) {
+		return nonStreamBody(
+				format,
+				id,
+				model,
+				content,
+				reasoning,
+				inputTokens,
+				outputTokens,
+				null
+		);
+	}
+
+	public Object nonStreamBody(
+			Format format,
+			String id,
+			String model,
+			String content,
+			String reasoning,
+			int inputTokens,
+			int outputTokens,
+			StreamHandler.Usage usage
+	) {
 		return switch (format) {
 			case COMPLETION -> streamConverter.toOpenAiNonStreaming(
 					List.of(KiroEvent.content(content)),
@@ -132,8 +154,13 @@ public class KiroFormatConverter {
 					model,
 					content,
 					reasoning,
-					inputTokens,
-					outputTokens
+					usage != null
+							? usage
+							: StreamHandler.Usage.builder()
+							                     .promptTokens(inputTokens)
+							                     .outputTokens(outputTokens)
+							                     .credits(0)
+							                     .build()
 			);
 			case RESPONSES -> streamConverter.toResponsesNonStreaming(
 					id,

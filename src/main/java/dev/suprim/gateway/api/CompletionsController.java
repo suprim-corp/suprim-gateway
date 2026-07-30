@@ -97,6 +97,7 @@ class CompletionsController {
 				               .stream(stream)
 				               .tools(tools)
 				               .temperature(request.temperature())
+				               .topP(request.topP())
 				               .maxTokens(request.maxTokens())
 				               .clientSessionId(
 						               RequestContext.clientSessionId(
