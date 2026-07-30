@@ -162,10 +162,11 @@ public class KiroUpstreamDispatcher {
 
 			KiroResponse response = endpointAttempt.response();
 			if (response != null) {
-				KiroResponse invalidModel = copyInvalidModelResponse(response);
-				if (invalidModel != null) {
+				InspectedResponse inspected = inspectInvalidModelResponse(response);
+				response = inspected.response();
+				if (inspected.invalidModel()) {
 					invalidModelResult = new DispatchResult(
-							invalidModel,
+							response,
 							account.name()
 					);
 					modelAvailability.invalidateModel(account, model);
@@ -349,24 +350,29 @@ public class KiroUpstreamDispatcher {
 		return EndpointAttempt.rejectedToken();
 	}
 
-	private KiroResponse copyInvalidModelResponse(KiroResponse response) throws Exception {
+	private InspectedResponse inspectInvalidModelResponse(KiroResponse response) throws Exception {
 		if (response.status() != 400) {
-			return null;
+			return new InspectedResponse(response, false);
 		}
 
+		byte[] error;
 		try (InputStream body = response.body()) {
-			byte[] error = body.readAllBytes();
-			if (!new String(error, StandardCharsets.UTF_8).contains(
-					"\"reason\":\"INVALID_MODEL_ID\"")) {
-				return null;
-			}
-			return KiroResponse.builder()
-			                   .status(response.status())
-			                   .body(new ByteArrayInputStream(error))
-			                   .contentType(response.contentType())
-			                   .build();
+			error = body.readAllBytes();
 		}
+		KiroResponse replayableResponse = KiroResponse.builder()
+		                                               .status(response.status())
+		                                               .body(new ByteArrayInputStream(error))
+		                                               .contentType(response.contentType())
+		                                               .build();
+		return new InspectedResponse(
+				replayableResponse,
+				new String(error, StandardCharsets.UTF_8).contains(
+						"\"reason\":\"INVALID_MODEL_ID\""
+				)
+		);
 	}
+
+	private record InspectedResponse(KiroResponse response, boolean invalidModel) {}
 
 	private void drain(InputStream body) throws Exception {
 		try (body) {
