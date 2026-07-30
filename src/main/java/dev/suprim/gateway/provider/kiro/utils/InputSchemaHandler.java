@@ -13,11 +13,22 @@ public class InputSchemaHandler {
 		if (parameters != null && parameters.isObject()) {
 			ObjectNode schemaNode = parameters.deepCopy().asObject();
 			clean(schemaNode);
+			if (!schemaNode.has("type")) {
+				schemaNode.put("type", "object");
+			}
+			if (!schemaNode.has("properties")) {
+				schemaNode.putObject("properties");
+			}
+			if (!schemaNode.has("required")) {
+				schemaNode.putArray("required");
+			}
 			return schemaNode;
 		}
 
 		ObjectNode emptyObj = MAPPER.createObjectNode();
 		emptyObj.put("type", "object");
+		emptyObj.putObject("properties");
+		emptyObj.putArray("required");
 		return emptyObj;
 	}
 

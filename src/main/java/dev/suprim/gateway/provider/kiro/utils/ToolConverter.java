@@ -40,17 +40,11 @@ public class ToolConverter {
 			return null;
 		}
 
-		String description;
-
-		if (function.description() != null &&
-		    function.description().length() > MAX_DESCRIPTION_LEN) {
-			description = function.description()
-			                      .substring(
-					                      0,
-					                      MAX_DESCRIPTION_LEN
-			                      ) + "...";
-		} else {
-			description = function.description();
+		String description = function.description();
+		if (description == null || description.isBlank()) {
+			description = "Tool: " + function.name();
+		} else if (description.length() > MAX_DESCRIPTION_LEN) {
+			description = description.substring(0, MAX_DESCRIPTION_LEN) + "...";
 		}
 
 		KiroTool.InputSchema inputSchema =
