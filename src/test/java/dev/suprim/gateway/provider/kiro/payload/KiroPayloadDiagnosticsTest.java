@@ -11,13 +11,19 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class KiroPayloadDiagnosticsTest {
 
+	/**
+	 * A healthy request must stay cheap to log. The body dump, the JSON tree walk and the per-tool
+	 * schema dump together made one request cost around 1 500 lines, so their absence is asserted
+	 * rather than left to review.
+	 */
 	@Test
-	void logsStructureAndLengthsWithoutSensitiveValues() {
+	void reportsFixedSizeMeasurementsWithoutDumpingThePayload() {
 		Logger logger = (Logger) LoggerFactory.getLogger(KiroPayloadDiagnostics.class);
 		Level previous = logger.getLevel();
 		ListAppender<ILoggingEvent> appender = new ListAppender<>();
@@ -29,21 +35,70 @@ class KiroPayloadDiagnosticsTest {
 
 			KiroPayloadDiagnostics.log(root);
 
-			String logs = appender.list.stream()
-			                      .map(ILoggingEvent::getFormattedMessage)
-			                      .reduce("", (left, right) -> left + "\n" + right);
-			assertTrue(logs.contains("[PayloadDebug] body="));
-			assertTrue(logs.contains("valueLength=12"));
-			assertTrue(logs.contains("schemaType=object"));
-			assertTrue(logs.contains("properties=1"));
-			assertTrue(logs.contains("required=1"));
-			assertTrue(logs.contains("<redacted type=string length=12 bytes=12>"));
+			String logs = joined(appender);
+			assertTrue(logs.contains("[PayloadDebug] summary="));
+			assertTrue(logs.contains("toolCount=1"));
+			assertTrue(logs.contains("tools=1"));
+			assertTrue(logs.contains("maxNameChars=9"));
+			assertTrue(logs.contains("maxDescriptionChars=11"));
+			assertTrue(logs.contains("namesOver64=0"));
+
+			assertFalse(logs.contains("body="), "the body dump must be gone");
+			assertFalse(logs.contains("path=$"), "the tree walk must be gone");
+			assertFalse(logs.contains("schema={"), "per-tool schema dump must be gone");
 			assertFalse(logs.contains("secret value"));
 			assertFalse(logs.contains("arn:secret"));
+
+			assertEquals(2, appender.list.size(),
+					"a clean payload costs one summary line and one tools line");
 		} finally {
 			logger.detachAppender(appender);
 			logger.setLevel(previous);
 		}
+	}
+
+	@Test
+	void reportsEachSchemaProblemOnceWhenBothPathsRun() {
+		Logger logger = (Logger) LoggerFactory.getLogger(KiroPayloadDiagnostics.class);
+		Level previous = logger.getLevel();
+		ListAppender<ILoggingEvent> appender = new ListAppender<>();
+		appender.start();
+		logger.setLevel(Level.DEBUG);
+		logger.addAppender(appender);
+		try {
+			ObjectNode root = payload();
+			root.at("/conversationState/currentMessage/userInputMessage/userInputMessageContext/tools/0/toolSpecification/inputSchema/json")
+			    .asObject()
+			    .putArray("required")
+			    .removeAll()
+			    .add("absent_property");
+
+			KiroPayloadDiagnostics.log(root);
+			KiroPayloadDiagnostics.logInvalidRequest(
+					root.toString(),
+					"AmazonQ",
+					"account",
+					"REQUEST_BODY_INVALID",
+					"Improperly formed request."
+			);
+
+			long problems = appender.list.stream()
+			                            .map(ILoggingEvent::getFormattedMessage)
+			                            .filter(m -> m.contains(
+					                            "suspicious=required-property-missing"))
+			                            .count();
+			assertEquals(1, problems, "the problem must not be reported twice");
+			assertTrue(joined(appender).contains("[PayloadInvalid]"));
+		} finally {
+			logger.detachAppender(appender);
+			logger.setLevel(previous);
+		}
+	}
+
+	private static String joined(ListAppender<ILoggingEvent> appender) {
+		return appender.list.stream()
+		                    .map(ILoggingEvent::getFormattedMessage)
+		                    .reduce("", (left, right) -> left + "\n" + right);
 	}
 
 	@Test
@@ -69,9 +124,7 @@ class KiroPayloadDiagnosticsTest {
 					"Improperly formed request."
 			);
 
-			String logs = appender.list.stream()
-			                      .map(ILoggingEvent::getFormattedMessage)
-			                      .reduce("", (left, right) -> left + "\n" + right);
+			String logs = joined(appender);
 			assertTrue(logs.contains("[PayloadInvalid]"));
 			assertTrue(logs.contains("reason=REQUEST_BODY_INVALID"));
 			assertTrue(logs.contains("fingerprint="));

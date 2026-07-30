@@ -444,9 +444,10 @@ public class PayloadBuilder {
 		validateHistory(history);
 		if (payloadBytes(json) > MAX_PAYLOAD_BYTES) {
 			throw new IllegalArgumentException(
-					"Kiro payload exceeds upstream size limit");
+					"Kiro payload exceeds upstream size limit"
+			);
 		}
-		KiroPayloadDiagnostics.log(root);
+
 		return json;
 	}
 

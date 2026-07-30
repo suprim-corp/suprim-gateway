@@ -47,11 +47,6 @@ public final class KiroPayloadDiagnostics {
 			return;
 		}
 
-		log.debug("[PayloadDebug] summary={}", summary(root));
-		ObjectNode safeBody = sanitize(root, "");
-		log.debug("[PayloadDebug] body={}", safeBody);
-		logTree(root, "$", 0);
-		logTools(root);
 		logSuspiciousFields(root);
 	}
 
@@ -233,16 +228,7 @@ public final class KiroPayloadDiagnostics {
 			return;
 		}
 		if (node.isObject()) {
-			log.debug(
-					"[PayloadDebug] path={} type=object keys={} bytes={}",
-					path,
-					node.size(),
-					bytes(node)
-			);
-			Iterator<Map.Entry<String, JsonNode>> fields = node.properties()
-			                                                   .iterator();
-			while (fields.hasNext()) {
-				Map.Entry<String, JsonNode> field = fields.next();
+			for (Map.Entry<String, JsonNode> field : node.properties()) {
 				logTree(
 						field.getValue(),
 						path + "/" + field.getKey(),
@@ -252,24 +238,10 @@ public final class KiroPayloadDiagnostics {
 			return;
 		}
 		if (node.isArray()) {
-			log.debug(
-					"[PayloadDebug] path={} type=array items={} bytes={}",
-					path,
-					node.size(),
-					bytes(node)
-			);
 			for (int index = 0; index < node.size(); index++) {
 				logTree(node.get(index), path + "/" + index, depth + 1);
 			}
-			return;
 		}
-		log.debug(
-				"[PayloadDebug] path={} type={} valueLength={} bytes={}",
-				path,
-				type(node),
-				valueLength(node),
-				bytes(node)
-		);
 	}
 
 	private static void logTools(ObjectNode root) {
@@ -284,24 +256,8 @@ public final class KiroPayloadDiagnostics {
 		for (int index = 0; index < tools.size(); index++) {
 			JsonNode specification = tools.get(index).path("toolSpecification");
 			String name = specification.path("name").asString();
-			JsonNode description = specification.get("description");
 			JsonNode schema = specification.at("/inputSchema/json");
-			JsonNode properties = schema.get("properties");
-			JsonNode required = schema.get("required");
-			log.debug(
-					"[PayloadDebug] tool={} name={} nameLength={} descriptionLength={} schemaType={} schemaBytes={} properties={} required={} schema={}",
-					index,
-					name,
-					name.length(),
-					valueLength(description),
-					schema.path("type").asString("<missing>"),
-					bytes(schema),
-					properties != null &&
-					properties.isObject() ? properties.size() : -1,
-					required != null &&
-					required.isArray() ? required.size() : -1,
-					sanitizeSchema(schema)
-			);
+
 			if (!names.add(name)) {
 				log.warn(
 						"[PayloadDebug] suspicious=duplicate-tool-name tool={} name={}",
@@ -311,13 +267,6 @@ public final class KiroPayloadDiagnostics {
 			}
 			logSchemaProblems(index, schema);
 		}
-	}
-
-	private static JsonNode sanitizeSchema(JsonNode schema) {
-		if (!schema.isObject()) {
-			return schema.deepCopy();
-		}
-		return sanitize((ObjectNode) schema, "/schema");
 	}
 
 	private static void logSchemaProblems(int toolIndex, JsonNode schema) {
