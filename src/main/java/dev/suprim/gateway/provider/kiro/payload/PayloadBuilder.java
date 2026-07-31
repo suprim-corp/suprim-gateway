@@ -30,15 +30,12 @@ import java.util.regex.Pattern;
 @Slf4j
 public class PayloadBuilder {
 
-	private static final int MAX_PAYLOAD_BYTES = 900_000;
-
 	/**
-	 * The ceiling the upstream puts on the root {@code systemPrompt}. Measured against
-	 * {@code q.us-east-1.amazonaws.com}: 99 819 bytes was accepted and 100 034 rejected with
-	 * {@code REQUEST_BODY_INVALID}, while a 131 850-byte {@code content} in the same shape was
-	 * accepted — so the limit belongs to this field, not to the payload.
+	 * Past roughly 615 KB the upstream answers an otherwise valid request with
+	 * "Improperly formed request.", so history is trimmed well before that. The figure matches
+	 * {@code KIRO_MAX_PAYLOAD_BYTES} in jwadow/kiro-gateway, which documents the same behaviour.
 	 */
-	private static final int MAX_SYSTEM_PROMPT_BYTES = 100_000;
+	private static final int MAX_PAYLOAD_BYTES = 600_000;
 	private final JsonMapper mapper = new JsonMapper();
 	private final ModelResolver modelResolver;
 
@@ -136,35 +133,11 @@ public class PayloadBuilder {
 		ObjectNode root = buildRoot(
 				history,
 				userInputMessage,
-				convertedTools.tools(), profileArn, systemPrompt, replay
+				convertedTools.tools(), profileArn, replay
 		);
 		attachInference(root, inference);
 
 		return truncatePayload(root, history, !replay.created());
-	}
-
-	/**
-	 * Sets the root {@code systemPrompt}, and drops it once it outgrows
-	 * {@link #MAX_SYSTEM_PROMPT_BYTES} rather than truncating it. Dropping loses nothing: the same
-	 * text is already prefixed onto the session-start message, which is what the model reads. A
-	 * truncated copy would instead cut instructions mid-sentence while still tripping nothing that
-	 * says so.
-	 */
-	private void attachSystemPrompt(ObjectNode root, String systemPrompt) {
-		if (systemPrompt.isEmpty()) {
-			return;
-		}
-		int bytes = systemPrompt.getBytes(StandardCharsets.UTF_8).length;
-		if (bytes <= MAX_SYSTEM_PROMPT_BYTES) {
-			root.put("systemPrompt", systemPrompt);
-			return;
-		}
-		log.debug(
-				"[Payload] systemPrompt {} bytes exceeds the upstream limit of {}; " +
-				"omitting the root field, the text stays in the session-start message",
-				bytes,
-				MAX_SYSTEM_PROMPT_BYTES
-		);
 	}
 
 	private ObjectNode buildRoot(
@@ -172,7 +145,6 @@ public class PayloadBuilder {
 			ObjectNode userInputMessage,
 			List<KiroTool> tools,
 			String profileArn,
-			String systemPrompt,
 			KiroSessionReplay.ReplayState replay
 	) {
 		ObjectNode root = mapper.createObjectNode();
@@ -191,7 +163,6 @@ public class PayloadBuilder {
 		);
 		conversationState.put("agentTaskType", "vibe");
 		root.put("agentMode", "vibe");
-		attachSystemPrompt(root, systemPrompt);
 
 		replaySessionStart(history, userInputMessage, replay);
 		attachTools(userInputMessage, tools);

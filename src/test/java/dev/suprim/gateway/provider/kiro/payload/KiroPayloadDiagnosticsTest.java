@@ -36,21 +36,14 @@ class KiroPayloadDiagnosticsTest {
 			KiroPayloadDiagnostics.log(root);
 
 			String logs = joined(appender);
-			assertTrue(logs.contains("[PayloadDebug] summary="));
-			assertTrue(logs.contains("toolCount=1"));
-			assertTrue(logs.contains("tools=1"));
-			assertTrue(logs.contains("maxNameChars=9"));
-			assertTrue(logs.contains("maxDescriptionChars=11"));
-			assertTrue(logs.contains("namesOver64=0"));
-
 			assertFalse(logs.contains("body="), "the body dump must be gone");
 			assertFalse(logs.contains("path=$"), "the tree walk must be gone");
 			assertFalse(logs.contains("schema={"), "per-tool schema dump must be gone");
 			assertFalse(logs.contains("secret value"));
 			assertFalse(logs.contains("arn:secret"));
 
-			assertEquals(2, appender.list.size(),
-					"a clean payload costs one summary line and one tools line");
+			assertEquals(0, appender.list.size(),
+					"a request with nothing wrong with it must log nothing");
 		} finally {
 			logger.detachAppender(appender);
 			logger.setLevel(previous);
@@ -58,7 +51,7 @@ class KiroPayloadDiagnosticsTest {
 	}
 
 	@Test
-	void reportsEachSchemaProblemOnceWhenBothPathsRun() {
+	void reportsSchemaProblemsOnTheInvalidRequestPath() {
 		Logger logger = (Logger) LoggerFactory.getLogger(KiroPayloadDiagnostics.class);
 		Level previous = logger.getLevel();
 		ListAppender<ILoggingEvent> appender = new ListAppender<>();
@@ -73,7 +66,6 @@ class KiroPayloadDiagnosticsTest {
 			    .removeAll()
 			    .add("absent_property");
 
-			KiroPayloadDiagnostics.log(root);
 			KiroPayloadDiagnostics.logInvalidRequest(
 					root.toString(),
 					"AmazonQ",
@@ -82,13 +74,10 @@ class KiroPayloadDiagnosticsTest {
 					"Improperly formed request."
 			);
 
-			long problems = appender.list.stream()
-			                            .map(ILoggingEvent::getFormattedMessage)
-			                            .filter(m -> m.contains(
-					                            "suspicious=required-property-missing"))
-			                            .count();
-			assertEquals(1, problems, "the problem must not be reported twice");
-			assertTrue(joined(appender).contains("[PayloadInvalid]"));
+			String logs = joined(appender);
+			assertTrue(logs.contains("[PayloadInvalid]"));
+			assertTrue(logs.contains(
+					"suspicious=required-property-missing tool=0 property=absent_property"));
 		} finally {
 			logger.detachAppender(appender);
 			logger.setLevel(previous);

@@ -43,7 +43,7 @@ class PayloadBuilderTest {
 		);
 		JsonNode conversation = payload.get("conversationState");
 
-		assertEquals("Follow instructions", payload.get("systemPrompt").asString());
+		assertFalse(payload.has("systemPrompt"));
 		assertEquals("vibe", payload.get("agentMode").asString());
 		assertEquals("vibe", conversation.get("agentTaskType").asString());
 		assertTrue(!conversation.get("conversationId").asString().isBlank());
@@ -103,16 +103,15 @@ class PayloadBuilderTest {
 		assertEquals("vibe", conversation.get("agentTaskType").asString());
 		assertFalse(conversation.get("conversationId").asString().isBlank());
 		assertFalse(conversation.get("agentContinuationId").asString().isBlank());
-		assertTrue(payload.get("systemPrompt").asString().startsWith(
+		assertFalse(payload.has("systemPrompt"));
+		assertTrue(current.get("content").asString().startsWith(
 				"<thinking_mode>enabled</thinking_mode>\n" +
 				"<max_thinking_length>1024</max_thinking_length>\n"
 		));
-		assertTrue(payload.get("systemPrompt").asString().endsWith("S".repeat(4096)));
 		assertEquals("arn:aws:codewhisperer:us-east-1:000000000000:profile/fake", payload.get("profileArn").asString());
-		assertEquals(
-				payload.get("systemPrompt").asString() + "\n\nInspect the file",
-				current.get("content").asString()
-		);
+		assertTrue(current.get("content").asString().endsWith(
+				"S".repeat(4096) + "\n\nInspect the file"
+		));
 		assertEquals("claude-opus-5", current.get("modelId").asString());
 		assertEquals("AI_EDITOR", current.get("origin").asString());
 		assertTrue(conversation.get("history").isEmpty());
@@ -140,14 +139,16 @@ class PayloadBuilderTest {
 		                                         .build();
 
 		JsonNode payload = payload(builder, request);
-		String systemPrompt = payload.get("systemPrompt").asString();
 		JsonNode specification = payload.at(
 				"/conversationState/currentMessage/userInputMessage/userInputMessageContext/tools/0/toolSpecification"
 		);
 
+		assertFalse(payload.has("systemPrompt"));
 		assertEquals(
-				"Follow instructions\n\n## Tool: workflow\n\n" + longDescription,
-				systemPrompt
+				"Follow instructions\n\n## Tool: workflow\n\n" + longDescription +
+				"\n\nRun it",
+				payload.at("/conversationState/currentMessage/userInputMessage/content")
+				       .asString()
 		);
 		assertEquals(
 				"[Full documentation in system prompt under '## Tool: workflow']",
@@ -177,7 +178,12 @@ class PayloadBuilderTest {
 				"/conversationState/currentMessage/userInputMessage/userInputMessageContext/tools/0/toolSpecification"
 		);
 
-		assertEquals("Follow instructions", payload.get("systemPrompt").asString());
+		assertFalse(payload.has("systemPrompt"));
+		assertEquals(
+				"Follow instructions\n\nRun it",
+				payload.at("/conversationState/currentMessage/userInputMessage/content")
+				       .asString()
+		);
 		assertEquals("D".repeat(10_000), specification.get("description").asString());
 	}
 
@@ -242,13 +248,12 @@ class PayloadBuilderTest {
 	}
 
 	/**
-	 * The upstream caps the root {@code systemPrompt} at 100 000 bytes and answers a longer one
-	 * with {@code REQUEST_BODY_INVALID}. Past the cap the field is dropped rather than truncated,
-	 * and the full text still reaches the model through the session-start message.
+	 * The system prompt travels inside the session-start message and nowhere else. Sending it at
+	 * the root as well duplicated it — around 100 KB on a one-line request — which pushed payloads
+	 * over the size the upstream accepts and came back as "Improperly formed request.".
 	 */
 	@Test
-	void dropsRootSystemPromptPastTheUpstreamCapButKeepsTheTextInContent()
-			throws Exception {
+	void sendsSystemPromptOnlyInsideTheSessionStartMessage() throws Exception {
 		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
 		String systemPrompt = "é".repeat(100_000);
 		JsonNode payload = payload(builder, request(
@@ -267,19 +272,18 @@ class PayloadBuilderTest {
 	}
 
 	@Test
-	void keepsRootSystemPromptWhenItFitsTheUpstreamCap() throws Exception {
+	void omitsTheRootSystemPromptForSmallPromptsToo() throws Exception {
 		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
-		String systemPrompt = "a".repeat(99_000);
 		JsonNode payload = payload(builder, request(
-				"fitting-system",
+				"small-system",
 				"claude-opus-5",
-				systemPrompt,
+				"Be brief.",
 				List.of(Message.of("user", "Hello"))
 		));
 
-		assertEquals(systemPrompt, payload.path("systemPrompt").asString());
+		assertFalse(payload.has("systemPrompt"));
 		assertEquals(
-				systemPrompt + "\n\nHello",
+				"Be brief.\n\nHello",
 				payload.at("/conversationState/currentMessage/userInputMessage/content")
 				       .asString()
 		);
@@ -611,7 +615,9 @@ class PayloadBuilderTest {
 		assertEquals("adaptive", additional.at("/thinking/type").asString());
 		assertEquals("summarized", additional.at("/thinking/display").asString());
 		assertEquals("high", additional.at("/output_config/effort").asString());
-		assertTrue(payload.path("systemPrompt").asString().contains(
+		assertTrue(payload.at(
+				"/conversationState/currentMessage/userInputMessage/content"
+		).asString().contains(
 				"<thinking_mode>enabled</thinking_mode>\n" +
 				"<max_thinking_length>2048</max_thinking_length>"
 		));
@@ -639,9 +645,9 @@ class PayloadBuilderTest {
 		assertTrue(payload.at(
 				"/additionalModelRequestFields/output_config"
 		).isMissingNode());
-		assertFalse(payload.path("systemPrompt").asString().contains(
-				"<thinking_mode>"
-		));
+		assertFalse(payload.at(
+				"/conversationState/currentMessage/userInputMessage/content"
+		).asString().contains("<thinking_mode>"));
 	}
 
 	@Test
@@ -663,9 +669,11 @@ class PayloadBuilderTest {
 		                                         .build();
 
 		JsonNode payload = payload(builder, request);
-		String systemPrompt = payload.get("systemPrompt").asString();
+		String content = payload.at(
+				"/conversationState/currentMessage/userInputMessage/content"
+		).asString();
 
-		assertEquals(1, systemPrompt.split("<thinking_mode>", -1).length - 1);
+		assertEquals(1, content.split("<thinking_mode>", -1).length - 1);
 		assertFalse(payload.has("additionalModelRequestFields"));
 	}
 
@@ -705,16 +713,17 @@ class PayloadBuilderTest {
 	@Test
 	void enforcesPayloadLimitUsingUtf8Bytes() throws Exception {
 		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		// "é" is two UTF-8 bytes, so the character counts here are half the byte budget.
 		String underLimitPayload = builder.buildOpenAiPayload(
-				requestWithUserContent("é".repeat(449_000)),
+				requestWithUserContent("é".repeat(299_000)),
 				null
 		);
 
-		assertTrue(underLimitPayload.getBytes(StandardCharsets.UTF_8).length < 900_000);
+		assertTrue(underLimitPayload.getBytes(StandardCharsets.UTF_8).length < 600_000);
 		assertThrows(
 				IllegalArgumentException.class,
 				() -> builder.buildOpenAiPayload(
-						requestWithUserContent("é".repeat(450_000)),
+						requestWithUserContent("é".repeat(301_000)),
 						null
 				)
 		);
