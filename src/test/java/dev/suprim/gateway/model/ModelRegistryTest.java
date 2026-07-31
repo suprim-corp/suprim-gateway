@@ -264,4 +264,41 @@ class ModelRegistryTest {
 		assertEquals("ag/gemini-2.5-pro", result.get(0).id());
 		assertEquals(80, result.get(0).quota());
 	}
+
+	@Test
+	void testGetModelsForProvider_Kiro_carriesCreditRatePerModel() throws Exception {
+		StoredAccount kiroAccount = StoredAccount.builder()
+		                                         .provider(Provider.KIRO.name())
+		                                         .name("test-kiro")
+		                                         .build();
+
+		Map<String, Object> details = new HashMap<>();
+		details.put("cost", 1.5);
+		details.put("unit", "Credit");
+
+		when(kiroModelAvailability.modelsForAccountOrFetch(kiroAccount))
+				.thenReturn(Set.of("claude-opus-5"));
+		when(kiroModelAvailability.modelDetails("claude-opus-5")).thenReturn(details);
+
+		List<ModelInfo> result = registry.getModelsForProvider(kiroAccount);
+		assertEquals(1, result.size());
+		assertEquals(1.5, result.getFirst().cost());
+		assertEquals("Credit", result.getFirst().unit());
+	}
+
+	@Test
+	void testGetModelsForProvider_KiroWithoutCachedDetails_reportsNoCost() throws Exception {
+		StoredAccount kiroAccount = StoredAccount.builder()
+		                                         .provider(Provider.KIRO.name())
+		                                         .name("test-kiro")
+		                                         .build();
+
+		when(kiroModelAvailability.modelsForAccountOrFetch(kiroAccount))
+				.thenReturn(Set.of("claude-opus-5"));
+		when(kiroModelAvailability.modelDetails("claude-opus-5")).thenReturn(Map.of());
+
+		List<ModelInfo> result = registry.getModelsForProvider(kiroAccount);
+		assertEquals(1, result.size());
+		assertNull(result.getFirst().cost());
+	}
 }

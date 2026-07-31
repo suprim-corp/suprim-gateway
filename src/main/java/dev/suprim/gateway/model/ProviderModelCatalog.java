@@ -39,11 +39,23 @@ public class ProviderModelCatalog {
 	private List<ModelInfo> kiroModels(StoredAccount account) throws Exception {
 		return kiroModelAvailability.modelsForAccountOrFetch(account)
 		                            .stream()
-		                            .map(id -> ModelInfo.of(
-				                            Provider.KIRO.getPrefix() +
-				                            KiroModelNames.exposedId(id)
-		                            ))
+		                            .map(this::kiroModel)
 		                            .toList();
+	}
+
+	/**
+	 * Kiro reports each model's credit rate in the availability cache's upstream entry, so the
+	 * per-model cost badge reads from there rather than from a second listing call. A model the
+	 * cache has no entry for yet reports no cost instead of a misleading zero.
+	 */
+	private ModelInfo kiroModel(String canonicalId) {
+		String id = Provider.KIRO.getPrefix() + KiroModelNames.exposedId(canonicalId);
+		Map<String, Object> details = kiroModelAvailability.modelDetails(canonicalId);
+		if (!(details.get("cost") instanceof Number cost)) {
+			return ModelInfo.of(id);
+		}
+		String unit = details.get("unit") instanceof String reported ? reported : "";
+		return ModelInfo.of(id, cost.doubleValue(), unit);
 	}
 
 	private List<ModelInfo> antigravityModels(StoredAccount account)
