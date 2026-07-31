@@ -114,7 +114,7 @@ class LogsController {
 						                         .promptTokens(l.promptTokens())
 						                         .completionTokens(l.completionTokens())
 						                         .totalTokens(l.totalTokens())
-						                         .cost(nonNull(l.promptTokens())
+						                         .cost(nonNull(l.promptTokens()) && l.status() < 400
 								                         ? pricingService.calculateCost(
 								                         l.model(),
 								                         l.promptTokens(),

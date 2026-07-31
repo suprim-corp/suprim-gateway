@@ -12,6 +12,12 @@ import java.util.Map;
 @Repository
 class RequestLogRepository {
 
+	/** Failed requests (status >= 400) are not billed, so they contribute 0 cost. */
+	private static final String COST_EXPR = """
+			COALESCE(SUM(CASE WHEN status >= 400 THEN 0 ELSE
+			    COALESCE(prompt_tokens, 0) * 0.000003 + COALESCE(completion_tokens, 0) * 0.000015
+			END), 0)""";
+
 	private final JdbcTemplate jdbc;
 
 	private final RowMapper<RequestLog> mapper = (rs, rowNum) -> RequestLog.builder()
@@ -110,11 +116,8 @@ class RequestLogRepository {
 
 	double sumCostSince(long since) {
 		Double result = jdbc.queryForObject(
-				"""
-						SELECT COALESCE(SUM(
-						    COALESCE(prompt_tokens, 0) * 0.000003 + COALESCE(completion_tokens, 0) * 0.000015
-						), 0) FROM request_logs WHERE created_at >= ?
-						""", Double.class, since
+				"SELECT " + COST_EXPR + " FROM request_logs WHERE created_at >= ?",
+				Double.class, since
 		);
 		return result != null ? result : 0;
 	}
@@ -135,7 +138,8 @@ class RequestLogRepository {
 						    COUNT(*) AS requests,
 						    SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END) AS errors,
 						    COALESCE(SUM(total_tokens), 0) AS tokens,
-						    COALESCE(SUM(COALESCE(prompt_tokens, 0) * 0.000003 + COALESCE(completion_tokens, 0) * 0.000015), 0) AS cost
+						""" + COST_EXPR + """
+						 AS cost
 						FROM request_logs WHERE created_at >= ?
 						GROUP BY bucket ORDER BY bucket
 						""", since
@@ -145,7 +149,8 @@ class RequestLogRepository {
 	List<Map<String, Object>> modelUsage() {
 		return jdbc.queryForList("""
 				SELECT model, COUNT(*) AS requests, COALESCE(SUM(total_tokens), 0) AS tokens,
-				    COALESCE(SUM(COALESCE(prompt_tokens, 0) * 0.000003 + COALESCE(completion_tokens, 0) * 0.000015), 0) AS cost
+				""" + COST_EXPR + """
+				 AS cost
 				FROM request_logs GROUP BY model ORDER BY requests DESC LIMIT 10
 				""");
 	}
