@@ -1,6 +1,7 @@
 package dev.suprim.gateway.provider.antigravity;
 
 import dev.suprim.gateway.instants.Antigravity;
+import dev.suprim.gateway.provider.UsageFailure;
 import dev.suprim.gateway.proxy.ProxyChain;
 
 import lombok.Builder;
@@ -20,6 +21,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * HTTP calls against the {@code cloudcode-pa.googleapis.com} {@code v1internal} RPCs.
@@ -34,10 +36,11 @@ class AntigravityHttpClient {
 	private static final long BASE_RETRY_DELAY = 1000;
 	private static final int MAX_RETRIES = 3;
 
-	private static final HttpClient HTTP_CLIENT =
-			HttpClient.newBuilder()
-			          .connectTimeout(Duration.ofSeconds(15))
-			          .build();
+	private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+	                                                        .connectTimeout(
+			                                                        Duration.ofSeconds(
+					                                                        15))
+	                                                        .build();
 
 	/**
 	 * An upstream response whose {@code body} may still be streaming. Ownership passes to
@@ -61,9 +64,12 @@ class AntigravityHttpClient {
 	 */
 	static Map<String, String> buildHeaders(String accessToken) {
 		return Map.of(
-				"Authorization", "Bearer " + accessToken,
-				"Content-Type", "application/json",
-				"User-Agent", Antigravity.USER_AGENT
+				"Authorization",
+				"Bearer " + accessToken,
+				"Content-Type",
+				"application/json",
+				"User-Agent",
+				Antigravity.USER_AGENT
 		);
 	}
 
@@ -79,12 +85,10 @@ class AntigravityHttpClient {
 			ProxyChain proxyChain
 	) throws IOException {
 		String body = buildProjectBody(projectId);
-		HttpRequest.Builder reqBuilder =
-				HttpRequest.newBuilder()
-				           .uri(URI.create(
-						           Antigravity.CLOUDCODE_BASE +
-						           "/v1internal:fetchAvailableModels")
-				           );
+		HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
+		                                            .uri(URI.create(
+				                                            Antigravity.CLOUDCODE_BASE +
+				                                            "/v1internal:fetchAvailableModels"));
 		Map<String, String> headers = AntigravityHeaders.forControlPlane(
 				accessToken);
 		headers.forEach(reqBuilder::header);
@@ -111,16 +115,15 @@ class AntigravityHttpClient {
 	 * {@link #parseQuotaSummary}. Returns an empty map when the upstream does not answer 200
 	 * or reports no usable quota.
 	 */
-	static Map<String, Object> getQuotaSummary(
+	static AntigravityQuota getQuotaSummary(
 			String accessToken,
 			String projectId,
 			ProxyChain proxyChain
 	) throws IOException {
-		HttpRequest.Builder reqBuilder =
-				HttpRequest.newBuilder()
-				           .uri(URI.create(Antigravity.CLOUDCODE_BASE +
-				                           "/v1internal:retrieveUserQuotaSummary")
-				           );
+		HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
+		                                            .uri(URI.create(
+				                                            Antigravity.CLOUDCODE_BASE +
+				                                            "/v1internal:retrieveUserQuotaSummary"));
 		AntigravityHeaders.forControlPlane(accessToken)
 		                  .forEach(reqBuilder::header);
 		reqBuilder.POST(HttpRequest.BodyPublishers.ofString(buildProjectBody(
@@ -132,7 +135,12 @@ class AntigravityHttpClient {
 						"[Antigravity] retrieveUserQuotaSummary returned {}",
 						response.statusCode()
 				);
-				return Map.of();
+				// A refused credential is reported so the accounts page can stop calling the
+				// account connected. Other failures stay indistinguishable from "no quota",
+				// since they resolve on their own.
+				return UsageFailure.isUnauthorized(response.statusCode())
+						? AntigravityQuota.rejected()
+						: AntigravityQuota.none();
 			}
 			return parseQuotaSummary(response.body());
 		} catch (InterruptedException e) {
@@ -146,9 +154,8 @@ class AntigravityHttpClient {
 	 * sends {@code {}} — the backend then resolves it from the token.
 	 */
 	static String buildProjectBody(String projectId) {
-		return projectId != null && !projectId.isEmpty()
-				? "{\"project\":\"" + projectId + "\"}"
-				: "{}";
+		return projectId != null && !projectId.isEmpty() ?
+				"{\"project\":\"" + projectId + "\"}" : "{}";
 	}
 
 	/**
@@ -168,36 +175,50 @@ class AntigravityHttpClient {
 	 * flatter shape some endpoints return. Fractions outside 0..1 are treated as unusable,
 	 * and an unparseable response yields an empty map rather than an error.
 	 */
-	static Map<String, Object> parseQuotaSummary(String json) {
+	static AntigravityQuota parseQuotaSummary(String json) {
 		try {
 			UserQuota.Summary summary = new JsonMapper().readValue(
-					json, UserQuota.Summary.class
+					json,
+					UserQuota.Summary.class
 			);
-			List<Map<String, Object>> buckets = collectBuckets(summary);
+			List<AntigravityQuota.Bucket> buckets = collectBuckets(summary);
 			if (buckets.isEmpty()) {
 				return parseFlatQuota(json);
 			}
 
-			Map<String, Object> quota = new LinkedHashMap<>();
-			buckets.stream()
-			       .filter(b -> b.get("quota") != null)
-			       .min(Comparator.comparingInt(b -> (int) b.get("quota")))
-			       .ifPresent(tightest -> {
-						       quota.put("quota", tightest.get("quota"));
-						       if (tightest.get("resetTime") != null) {
-							       quota.put("resetTime", tightest.get("resetTime"));
-						       }
-					       }
-			       );
-			quota.put("buckets", buckets);
-			return quota;
+			// Count-based buckets are deliberately left out of this comparison: without the
+			// window's total, a count cannot be ranked against a percent.
+			Optional<AntigravityQuota.Bucket> tightest =
+					buckets.stream()
+					       .filter(bucket ->
+							       bucket.quota() != null
+					       )
+					       .min(
+							       Comparator.comparingInt(
+									       AntigravityQuota.Bucket::quota
+							       )
+					       );
+
+			return AntigravityQuota.builder()
+			                       .quota(
+					                       tightest.map(
+							                               AntigravityQuota.Bucket::quota
+					                               )
+					                               .orElse(null)
+			                       )
+			                       .resetTime(
+					                       tightest.map(AntigravityQuota.Bucket::resetTime)
+					                               .orElse(null)
+			                       )
+			                       .buckets(buckets)
+			                       .build();
 		} catch (Exception ignored) {
 			return parseFlatQuota(json);
 		}
 	}
 
-	private static List<Map<String, Object>> collectBuckets(UserQuota.Summary summary) {
-		List<Map<String, Object>> buckets = new ArrayList<>();
+	private static List<AntigravityQuota.Bucket> collectBuckets(UserQuota.Summary summary) {
+		List<AntigravityQuota.Bucket> buckets = new ArrayList<>();
 		if (summary == null || summary.groups() == null) {
 			return buckets;
 		}
@@ -209,21 +230,18 @@ class AntigravityHttpClient {
 				if (!bucket.hasUsableFraction() && !bucket.hasUsableAmount()) {
 					continue;
 				}
-				Map<String, Object> entry = new LinkedHashMap<>();
-				entry.put("group", group.displayName());
-				entry.put("label", bucket.displayName());
-				if (bucket.hasUsableFraction()) {
-					entry.put("quota", bucket.remainingPercent());
-				} else {
-					entry.put("remaining", bucket.remainingAmount());
-				}
-				if (bucket.resetTime() != null) {
-					entry.put("resetTime", bucket.resetTime());
-				}
-				if (bucket.description() != null) {
-					entry.put("description", bucket.description());
-				}
-				buckets.add(entry);
+				// A bucket reports a fraction or a count, never both — whichever arm it uses, the
+				// other stays absent.
+				buckets.add(
+						AntigravityQuota.Bucket.builder()
+						                       .group(group.displayName())
+						                       .label(bucket.displayName())
+						                       .quota(bucket.hasUsableFraction() ? bucket.remainingPercent() : null)
+						                       .remaining(bucket.hasUsableFraction() ? null : bucket.remainingAmount())
+						                       .resetTime(bucket.resetTime())
+						                       .description(bucket.description())
+						                       .build()
+				);
 			}
 		}
 		return buckets;
@@ -232,26 +250,27 @@ class AntigravityHttpClient {
 	/**
 	 * Fallback for responses that carry a single fraction rather than grouped buckets.
 	 */
-	private static Map<String, Object> parseFlatQuota(String json) {
+	private static AntigravityQuota parseFlatQuota(String json) {
 		try {
 			JsonNode root = new JsonMapper().readTree(json);
 			JsonNode fraction = root.findValue("remainingFraction");
 			if (fraction == null || !fraction.isNumber()) {
-				return Map.of();
+				return AntigravityQuota.none();
 			}
 			double value = fraction.asDouble();
 			if (value < 0 || value > 1) {
-				return Map.of();
+				return AntigravityQuota.none();
 			}
-			Map<String, Object> quota = new LinkedHashMap<>();
-			quota.put("quota", (int) Math.round(value * 100));
 			JsonNode resetTime = root.findValue("resetTime");
-			if (resetTime != null && resetTime.isString()) {
-				quota.put("resetTime", resetTime.asString());
-			}
-			return quota;
+			return AntigravityQuota.builder()
+			                       .quota((int) Math.round(value * 100))
+			                       .resetTime(
+					                       resetTime != null &&
+					                       resetTime.isString() ? resetTime.asString() : null
+			                       )
+			                       .build();
 		} catch (Exception ignored) {
-			return Map.of();
+			return AntigravityQuota.none();
 		}
 	}
 
@@ -267,18 +286,27 @@ class AntigravityHttpClient {
 	 * models carrying seven {@code video/*} MIME types omit it entirely, so trusting it alone
 	 * would under-report video. It is used only as a fallback when no MIME list is given.
 	 */
-	private static void copyCapabilities(JsonNode model, Map<String, Object> item) {
+	private static void copyCapabilities(
+			JsonNode model,
+			Map<String, Object> item
+	) {
 		if (model.has("supportsImages")) {
 			item.put("supportsImages", model.get("supportsImages").asBoolean());
 		}
 		if (model.has("supportsThinking")) {
-			item.put("supportsThinking", model.get("supportsThinking").asBoolean());
+			item.put(
+					"supportsThinking",
+					model.get("supportsThinking").asBoolean()
+			);
 		}
 		if (model.has("thinkingBudget")) {
 			item.put("thinkingBudget", model.get("thinkingBudget").asInt());
 		}
 		if (model.has("minThinkingBudget")) {
-			item.put("minThinkingBudget", model.get("minThinkingBudget").asInt());
+			item.put(
+					"minThinkingBudget",
+					model.get("minThinkingBudget").asInt()
+			);
 		}
 		if (model.has("maxTokens")) {
 			item.put("maxInputTokens", model.get("maxTokens").asInt());
@@ -480,8 +508,7 @@ class AntigravityHttpClient {
 			Map<String, String> headers
 	) throws IOException {
 		HttpRequest.Builder reqBuilder =
-				HttpRequest.newBuilder()
-				           .uri(URI.create(url));
+				HttpRequest.newBuilder().uri(URI.create(url));
 		headers.forEach(reqBuilder::header);
 		reqBuilder.POST(HttpRequest.BodyPublishers.ofString(payload));
 		try {

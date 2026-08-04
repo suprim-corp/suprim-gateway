@@ -45,9 +45,18 @@
                     Disconnected
                 </span>
                 <span th:if="${account.accessToken() != null && (account.expiresAt() == null || account.expiresAt().isAfter(T(java.time.Instant).now()))}"
-                      class="shrink-0 inline-flex items-center gap-1.5 text-[11px] text-neon-green">
+                      class="card-badge-connected shrink-0 inline-flex items-center gap-1.5 text-[11px] text-neon-green">
                     <span class="size-1.5 rounded-full bg-green-400"></span>
                     Connected
+                </span>
+                <!--/* The badge above only knows what the store holds: a token whose clock has not
+                       run out yet. Upstream can still refuse that token — revoked, wrong scope, a
+                       dead refresh token — so the usage poller swaps this in when it sees a
+                       rejection. Hidden until then. */-->
+                <span th:if="${account.accessToken() != null && (account.expiresAt() == null || account.expiresAt().isAfter(T(java.time.Instant).now()))}"
+                      class="card-badge-unauthorized hidden shrink-0 inline-flex items-center gap-1.5 text-[11px] text-red-400">
+                    <span class="size-1.5 rounded-full bg-red-400"></span>
+                    Unauthorized
                 </span>
                 <span th:if="${account.accessToken() != null && account.expiresAt() != null && !account.expiresAt().isAfter(T(java.time.Instant).now())}"
                       class="shrink-0 inline-flex items-center gap-1.5 text-[11px] text-red-400">

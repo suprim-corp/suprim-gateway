@@ -95,7 +95,7 @@ public class CodexAuthManager implements OAuthProviderAuthManager {
 		persistToStore();
 	}
 
-	public Map<String, Object> getUsageLimits(StoredAccount account) {
+	public CodexUsage getUsageLimits(StoredAccount account) {
 		return CodexHttpClient.fetchUsage(getAccessToken(account), proxyChain);
 	}
 

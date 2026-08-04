@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
@@ -37,27 +38,54 @@ class CodexHttpClientTest {
 	void fetchUsage_usesChatGptPathForBackendApiBase() throws Exception {
 		server.enqueue(usageResponse());
 
-		Map<String, Object> usage = CodexHttpClient.fetchUsage(
+		CodexUsage usage = CodexHttpClient.fetchUsage(
 				"sk-token", proxyChain, base()
 		);
 
 		RecordedRequest request = server.takeRequest();
 		assertEquals("/wham/usage", request.getPath());
 		assertEquals(1, server.getRequestCount());
-		assertEquals("plus", usage.get("plan"));
+		assertEquals("plus", usage.plan());
 	}
 
 	@Test
 	void fetchUsage_surfacesBackendFailureWithoutTryingAnotherPath() throws Exception {
 		server.enqueue(new MockResponse().setResponseCode(403));
 
-		Map<String, Object> usage = CodexHttpClient.fetchUsage(
+		CodexUsage usage = CodexHttpClient.fetchUsage(
 				"sk-token", proxyChain, base()
 		);
 
 		assertEquals("/wham/usage", server.takeRequest().getPath());
 		assertEquals(1, server.getRequestCount());
-		assertEquals("Usage unavailable (403)", usage.get("message"));
+		assertEquals("Usage unavailable (403)", usage.message());
+		assertEquals(true, usage.unauthorized());
+	}
+
+	@Test
+	void fetchUsage_flagsARejectedCredential() throws Exception {
+		server.enqueue(new MockResponse().setResponseCode(401));
+
+		CodexUsage usage = CodexHttpClient.fetchUsage(
+				"sk-token", proxyChain, base()
+		);
+
+		assertEquals(true, usage.unauthorized());
+	}
+
+	@Test
+	void fetchUsage_doesNotFlagAnUpstreamOutageAsRejected() throws Exception {
+		server.enqueue(new MockResponse().setResponseCode(503));
+
+		CodexUsage usage = CodexHttpClient.fetchUsage(
+				"sk-token", proxyChain, base()
+		);
+
+		assertEquals("Usage unavailable (503)", usage.message());
+		assertNull(
+				usage.unauthorized(),
+				"A 5xx fixes itself and must not mark the account unusable"
+		);
 	}
 
 	@Test
@@ -77,24 +105,43 @@ class CodexHttpClientTest {
 
 	@Test
 	void parseUsage_normalizesBothWindowNamings() {
-		Map<String, Object> usage = CodexHttpClient.parseUsage("""
+		CodexUsage usage = CodexHttpClient.parseUsage("""
 				{"plan_type":"pro","rate_limit":{"limit_reached":true,
 				 "primary":{"used_percent":40,"resets_at":"2026-07-28T00:00:00Z"},
 				 "secondary_window":{"used_percent":12,"reset_at":"2026-08-01T00:00:00Z"}},
 				 "rate_limit_reset_credits":{"available_count":3}}
 				""");
 
-		assertEquals("pro", usage.get("plan"));
-		assertEquals(true, usage.get("limitReached"));
-		assertEquals(3, usage.get("resetCredits"));
+		assertEquals("pro", usage.plan());
+		assertEquals(true, usage.limitReached());
+		assertEquals(3, usage.resetCredits());
 
-		Map<?, ?> session = (Map<?, ?>) usage.get("session");
-		assertEquals(40, session.get("usedPercent"));
-		assertEquals("2026-07-28T00:00:00Z", session.get("resetAt"));
+		assertEquals(40, usage.session().usedPercent());
+		assertEquals("2026-07-28T00:00:00Z", usage.session().resetAt());
 
-		Map<?, ?> weekly = (Map<?, ?>) usage.get("weekly");
-		assertEquals(12, weekly.get("usedPercent"));
-		assertEquals("2026-08-01T00:00:00Z", weekly.get("resetAt"));
+		assertEquals(12, usage.weekly().usedPercent());
+		assertEquals("2026-08-01T00:00:00Z", usage.weekly().resetAt());
+	}
+
+	@Test
+	void parseUsage_omitsWindowsTheUpstreamDidNotReport() {
+		CodexUsage usage = CodexHttpClient.parseUsage("{\"plan_type\":\"free\"}");
+
+		assertNull(usage.session(), "No rate_limit means no window to report");
+		assertNull(usage.weekly());
+		assertNull(
+				usage.limitReached(),
+				"No rate_limit means no claim either way about reaching one"
+		);
+	}
+
+	@Test
+	void parseUsage_reportsALimitThatWasNotReached() {
+		CodexUsage usage = CodexHttpClient.parseUsage("""
+				{"plan_type":"pro","rate_limit":{"primary":{"used_percent":10}}}
+				""");
+
+		assertEquals(false, usage.limitReached(), "A described limit reports its state");
 	}
 
 	private String base() {

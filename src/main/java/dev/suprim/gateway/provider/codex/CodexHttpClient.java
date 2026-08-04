@@ -1,6 +1,7 @@
 package dev.suprim.gateway.provider.codex;
 
 import dev.suprim.gateway.instants.Codex;
+import dev.suprim.gateway.provider.UsageFailure;
 import dev.suprim.gateway.proxy.ProxyChain;
 
 import lombok.Builder;
@@ -202,14 +203,14 @@ public class CodexHttpClient {
 	 * {@code /api/codex/usage}. This gateway authenticates against
 	 * {@code chatgpt.com/backend-api}, so only the former is valid.
 	 */
-	public static Map<String, Object> fetchUsage(
+	public static CodexUsage fetchUsage(
 			String accessToken,
 			ProxyChain proxyChain
 	) {
 		return fetchUsage(accessToken, proxyChain, Codex.CHATGPT_BASE);
 	}
 
-	static Map<String, Object> fetchUsage(
+	static CodexUsage fetchUsage(
 			String accessToken,
 			ProxyChain proxyChain,
 			String base
@@ -222,85 +223,93 @@ public class CodexHttpClient {
 			);
 			if (response.statusCode() != 200) {
 				log.warn("[Codex] usage returned {}", response.statusCode());
-				return Map.of(
-						"message",
-						"Usage unavailable (" + response.statusCode() + ")"
-				);
+				String message = "Usage unavailable (" + response.statusCode() + ")";
+				// A rejected credential is a different fact from an upstream that is merely down:
+				// the first means this account is unusable until re-authorised, the second fixes
+				// itself. Only the former is flagged, so a 5xx never marks an account as bad.
+				return UsageFailure.isUnauthorized(response.statusCode())
+						? CodexUsage.rejected(message)
+						: CodexUsage.failure(message);
 			}
 
 			return parseUsage(response.body());
 		} catch (Exception e) {
 			log.error("[Codex] Failed to fetch usage: {}", e.getMessage());
-			return Map.of("message", "Failed: " + e.getMessage());
+			return CodexUsage.failure("Failed: " + e.getMessage());
 		}
 	}
 
-	static Map<String, Object> parseUsage(String body) {
+	static CodexUsage parseUsage(String body) {
 		try {
 			JsonNode root = MAPPER.readTree(body);
-			Map<String, Object> result = new HashMap<>();
-
-			Optional.ofNullable(root.get("plan_type"))
-			        .map(JsonNode::asString)
-			        .ifPresent(plan -> result.put("plan", plan));
-
 			JsonNode rateLimit = root.get("rate_limit");
-			if (rateLimit != null) {
-				result.put(
-						"limitReached",
-						rateLimit.has("limit_reached") &&
-						rateLimit.get("limit_reached").asBoolean()
-				);
 
-				JsonNode primaryNode = Optional.ofNullable(rateLimit.get(
-						                               "primary_window"))
-				                               .orElse(rateLimit.get("primary"));
-				if (primaryNode != null) {
-					Map<String, Object> session = new HashMap<>();
-					session.put(
-							"usedPercent",
-							primaryNode.has("used_percent") ? primaryNode.get(
-									"used_percent").asInt() : 0
-					);
-					Optional.ofNullable(primaryNode.get("reset_at"))
-					        .or(() -> Optional.ofNullable(primaryNode.get(
-							        "resets_at")))
-					        .map(JsonNode::asString)
-					        .ifPresent(r -> session.put("resetAt", r));
-					result.put("session", session);
-				}
-
-				JsonNode secondaryNode =
-						Optional.ofNullable(rateLimit.get("secondary_window"))
-						        .orElse(rateLimit.get("secondary"));
-				if (secondaryNode != null) {
-					Map<String, Object> weekly = new HashMap<>();
-					weekly.put(
-							"usedPercent",
-							secondaryNode.has("used_percent") ? secondaryNode.get(
-									"used_percent").asInt() : 0
-					);
-					Optional.ofNullable(secondaryNode.get("reset_at"))
-					        .or(() -> Optional.ofNullable(
-									        secondaryNode.get("resets_at")
-							        )
-					        )
-					        .map(JsonNode::asString)
-					        .ifPresent(r -> weekly.put("resetAt", r));
-					result.put("weekly", weekly);
-				}
-			}
-
-			Optional.ofNullable(root.get("rate_limit_reset_credits"))
-			        .map(c -> c.get("available_count"))
-			        .map(JsonNode::asInt)
-			        .ifPresent(count -> result.put("resetCredits", count));
-
-			return result;
+			return CodexUsage.builder()
+			                 .plan(text(root, "plan_type"))
+			                 // Absent when the upstream reports no rate limit at all, rather than
+			                 // asserting "not reached" about a limit it never described.
+			                 .limitReached(
+					                 rateLimit != null
+							                 ? bool(rateLimit, "limit_reached")
+							                 : null
+			                 )
+			                 .session(window(rateLimit, "primary_window", "primary"))
+			                 .weekly(window(rateLimit, "secondary_window", "secondary"))
+			                 .resetCredits(
+					                 Optional.ofNullable(root.get("rate_limit_reset_credits"))
+					                         .map(credits -> credits.get("available_count"))
+					                         .map(JsonNode::asInt)
+					                         .orElse(null)
+			                 )
+			                 .build();
 		} catch (Exception e) {
 			log.error("[Codex] Failed to read usage response: {}", e.getMessage());
-			return Map.of("message", "Failed: " + e.getMessage());
+			return CodexUsage.failure("Failed: " + e.getMessage());
 		}
+	}
+
+	/**
+	 * One rate-limit window, absent when the upstream reports neither naming for it. The two names
+	 * are the same window: the upstream renamed these fields and still answers with either.
+	 */
+	private static CodexUsage.Window window(
+			JsonNode rateLimit,
+			String preferredName,
+			String legacyName
+	) {
+		if (rateLimit == null) {
+			return null;
+		}
+		JsonNode node = Optional.ofNullable(rateLimit.get(preferredName))
+		                        .orElseGet(() -> rateLimit.get(legacyName));
+		if (node == null) {
+			return null;
+		}
+		// A window with no percentage reported reads as untouched rather than as missing: the
+		// upstream omits the field at 0 rather than sending a zero.
+		int usedPercent = Optional.ofNullable(node.get("used_percent"))
+		                          .map(JsonNode::asInt)
+		                          .orElse(0);
+		String resetAt = Optional.ofNullable(node.get("reset_at"))
+		                         .or(() -> Optional.ofNullable(node.get("resets_at")))
+		                         .map(JsonNode::asString)
+		                         .orElse(null);
+		return CodexUsage.Window.builder()
+		                        .usedPercent(usedPercent)
+		                        .resetAt(resetAt)
+		                        .build();
+	}
+
+	private static String text(JsonNode node, String field) {
+		return Optional.ofNullable(node.get(field))
+		               .map(JsonNode::asString)
+		               .orElse(null);
+	}
+
+	private static boolean bool(JsonNode node, String field) {
+		return Optional.ofNullable(node.get(field))
+		               .map(JsonNode::asBoolean)
+		               .orElse(false);
 	}
 
 	private static HttpResponse<String> getUsage(

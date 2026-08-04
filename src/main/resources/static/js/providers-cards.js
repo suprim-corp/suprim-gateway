@@ -8,6 +8,20 @@ const USAGE_POLL_MS = 5000
 const usageCards = Array.from(document.querySelectorAll('.account-card'))
     .filter(card => !card.querySelector('.card-usage').classList.contains('invisible'))
 
+// The badge rendered server-side only knows the store holds an unexpired token. Upstream refusing
+// that token is the stronger signal, and the usage poll is already asking upstream on every tick —
+// so the answer it gets decides the badge. Only a refused credential flips it: a 5xx or a timeout
+// resolves on its own and must not report a working account as broken.
+function renderCardBadge(card, data) {
+    const connected = card.querySelector('.card-badge-connected')
+    const unauthorized = card.querySelector('.card-badge-unauthorized')
+    if (!connected || !unauthorized) return
+
+    const rejected = data?.unauthorized === true
+    connected.classList.toggle('hidden', rejected)
+    unauthorized.classList.toggle('hidden', !rejected)
+}
+
 function renderCardUsage(card, data) {
     const label = card.querySelector('.card-usage-label')
     const value = card.querySelector('.card-usage-value')
@@ -38,7 +52,14 @@ const pollTimers = new Map()
 function pollCard(card) {
     fetch('/providers/' + card.dataset.index + '/usage')
         .then(res => res.ok ? res.json() : null)
-        .then(data => renderCardUsage(card, data))
+        .then(data => {
+            renderCardUsage(card, data)
+            // A dropped request says nothing about the credential, so the badge is left as it is
+            // rather than guessing from a network failure.
+            if (data) {
+                renderCardBadge(card, data)
+            }
+        })
         .catch(() => {})
         .finally(() => {
             // Scheduled only after the response lands: a provider slower than the interval must

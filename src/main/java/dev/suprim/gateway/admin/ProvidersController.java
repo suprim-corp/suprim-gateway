@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,6 +23,9 @@ import java.util.Optional;
 @RequiredArgsConstructor
 @Controller
 class ProvidersController {
+
+	/** Answer for an index that names no account: nothing to report, not an error. */
+	private static final JsonNode EMPTY_USAGE = JsonNodeFactory.instance.objectNode();
 
 	private final CredentialStore credentialStore;
 	private final ModelRegistry modelRegistry;
@@ -142,10 +147,10 @@ class ProvidersController {
 
 	@GetMapping("/providers/{index}/usage")
 	@ResponseBody
-	Map<String, Object> usage(@PathVariable int index) {
+	JsonNode usage(@PathVariable int index) {
 		List<StoredAccount> accounts = credentialStore.load();
 		if (index < 0 || index >= accounts.size()) {
-			return Map.of();
+			return EMPTY_USAGE;
 		}
 		return providerUsageLookup.forAccount(accounts.get(index));
 	}

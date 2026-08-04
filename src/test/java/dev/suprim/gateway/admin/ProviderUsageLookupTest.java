@@ -2,11 +2,16 @@ package dev.suprim.gateway.admin;
 
 import dev.suprim.gateway.provider.StoredAccount;
 import dev.suprim.gateway.provider.antigravity.AntigravityAuthManager;
+import dev.suprim.gateway.provider.antigravity.AntigravityQuota;
 import dev.suprim.gateway.provider.codex.CodexAuthManager;
+import dev.suprim.gateway.provider.codex.CodexUsage;
 import dev.suprim.gateway.provider.kiro.KiroAuthManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -18,6 +23,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ProviderUsageLookupTest {
+
+	private static final ObjectMapper MAPPER = new ObjectMapper();
 
 	private KiroAuthManager kiro;
 	private CodexAuthManager codex;
@@ -32,6 +39,14 @@ class ProviderUsageLookupTest {
 		                    .build();
 	}
 
+	private static CodexUsage codexUsage(String plan) {
+		return CodexUsage.builder().plan(plan).build();
+	}
+
+	private static AntigravityQuota antigravityQuota(int percentRemaining) {
+		return AntigravityQuota.builder().quota(percentRemaining).build();
+	}
+
 	@BeforeEach
 	void setUp() {
 		kiro = mock(KiroAuthManager.class);
@@ -43,15 +58,15 @@ class ProviderUsageLookupTest {
 	@Test
 	void readsUsageFromTheProviderThatOwnsTheAccount() {
 		when(kiro.getUsageLimits(any())).thenReturn(Map.of("usageLimit", 100));
-		when(codex.getUsageLimits(any())).thenReturn(Map.of("plan", "pro"));
+		when(codex.getUsageLimits(any())).thenReturn(codexUsage("pro"));
 
 		assertEquals(
 				100,
-				lookup.forAccount(account("KIRO", "k", "token")).get("usageLimit")
+				lookup.forAccount(account("KIRO", "k", "token")).path("usageLimit").asInt()
 		);
 		assertEquals(
 				"pro",
-				lookup.forAccount(account("CODEX", "c", "token")).get("plan")
+				lookup.forAccount(account("CODEX", "c", "token")).path("plan").asString()
 		);
 	}
 
@@ -108,22 +123,88 @@ class ProviderUsageLookupTest {
 
 	@Test
 	void attachesTheSubscriptionTierToAntigravityQuota() {
-		when(antigravity.getQuota(any())).thenReturn(Map.of("quota", 42));
+		when(antigravity.getQuota(any())).thenReturn(antigravityQuota(42));
 		when(antigravity.getSubscriptionTier(any())).thenReturn("Pro");
 
-		Map<String, Object> usage = lookup.forAccount(account("ANTIGRAVITY", "a", "token"));
+		JsonNode usage = lookup.forAccount(account("ANTIGRAVITY", "a", "token"));
 
-		assertEquals("Pro", usage.get("tier"));
-		assertEquals(42, usage.get("quota"));
+		assertEquals("Pro", usage.path("tier").asString());
+		assertEquals(42, usage.path("quota").asInt());
+	}
+
+	@Test
+	void passesTheRejectionFlagThroughToThePage() {
+		when(codex.getUsageLimits(any())).thenReturn(
+				CodexUsage.rejected("Usage unavailable (401)")
+		);
+
+		assertTrue(
+				lookup.forAccount(account("CODEX", "c", "token"))
+				      .path("unauthorized")
+				      .asBoolean(),
+				"The page cannot flip the badge if the flag stops here"
+		);
+	}
+
+	@Test
+	void omitsTheRejectionFlagForAnUpstreamThatIsMerelyDown() {
+		when(codex.getUsageLimits(any())).thenReturn(
+				CodexUsage.failure("Usage unavailable (503)")
+		);
+
+		assertTrue(
+				lookup.forAccount(account("CODEX", "c", "token"))
+				      .path("unauthorized")
+				      .isMissingNode(),
+				"A 5xx must not reach the page as a rejected credential"
+		);
+	}
+
+	@Test
+	void holdsARejectionRatherThanRepollingARefusedUpstream() {
+		when(codex.getUsageLimits(any())).thenReturn(CodexUsage.rejected("refused"));
+
+		lookup.forAccount(account("CODEX", "c", "token"));
+		lookup.forAccount(account("CODEX", "c", "token"));
+
+		verify(codex, times(1)).getUsageLimits(any());
+	}
+
+	@Test
+	void holdsARejectionLongerThanLiveFigures() {
+		Duration rejection = ProviderUsageLookup.retentionFor(
+				MAPPER.valueToTree(CodexUsage.rejected("refused"))
+		);
+		Duration figures = ProviderUsageLookup.retentionFor(
+				MAPPER.valueToTree(codexUsage("pro"))
+		);
+
+		assertEquals(Duration.ofSeconds(30), rejection);
+		assertEquals(
+				Duration.ofSeconds(4),
+				figures,
+				"Live figures must expire within one poll interval or the page shows stale numbers"
+		);
+	}
+
+	@Test
+	void treatsAFailedButNotRejectedLookupAsLiveFigures() {
+		assertEquals(
+				Duration.ofSeconds(4),
+				ProviderUsageLookup.retentionFor(
+						MAPPER.valueToTree(CodexUsage.failure("Usage unavailable (503)"))
+				),
+				"An upstream that is merely down must be retried on the next poll"
+		);
 	}
 
 	@Test
 	void omitsTheTierWhenAntigravityDoesNotReportOne() {
-		when(antigravity.getQuota(any())).thenReturn(Map.of("quota", 42));
+		when(antigravity.getQuota(any())).thenReturn(antigravityQuota(42));
 		when(antigravity.getSubscriptionTier(any())).thenReturn(null);
 
-		Map<String, Object> usage = lookup.forAccount(account("ANTIGRAVITY", "a", "token"));
+		JsonNode usage = lookup.forAccount(account("ANTIGRAVITY", "a", "token"));
 
-		assertTrue(!usage.containsKey("tier"), "A missing tier should not render as null");
+		assertTrue(usage.path("tier").isMissingNode(), "A missing tier should not render as null");
 	}
 }

@@ -110,14 +110,14 @@ public class AntigravityAuthManager implements OAuthProviderAuthManager {
 		this.projectId = null;
 	}
 
-	public Map<String, Object> getQuota(StoredAccount account) {
+	public AntigravityQuota getQuota(StoredAccount account) {
 		try {
 			return AntigravityHttpClient.getQuotaSummary(
 					getAccessToken(account), account.projectId(), proxyChain
 			);
 		} catch (IOException e) {
 			log.debug(LogTag.ANTIGRAVITY + "retrieveUserQuotaSummary failed");
-			return Map.of();
+			return AntigravityQuota.none();
 		}
 	}
 

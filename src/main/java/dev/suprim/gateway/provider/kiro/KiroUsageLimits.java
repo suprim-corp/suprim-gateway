@@ -3,6 +3,7 @@ package dev.suprim.gateway.provider.kiro;
 import dev.suprim.gateway.instants.Kiro;
 import dev.suprim.gateway.logging.LogTag;
 import dev.suprim.gateway.provider.StoredAccount;
+import dev.suprim.gateway.provider.UsageFailure;
 import dev.suprim.gateway.proxy.ProxyChain;
 import lombok.extern.slf4j.Slf4j;
 import tools.jackson.core.type.TypeReference;
@@ -59,7 +60,7 @@ final class KiroUsageLimits {
 				}
 			}
 			if (response.statusCode() != 200) {
-				return Map.of("error", KiroErrors.message(response));
+				return failure(response);
 			}
 			return new JsonMapper().readValue(
 					response.body(),
@@ -107,6 +108,27 @@ final class KiroUsageLimits {
 			);
 		}
 		return null;
+	}
+
+	/**
+	 * A failed lookup, flagged when the credential itself was refused.
+	 * <p>
+	 * By this point a retryable 403 has already been retried with a fresh token, so a remaining
+	 * 401/403 means the credential will not work until it is re-authorised. The exception is
+	 * {@code FEATURE_NOT_SUPPORTED}: that 403 is about the account's plan, not its credential, and
+	 * flagging it would report a perfectly good account as rejected.
+	 */
+	private static Map<String, Object> failure(HttpResponse<String> response) {
+		String message = KiroErrors.message(response);
+		if (UsageFailure.isUnauthorized(response.statusCode()) &&
+		    !response.body().contains("FEATURE_NOT_SUPPORTED")
+		) {
+			return Map.of(
+					"error", message,
+					UsageFailure.UNAUTHORIZED, true
+			);
+		}
+		return Map.of("error", message);
 	}
 
 	/**

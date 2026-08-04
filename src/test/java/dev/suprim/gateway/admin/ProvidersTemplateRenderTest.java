@@ -123,6 +123,44 @@ class ProvidersTemplateRenderTest {
 	}
 
 	@Test
+	void providersPage_shipsAHiddenRejectionBadgeForTheUsagePollerToReveal() throws Exception {
+		StoredAccount connected = StoredAccount.builder()
+				.provider(KIRO)
+				.name("primary")
+				.accessToken("token")
+				.expiresAt(Instant.now().plusSeconds(3600))
+				.build();
+
+		String html = renderProvidersPage(List.of(connected));
+
+		assertTrue(
+				html.contains("card-badge-connected"),
+				"Poller cannot hide the connected badge without a hook to find it by"
+		);
+		assertTrue(
+				html.contains("card-badge-unauthorized hidden"),
+				"Rejection badge must ship hidden: nothing has asked upstream yet"
+		);
+		assertTrue(html.contains("Unauthorized"), "Rejection badge text missing");
+	}
+
+	@Test
+	void providersPage_omitsBothLiveBadgesForADisconnectedAccount() throws Exception {
+		StoredAccount noToken = StoredAccount.builder()
+				.provider(KIRO)
+				.name("stale")
+				.build();
+
+		String html = renderProvidersPage(List.of(noToken));
+
+		assertTrue(html.contains("Disconnected"), "Disconnected status missing");
+		assertTrue(
+				!html.contains("card-badge-unauthorized"),
+				"An account that never polls cannot be flipped to rejected"
+		);
+	}
+
+	@Test
 	void providersPage_rendersEmptyStateWhenNoAccounts() throws Exception {
 		String html = renderProvidersPage(List.of());
 
