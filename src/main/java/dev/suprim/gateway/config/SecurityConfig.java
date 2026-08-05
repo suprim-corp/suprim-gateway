@@ -13,6 +13,11 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -31,6 +36,7 @@ class SecurityConfig {
     SecurityFilterChain apiFilterChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher("/v1/**", "/health")
+                .cors(cors -> cors.configurationSource(apiCorsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(virtualKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)
@@ -66,6 +72,25 @@ class SecurityConfig {
                         .permitAll()
                 );
         return http.build();
+    }
+
+    /**
+     * Browser-hosted clients (Claude for Office, web playgrounds) send a preflight OPTIONS
+     * before every /v1 call. Credentials travel in headers rather than cookies, so any origin
+     * is acceptable: a request still needs a valid virtual key to get past the auth filter.
+     */
+    CorsConfigurationSource apiCorsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOriginPatterns(List.of("*"));
+        config.setAllowedMethods(List.of("GET", "POST", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(false);
+        config.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/v1/**", config);
+        source.registerCorsConfiguration("/health", config);
+        return source;
     }
 
     @Bean
