@@ -58,7 +58,7 @@ class AntigravityAccountAttempts {
 	 * An upstream error, kept with the account that produced it for the request log.
 	 */
 	@Builder
-	record Failure(int status, String body, String accountName) {}
+	record Failure(int status, String body, String accountName, String payload) {}
 
 	/**
 	 * @param payloadFor builds the request body for one account, since the body carries that
@@ -97,10 +97,13 @@ class AntigravityAccountAttempts {
 					account.name(), attempt + 1, maxAttempts
 			);
 
+			String payload = payloadFor.build(
+					authManager.getProjectId(account)
+			);
 			AntigravityHttpClient.AntigravityResponse response =
 					AntigravityHttpClient.streamGenerateContent(
 							model,
-							payloadFor.build(authManager.getProjectId(account)),
+							payload,
 							accessToken
 					);
 
@@ -121,6 +124,7 @@ class AntigravityAccountAttempts {
 				                     .status(status)
 				                     .body(body)
 				                     .accountName(account.name())
+				                     .payload(payload)
 				                     .build();
 			}
 
@@ -149,6 +153,7 @@ class AntigravityAccountAttempts {
 					                     .status(status)
 					                     .body(body)
 					                     .accountName(account.name())
+					                     .payload(payload)
 					                     .build()
 			              )
 			              .build();

@@ -177,6 +177,14 @@ public class AntigravityFacade {
 				failure.body() == null ? "" : failure.body()
 		);
 
+		// A 400 names no offending field upstream, so the shape sent is the only lead.
+		if (failure.status() == 400) {
+			log.error(
+					LogTag.ANTIGRAVITY + "Rejected payload shape: {}",
+					AntigravityPayloadShape.of(failure.payload())
+			);
+		}
+
 		ErrorResponse.openAi(
 				call.httpRes(),
 				failure.status(),
