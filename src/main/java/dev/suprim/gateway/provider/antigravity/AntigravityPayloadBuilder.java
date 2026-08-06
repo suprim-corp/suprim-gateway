@@ -63,7 +63,8 @@ class AntigravityPayloadBuilder {
 		}
 
 		ObjectNode reqNode = root.putObject("request");
-		if (request.clientSessionId() != null && !request.clientSessionId().isBlank()) {
+		if (request.clientSessionId() != null &&
+		    !request.clientSessionId().isBlank()) {
 			reqNode.put("sessionId", request.clientSessionId().trim());
 		}
 		ArrayNode contents = reqNode.putArray("contents");
@@ -74,9 +75,7 @@ class AntigravityPayloadBuilder {
 			String role = msg.role();
 
 			if ("system".equals(role)) {
-				String text = Optional.ofNullable(msg.content())
-				                      .map(Object::toString)
-				                      .orElse("");
+				String text = AntigravityContentParts.text(msg.content());
 				if (isClaudeBacked(model) && isClaudeCodeDefaultPrompt(text)) {
 					continue;
 				}
@@ -93,9 +92,7 @@ class AntigravityPayloadBuilder {
 				ObjectNode entry = contents.addObject();
 				entry.put("role", "model");
 				ArrayNode parts = entry.putArray("parts");
-				String text = Optional.ofNullable(msg.content())
-				                      .map(Object::toString)
-				                      .orElse("");
+				String text = AntigravityContentParts.text(msg.content());
 				if (!text.isEmpty()) {
 					parts.addObject().put("text", text);
 				}
@@ -158,8 +155,12 @@ class AntigravityPayloadBuilder {
 							Optional.ofNullable(msg.name())
 							        .orElse(msg.toolCallId())
 					);
-					String content = Optional.ofNullable(msg.content())
-					                         .map(Object::toString)
+					String content = Optional.of(
+							                         AntigravityContentParts.text(
+									                         msg.content()
+							                         )
+					                         )
+					                         .filter(s -> !s.isEmpty())
 					                         .orElse("{}");
 					try {
 						frNode.set("response", MAPPER.readTree(content));
@@ -169,9 +170,7 @@ class AntigravityPayloadBuilder {
 						frNode.set("response", wrapper);
 					}
 				} else {
-					String content = Optional.ofNullable(msg.content())
-					                         .map(Object::toString)
-					                         .orElse("");
+					String content = AntigravityContentParts.text(msg.content());
 					String toolName = Optional.ofNullable(msg.name())
 					                          .orElse(msg.toolCallId());
 					String summary = "[Result of " + toolName + "]: " +
@@ -183,14 +182,20 @@ class AntigravityPayloadBuilder {
 				continue;
 			}
 
-			String geminiRole = "assistant".equals(role) ? "model" : role;
+			boolean isModel = "assistant".equals(role);
 			ObjectNode entry = contents.addObject();
-			entry.put("role", geminiRole);
+			entry.put("role", isModel ? "model" : role);
 			ArrayNode parts = entry.putArray("parts");
-			String text = Optional.ofNullable(msg.content())
-			                      .map(Object::toString)
-			                      .orElse("");
-			parts.addObject().put("text", text);
+			if (isModel) {
+				// Media is only valid on user turns upstream, so model turns stay text.
+				parts.addObject()
+				     .put("text", AntigravityContentParts.text(msg.content()));
+			} else {
+				AntigravityContentParts.append(parts, msg.content());
+				if (parts.isEmpty()) {
+					parts.addObject().put("text", "");
+				}
+			}
 		}
 
 		if (systemInstruction != null) {

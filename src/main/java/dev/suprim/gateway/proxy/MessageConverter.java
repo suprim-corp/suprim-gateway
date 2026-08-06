@@ -7,6 +7,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 public final class MessageConverter {
 
@@ -52,7 +53,7 @@ public final class MessageConverter {
 		} else if (content.isArray() && "user".equals(role) &&
 		           ToolResultBlockParser.hasToolResult(content)) {
 			ToolResultBlockParser.parse(content, result);
-		} else if (content.isArray() && hasImageBlock(content)) {
+		} else if (content.isArray() && hasMediaBlock(content)) {
 			List<Object> parts = MAPPER.convertValue(
 					content,
 					new TypeReference<>() {}
@@ -87,11 +88,24 @@ public final class MessageConverter {
 		return sb.toString();
 	}
 
-	private static boolean hasImageBlock(JsonNode contentArray) {
+	/**
+	 * Media blocks must survive as structured parts; collapsing them to text
+	 * would drop the payload (or ship base64 as prose) downstream.
+	 */
+	private static final Set<String> MEDIA_BLOCK_TYPES = Set.of(
+			"image", "input_image", "image_url",
+			"audio", "input_audio",
+			"document", "file"
+	);
+
+	private static boolean hasMediaBlock(JsonNode contentArray) {
 		for (JsonNode item : contentArray) {
-			if (item.has("type") && "image".equals(item.get("type")
-			                                           .stringValue()))
+			JsonNode type = item.path("type");
+			if (type.isString() &&
+			    MEDIA_BLOCK_TYPES.contains(type.stringValue())
+			) {
 				return true;
+			}
 		}
 		return false;
 	}
