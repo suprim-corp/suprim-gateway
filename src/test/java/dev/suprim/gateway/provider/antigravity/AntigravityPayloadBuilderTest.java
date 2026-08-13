@@ -165,8 +165,12 @@ class AntigravityPayloadBuilderTest {
 		assertTrue(json.contains("\"maxOutputTokens\":1024"));
 	}
 
+	/**
+	 * Every model enforces its own ceiling and answers a bare 400 above it, so the field is left
+	 * out entirely and the upstream picks the right default for the model.
+	 */
 	@Test
-	void build_defaultMaxTokensWhenNotProvided() {
+	void build_omitsMaxTokensWhenNotProvided() {
 		InternalRequest request = InternalRequest.builder()
 				.model("gemini-2.5-flash")
 				.messages(List.of(Message.of("user", "Hi")))
@@ -174,7 +178,20 @@ class AntigravityPayloadBuilderTest {
 
 		String json = AntigravityPayloadBuilder.build(request, "gemini-2.5-flash", "projects/p1");
 
-		assertTrue(json.contains("\"maxOutputTokens\":65536"));
+		assertFalse(json.contains("maxOutputTokens"));
+	}
+
+	@Test
+	void build_clampsMaxTokensToUpstreamCeiling() {
+		InternalRequest request = InternalRequest.builder()
+				.model("claude-sonnet-4-6")
+				.messages(List.of(Message.of("user", "Hi")))
+				.maxTokens(200000)
+				.build();
+
+		String json = AntigravityPayloadBuilder.build(request, "claude-sonnet-4-6", "projects/p1");
+
+		assertTrue(json.contains("\"maxOutputTokens\":64000"));
 	}
 
 	@Test

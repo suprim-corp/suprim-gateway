@@ -21,8 +21,10 @@ class AntigravityHttpClientTest {
 	void buildUrl_correctFormat() {
 		String url = AntigravityHttpClient.buildUrl();
 
+		// The daily host, not prod: prod answers every stream request with a 429 regardless of
+		// how much quota the account has left.
 		assertEquals(
-				"https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
+				"https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
 				url
 		);
 	}

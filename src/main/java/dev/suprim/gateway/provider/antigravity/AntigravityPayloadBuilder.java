@@ -23,7 +23,11 @@ import static java.util.Objects.nonNull;
 class AntigravityPayloadBuilder {
 
 	private static final JsonMapper MAPPER = new JsonMapper();
-	private static final int DEFAULT_MAX_OUTPUT_TOKENS = 65536;
+	/**
+	 * Lowest ceiling shared by the Claude- and Gemini-backed models; GPT-OSS caps lower still
+	 * (32768) but answers 503 for unrelated capacity reasons, so it is not worth a special case.
+	 */
+	private static final int MAX_OUTPUT_TOKENS = 64000;
 	private static final String CLAUDE_CODE_PROMPT_MARKER =
 			"You are Claude Code, Anthropic's official CLI for Claude.";
 	private static final String CLAUDE_CODE_DEFAULT_PROMPT_PREFIX =
@@ -232,10 +236,16 @@ class AntigravityPayloadBuilder {
 		}
 
 		ObjectNode generationConfig = reqNode.putObject("generationConfig");
+		// Each model enforces its own ceiling (Gemini 65536, Claude 64000, GPT-OSS 32768) and
+		// rejects anything above it with a bare 400. Omitting the field lets the upstream apply
+		// the right per-model default, so only an explicit client request sets it — clamped to
+		// the lowest ceiling the Gemini-family models share.
+		// one clamp for every model, per-model ceilings once the catalog carries them
 		if (request.maxTokens() != null) {
-			generationConfig.put("maxOutputTokens", request.maxTokens());
-		} else {
-			generationConfig.put("maxOutputTokens", DEFAULT_MAX_OUTPUT_TOKENS);
+			generationConfig.put(
+					"maxOutputTokens",
+					Math.min(request.maxTokens(), MAX_OUTPUT_TOKENS)
+			);
 		}
 
 		if (request.temperature() != null) {
