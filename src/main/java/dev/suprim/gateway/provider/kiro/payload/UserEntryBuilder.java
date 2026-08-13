@@ -24,7 +24,7 @@ final class UserEntryBuilder {
 				"content",
 				content != null && !content.isEmpty()
 						? content
-						: ContentPlaceholder.NO_TEXT
+						: ContentPlaceholder.USER
 		);
 		userMsg.put("modelId", modelId);
 		userMsg.put("origin", "AI_EDITOR");

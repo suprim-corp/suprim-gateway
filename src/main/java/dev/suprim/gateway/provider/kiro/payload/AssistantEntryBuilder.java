@@ -35,6 +35,9 @@ final class AssistantEntryBuilder {
 			}
 			if (toolUsesNode.isEmpty()) assistantMsg.remove("toolUses");
 		}
+		if (assistantMsg.path("content").asString().isBlank()) {
+			assistantMsg.put("content", ContentPlaceholder.ASSISTANT);
+		}
 		return entry;
 	}
 
@@ -51,10 +54,24 @@ final class AssistantEntryBuilder {
 			String input = function == null || function.arguments() == null
 					? "{}"
 					: function.arguments();
-			if (!text.isEmpty()) text.append('\n');
-			text.append("[Tool call: ").append(name).append(' ').append(input).append(']');
+			appendLine(text, toolCallText(name, input));
 		}
 		return text.toString();
+	}
+
+	/**
+	 * Renders a tool call as prose, for the paths where it cannot survive as a structured
+	 * {@code toolUses} entry.
+	 */
+	static String toolCallText(String name, String input) {
+		return "[Tool call: " + name + ' ' + input + ']';
+	}
+
+	static void appendLine(StringBuilder text, String line) {
+		if (!text.isEmpty()) {
+			text.append('\n');
+		}
+		text.append(line);
 	}
 
 	private static void appendToolUse(

@@ -464,17 +464,18 @@ class PayloadBuilderTest {
 
 		JsonNode payload = payload(builder, request);
 
-		assertEquals("[continue]", payload.at("/conversationState/currentMessage/userInputMessage/content").asString());
+		assertEquals("continue", payload.at("/conversationState/currentMessage/userInputMessage/content").asString());
 		assertEquals("claude-opus-5", payload.at("/conversationState/currentMessage/userInputMessage/modelId").asString());
 	}
 
 	/**
 	 * A tool-result turn is the current message on every iteration of a tool loop, and its
-	 * filler content reaches the model as user speech. Filler that looks like an empty or
-	 * near-empty message makes the model answer the filler instead of the tool results.
+	 * filler content reaches the model as user speech. A bare "." reads as an empty user
+	 * message and the model sometimes answers it instead of the tool results, so the filler
+	 * matches 9router's "continue".
 	 */
 	@Test
-	void labelsToolResultTurnInsteadOfSendingBareFiller() throws Exception {
+	void fillsToolResultTurnWithContinueRatherThanABareDot() throws Exception {
 		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
 		InternalRequest request = InternalRequest.builder()
 		                                         .model("claude-opus-5")
@@ -491,10 +492,85 @@ class PayloadBuilderTest {
 				.at("/conversationState/currentMessage/userInputMessage");
 		String content = current.get("content").asString();
 
-		assertEquals("[tool results]", content);
+		assertEquals("continue", content);
 		assertEquals(
 				"call-1",
 				current.at("/userInputMessageContext/toolResults/0/toolUseId").asString()
+		);
+	}
+
+	/**
+	 * Interrupting a turn can leave an assistant tool call with no result behind it. Kiro
+	 * requires every tool use to be answered in the next turn, so the unanswered call is
+	 * demoted to prose instead of staying in toolUses.
+	 */
+	@Test
+	void flattensToolCallsLeftUnansweredByAnInterrupt() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-opus-5")
+		                                         .clientSessionId("interrupt-session")
+		                                         .tools(List.of(tool("read_file")))
+		                                         .messages(List.of(
+				                                         Message.of("user", "find the bug"),
+				                                         assistantToolCall("call-1", "read_file"),
+				                                         Message.of("user", "[Request interrupted by user]"),
+				                                         Message.of("user", "read the code first")
+		                                         ))
+		                                         .build();
+
+		JsonNode payload = payload(builder, request);
+		JsonNode assistant = payload.at("/conversationState/history/1/assistantResponseMessage");
+		JsonNode current = payload.at("/conversationState/currentMessage/userInputMessage");
+
+		assertTrue(
+				assistant.at("/toolUses").isMissingNode(),
+				payload.toPrettyString()
+		);
+		assertTrue(
+				assistant.get("content").asString().contains("[Tool call: read_file"),
+				payload.toPrettyString()
+		);
+		assertTrue(
+				current.get("content").asString().contains("read the code first"),
+				payload.toPrettyString()
+		);
+	}
+
+	/**
+	 * A partially answered parallel turn keeps the calls that came back and flattens only the
+	 * ones that did not, so the answered pairs survive as structured tool uses.
+	 */
+	@Test
+	void keepsAnsweredParallelCallAndFlattensOnlyTheUnansweredOne() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-opus-5")
+		                                         .clientSessionId("partial-session")
+		                                         .tools(List.of(tool("first"), tool("second")))
+		                                         .messages(List.of(
+				                                         Message.of("user", "start"),
+				                                         Message.builder()
+				                                               .role("assistant")
+				                                               .content("run")
+				                                               .toolCalls(List.of(
+						                                               toolCall("t1", "first"),
+						                                               toolCall("t2", "second")
+				                                               ))
+				                                               .build(),
+				                                         toolResult("t1", "one", false),
+				                                         Message.of("user", "keep going")
+		                                         ))
+		                                         .build();
+
+		JsonNode payload = payload(builder, request);
+		JsonNode assistant = payload.at("/conversationState/history/1/assistantResponseMessage");
+
+		assertEquals(1, assistant.at("/toolUses").size(), payload.toPrettyString());
+		assertEquals("t1", assistant.at("/toolUses/0/toolUseId").asString());
+		assertTrue(
+				assistant.get("content").asString().contains("[Tool call: second"),
+				payload.toPrettyString()
 		);
 	}
 
@@ -790,6 +866,17 @@ class PayloadBuilderTest {
 		                                                                              .build())
 		                                                    .build()))
 		              .build();
+	}
+
+	private static Message.ToolCall toolCall(String id, String name) {
+		return Message.ToolCall.builder()
+		                       .id(id)
+		                       .type("function")
+		                       .function(Message.Function.builder()
+		                                                 .name(name)
+		                                                 .arguments("{}")
+		                                                 .build())
+		                       .build();
 	}
 
 	private static Message toolResult(String id, String content, boolean error) {

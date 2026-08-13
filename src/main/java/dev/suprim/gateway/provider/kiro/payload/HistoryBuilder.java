@@ -32,24 +32,38 @@ final class HistoryBuilder {
 		ArrayNode entries = MAPPER.createArrayNode();
 		Set<String> pendingToolUseIds = new HashSet<>();
 		Set<String> consumedToolUseIds = new HashSet<>();
+		// The assistant entry that owns pendingToolUseIds, so its unanswered calls can be
+		// flattened once the turn that could have answered them has gone by.
+		ObjectNode pendingToolUseOwner = null;
 
 		for (Message message : messages) {
 			switch (message.role()) {
 				case "user" -> {
-					pendingToolUseIds.clear();
+					pendingToolUseOwner = flattenUnansweredToolUses(
+							pendingToolUseOwner,
+							pendingToolUseIds,
+							consumedToolUseIds
+					);
 					appendMerged(
 							entries,
 							UserEntryBuilder.build(message, modelId)
 					);
 				}
 				case "assistant" -> {
-					pendingToolUseIds.clear();
+					pendingToolUseOwner = flattenUnansweredToolUses(
+							pendingToolUseOwner,
+							pendingToolUseIds,
+							consumedToolUseIds
+					);
 					ObjectNode entry = AssistantEntryBuilder.build(
 							message,
 							toolsEnabled
 					);
 					collectToolUseIds(entry, pendingToolUseIds);
 					appendMerged(entries, entry);
+					if (!pendingToolUseIds.isEmpty()) {
+						pendingToolUseOwner = lastEntry(entries);
+					}
 				}
 				case "tool" -> {
 					String toolUseId = message.toolCallId();
@@ -78,6 +92,12 @@ final class HistoryBuilder {
 			}
 		}
 
+		flattenUnansweredToolUses(
+				pendingToolUseOwner,
+				pendingToolUseIds,
+				consumedToolUseIds
+		);
+
 		ObjectNode currentMessage = currentMessage(entries, modelId);
 		return HistoryResult.builder()
 		                    .history(entries)
@@ -95,7 +115,7 @@ final class HistoryBuilder {
 			return ((ObjectNode) entry.get("userInputMessage")).deepCopy();
 		}
 
-		Message userMsg = Message.of("user", ContentPlaceholder.CONTINUE);
+		Message userMsg = Message.of("user", ContentPlaceholder.USER);
 
 		return (ObjectNode) UserEntryBuilder.build(userMsg, modelId)
 		                                    .get("userInputMessage");
@@ -170,6 +190,68 @@ final class HistoryBuilder {
 				? (ArrayNode) target.get(field)
 				: target.putArray(field);
 		targetArray.addAll((ArrayNode) sourceArray);
+	}
+
+	private static ObjectNode lastEntry(ArrayNode entries) {
+		return entries.isEmpty()
+				? null
+				: (ObjectNode) entries.get(entries.size() - 1);
+	}
+
+	/**
+	 * Kiro requires every {@code toolUse} to be answered by a {@code toolResult} in the very
+	 * next turn. A call the client never answered — the usual cause is the user interrupting
+	 * the turn — is demoted to prose on the assistant message and removed from
+	 * {@code toolUses}, which keeps the record of the attempt without leaving a pair the
+	 * upstream would reject.
+	 *
+	 * @return the owner to track from here on, always null
+	 */
+	private static ObjectNode flattenUnansweredToolUses(
+			ObjectNode owner,
+			Set<String> pendingToolUseIds,
+			Set<String> consumedToolUseIds
+	) {
+		if (owner == null || pendingToolUseIds.isEmpty()) {
+			pendingToolUseIds.clear();
+			return null;
+		}
+
+		ObjectNode assistant = (ObjectNode) owner.get("assistantResponseMessage");
+		JsonNode uses = assistant == null ? null : assistant.get("toolUses");
+		if (!(uses instanceof ArrayNode toolUses)) {
+			pendingToolUseIds.clear();
+			return null;
+		}
+
+		StringBuilder content = new StringBuilder(
+				assistant.path("content").asString()
+		);
+		ArrayNode kept = MAPPER.createArrayNode();
+		for (JsonNode use : toolUses) {
+			String id = use.path("toolUseId").asString();
+			if (consumedToolUseIds.contains(id)) {
+				kept.add(use);
+				continue;
+			}
+			AssistantEntryBuilder.appendLine(
+					content,
+					AssistantEntryBuilder.toolCallText(
+							use.path("name").asString(),
+							use.path("input").toString()
+					)
+			);
+		}
+
+		assistant.put("content", content.toString());
+		if (kept.isEmpty()) {
+			assistant.remove("toolUses");
+		} else {
+			assistant.set("toolUses", kept);
+		}
+
+		pendingToolUseIds.clear();
+		return null;
 	}
 
 	private static void collectToolUseIds(
