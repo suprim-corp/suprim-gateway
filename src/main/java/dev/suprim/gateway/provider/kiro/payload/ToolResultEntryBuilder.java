@@ -16,7 +16,7 @@ final class ToolResultEntryBuilder {
 	static ObjectNode build(List<Message> toolResults, String modelId) {
 		ObjectNode entry = MAPPER.createObjectNode();
 		ObjectNode userMsg = entry.putObject("userInputMessage");
-		userMsg.put("content", ".");
+		userMsg.put("content", ContentPlaceholder.TOOL_RESULTS);
 		userMsg.put("modelId", modelId);
 		userMsg.put("origin", "AI_EDITOR");
 		ObjectNode ctx = userMsg.putObject("userInputMessageContext");

@@ -10,30 +10,58 @@ final class ToolResultBlockParser {
 
 	static boolean hasToolResult(JsonNode contentArray) {
 		for (JsonNode item : contentArray) {
-			if (item.has("type") && "tool_result".equals(item.get("type")
-			                                                 .stringValue()))
-				return true;
+			if (!item.has("type")) {
+				continue;
+			}
+
+			if (!"tool_result".equals(item.get("type").stringValue())) {
+				continue;
+			}
+
+			return true;
 		}
 		return false;
 	}
 
+	/**
+	 * A turn may carry the user's own text alongside its tool results. That text is emitted
+	 * as a separate user message after the results, so it still reaches the model.
+	 */
 	static void parse(JsonNode content, List<Message> result) {
+		StringBuilder userText = new StringBuilder();
 		for (JsonNode block : content) {
-			String type = block.has("type") ? block.get("type")
-			                                       .stringValue() : "";
-			if ("tool_result".equals(type)) {
-				String toolUseId = block.has("tool_use_id") ? block.get(
-						"tool_use_id").stringValue() : "";
-				String text = extractText(block);
+			String type;
+
+			if (block.has("type")) {
+				type = block.get("type").stringValue();
+			} else {
+				type = "";
+			}
+
+			if ("text".equals(type) && block.has("text")) {
+				userText.append(block.get("text").stringValue());
+			} else if ("tool_result".equals(type)) {
+				String toolUseId;
+
+				if (block.has("tool_use_id")) {
+					toolUseId = block.get("tool_use_id").stringValue();
+				} else {
+					toolUseId = "";
+				}
+
 				result.add(
 						Message.builder()
 						       .role("tool")
-						       .content(text)
+						       .content(extractText(block))
 						       .toolCallId(toolUseId)
-						       .toolError(block.has("is_error") && block.get("is_error").asBoolean())
+						       .toolError(block.has("is_error") &&
+						                  block.get("is_error").asBoolean())
 						       .build()
 				);
 			}
+		}
+		if (!userText.isEmpty()) {
+			result.add(Message.of("user", userText.toString()));
 		}
 	}
 

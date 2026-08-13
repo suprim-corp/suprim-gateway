@@ -22,7 +22,9 @@ final class UserEntryBuilder {
 		ObjectNode userMsg = entry.putObject("userInputMessage");
 		userMsg.put(
 				"content",
-				content != null && !content.isEmpty() ? content : "."
+				content != null && !content.isEmpty()
+						? content
+						: ContentPlaceholder.NO_TEXT
 		);
 		userMsg.put("modelId", modelId);
 		userMsg.put("origin", "AI_EDITOR");

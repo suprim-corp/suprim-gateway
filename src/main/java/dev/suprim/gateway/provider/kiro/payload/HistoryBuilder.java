@@ -94,9 +94,11 @@ final class HistoryBuilder {
 			ObjectNode entry = (ObjectNode) entries.remove(entries.size() - 1);
 			return ((ObjectNode) entry.get("userInputMessage")).deepCopy();
 		}
-		return (ObjectNode) UserEntryBuilder.build(
-				Message.of("user", "."), modelId
-		).get("userInputMessage");
+
+		Message userMsg = Message.of("user", ContentPlaceholder.CONTINUE);
+
+		return (ObjectNode) UserEntryBuilder.build(userMsg, modelId)
+		                                    .get("userInputMessage");
 	}
 
 	private static void appendMerged(ArrayNode entries, ObjectNode entry) {

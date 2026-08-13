@@ -464,8 +464,38 @@ class PayloadBuilderTest {
 
 		JsonNode payload = payload(builder, request);
 
-		assertEquals(".", payload.at("/conversationState/currentMessage/userInputMessage/content").asString());
+		assertEquals("[continue]", payload.at("/conversationState/currentMessage/userInputMessage/content").asString());
 		assertEquals("claude-opus-5", payload.at("/conversationState/currentMessage/userInputMessage/modelId").asString());
+	}
+
+	/**
+	 * A tool-result turn is the current message on every iteration of a tool loop, and its
+	 * filler content reaches the model as user speech. Filler that looks like an empty or
+	 * near-empty message makes the model answer the filler instead of the tool results.
+	 */
+	@Test
+	void labelsToolResultTurnInsteadOfSendingBareFiller() throws Exception {
+		PayloadBuilder builder = new PayloadBuilder(new ModelResolver());
+		InternalRequest request = InternalRequest.builder()
+		                                         .model("claude-opus-5")
+		                                         .clientSessionId("filler-session")
+		                                         .tools(List.of(tool("read_file")))
+		                                         .messages(List.of(
+				                                         Message.of("user", "read"),
+				                                         assistantToolCall("call-1", "read_file"),
+				                                         toolResult("call-1", "contents", false)
+		                                         ))
+		                                         .build();
+
+		JsonNode current = payload(builder, request)
+				.at("/conversationState/currentMessage/userInputMessage");
+		String content = current.get("content").asString();
+
+		assertEquals("[tool results]", content);
+		assertEquals(
+				"call-1",
+				current.at("/userInputMessageContext/toolResults/0/toolUseId").asString()
+		);
 	}
 
 	@Test
