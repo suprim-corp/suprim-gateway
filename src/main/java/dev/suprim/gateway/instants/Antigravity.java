@@ -2,7 +2,7 @@ package dev.suprim.gateway.instants;
 
 public class Antigravity {
 
-	public static final String CLOUDCODE_BASE = "https://cloudcode-pa.googleapis.com";
+	public static final String CLOUDCODE_BASE = "https://daily-cloudcode-pa.googleapis.com";
 	public static final String CLOUDCODE_MODELS =
 			CLOUDCODE_BASE + "/v1beta/models/";
 	public static final String GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
