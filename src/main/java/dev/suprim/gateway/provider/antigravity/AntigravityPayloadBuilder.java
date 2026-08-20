@@ -167,7 +167,14 @@ class AntigravityPayloadBuilder {
 					                         .filter(s -> !s.isEmpty())
 					                         .orElse("{}");
 					try {
-						frNode.set("response", MAPPER.readTree(content));
+						JsonNode parsed = MAPPER.readTree(content);
+						if (parsed instanceof ObjectNode) {
+							frNode.set("response", parsed);
+						} else {
+							ObjectNode wrapper = MAPPER.createObjectNode();
+							wrapper.put("result", content);
+							frNode.set("response", wrapper);
+						}
 					} catch (Exception e) {
 						ObjectNode wrapper = MAPPER.createObjectNode();
 						wrapper.put("result", content);
