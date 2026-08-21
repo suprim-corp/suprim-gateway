@@ -20,6 +20,24 @@ function quotaColor(remaining) {
 // {label, detail, percent} so the dialog banner and the account cards can share
 // one renderer. percent is always REMAINING, or null when the provider gives no
 // figure to draw a bar from. Returns null when there is nothing to show at all.
+// Returns {fiveHour, weekly} — each is the tightest percent-based bucket of that window type,
+// or null when absent. Only relevant for Antigravity cards.
+function antigravityBucketSummary(data) {
+    if (!data?.buckets?.length) return null
+    const tightest = {}
+    for (const b of data.buckets) {
+        if (b.quota == null) continue
+        const key = /five.hour/i.test(b.label) ? 'fiveHour'
+                  : /weekly/i.test(b.label)        ? 'weekly'
+                  : null
+        if (key && (tightest[key] == null || b.quota < tightest[key].quota)) {
+            tightest[key] = b
+        }
+    }
+    const { fiveHour = null, weekly = null } = tightest
+    return (fiveHour || weekly) ? { fiveHour, weekly } : null
+}
+
 function summarizeUsage(data) {
     if (!data || data.error) return null
 

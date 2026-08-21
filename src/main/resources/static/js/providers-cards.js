@@ -22,28 +22,56 @@ function renderCardBadge(card, data) {
     unauthorized.classList.toggle('hidden', !rejected)
 }
 
+function renderBucket(card, cls, bucket) {
+    const wrap = card.querySelector(cls)
+    if (!wrap) return
+    if (!bucket) { wrap.classList.add('hidden'); return }
+    wrap.classList.remove('hidden')
+    const pct = bucket.quota
+    wrap.querySelector(cls + '-value').textContent =
+        pct != null ? pct + '% remaining' + (bucket.resetTime ? ' · resets ' + formatResetTime(bucket.resetTime) : '') : ''
+    const bar = wrap.querySelector(cls + '-bar')
+    bar.style.width = (pct ?? 0) + '%'
+    bar.className = (cls + '-bar').slice(1) + ' h-full rounded-full transition-all ' + quotaColor(pct ?? 0)
+}
+
 function renderCardUsage(card, data) {
     const label = card.querySelector('.card-usage-label')
     const value = card.querySelector('.card-usage-value')
     const track = card.querySelector('.card-usage-track')
     const bar = card.querySelector('.card-usage-bar')
+    const bucketsWrap = card.querySelector('.card-usage-buckets')
 
     const usage = summarizeUsage(data)
     if (!usage) {
         label.innerHTML = '&nbsp;'
         value.textContent = ''
         track.classList.add('hidden')
+        if (bucketsWrap) bucketsWrap.classList.add('hidden')
         return
     }
     label.textContent = usage.label
     value.textContent = usage.detail
     if (usage.percent === null) {
         track.classList.add('hidden')
-        return
+    } else {
+        track.classList.remove('hidden')
+        bar.style.width = usage.percent + '%'
+        bar.className = 'card-usage-bar h-full rounded-full transition-all ' + quotaColor(usage.percent)
     }
-    track.classList.remove('hidden')
-    bar.style.width = usage.percent + '%'
-    bar.className = 'card-usage-bar h-full rounded-full transition-all ' + quotaColor(usage.percent)
+
+    // Antigravity bucket bars — when present, replace the top-level bar to avoid duplicate
+    if (bucketsWrap) {
+        const bs = antigravityBucketSummary(data)
+        if (bs) {
+            track.classList.add('hidden')
+            bucketsWrap.classList.remove('hidden')
+            renderBucket(card, '.card-bucket-fivehour', bs.fiveHour)
+            renderBucket(card, '.card-bucket-weekly', bs.weekly)
+        } else {
+            bucketsWrap.classList.add('hidden')
+        }
+    }
 }
 
 // Timers are held per card so a hidden tab can stop them all and resume later.
