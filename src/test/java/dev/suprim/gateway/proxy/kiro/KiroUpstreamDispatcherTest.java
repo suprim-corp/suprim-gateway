@@ -186,6 +186,37 @@ class KiroUpstreamDispatcherTest {
 	}
 
 	@Test
+	void dispatch_multiAccount_retriesOn402() throws Exception {
+		StoredAccount acc1 = StoredAccount.builder()
+		                                   .name("k1").provider("KIRO")
+		                                   .authType("API_KEY").accessToken("api-key-1")
+		                                   .build();
+		StoredAccount acc2 = StoredAccount.builder()
+		                                   .name("k2").provider("KIRO")
+		                                   .authType("API_KEY").accessToken("api-key-2")
+		                                   .build();
+
+		when(store.findAllByProvider("KIRO")).thenReturn(List.of(acc1, acc2));
+		when(rotator.next(eq("KIRO"), anyList())).thenReturn(acc1, acc2);
+		when(authManager.getAccessToken(acc1)).thenReturn("api-key-1");
+		when(authManager.getAccessToken(acc2)).thenReturn("api-key-2");
+
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-1"), anyBoolean()))
+				.thenReturn(new KiroResponse(402, new ByteArrayInputStream("payment required".getBytes()), "application/json"));
+		when(kiroClient.request(anyString(), anyString(), anyString(), anyBoolean(), eq("api-key-2"), anyBoolean()))
+				.thenReturn(new KiroResponse(200, new ByteArrayInputStream("ok".getBytes()), "text/event-stream"));
+
+		InternalRequest request = InternalRequest.builder().model("claude-sonnet-4-20250514").messages(List.of()).build();
+		KiroUpstreamDispatcher.DispatchResult result = dispatcher.dispatch(
+				request, true
+		);
+
+		assertEquals(200, result.response().status());
+		assertEquals("k2", result.accountId());
+		verify(rotator, times(2)).next(eq("KIRO"), anyList());
+	}
+
+	@Test
 	void dispatch_multiAccount_retriesOnInvalidModelId() throws Exception {
 		StoredAccount acc1 = StoredAccount.builder()
 		                                   .name("k1").provider("KIRO")

@@ -38,6 +38,13 @@ import java.util.stream.Collectors;
 @Component
 public class KiroUpstreamDispatcher {
 
+	/**
+	 * Upstream statuses that mean this account cannot serve the request but another might:
+	 * a rate limit (429/503) or an exhausted quota / payment required (402). Any of them
+	 * rotates to the next account rather than refreshing this account's token.
+	 */
+	private static final Set<Integer> ROTATE_ACCOUNT_STATUSES = Set.of(402, 429, 503);
+
 	private static final KiroEndpoint RUNTIME = new KiroEndpoint(
 			Kiro.RUNTIME_HOST + Kiro.GENERATE_PATH,
 			"Kiro Runtime"
@@ -232,7 +239,7 @@ public class KiroUpstreamDispatcher {
 					);
 					continue;
 				}
-				if (response.status() == 429 || response.status() == 503) {
+				if (ROTATE_ACCOUNT_STATUSES.contains(response.status())) {
 					log.warn(
 							LogTag.KIRO +
 							"Account {} got {}, trying next account",
@@ -378,7 +385,7 @@ public class KiroUpstreamDispatcher {
 				if (response.status() == 200) {
 					return EndpointAttempt.served(response, ep.name());
 				}
-				if (response.status() == 429 || response.status() == 503) {
+				if (ROTATE_ACCOUNT_STATUSES.contains(response.status())) {
 					log.warn(
 							LogTag.KIRO +
 							"Account {} got {} from {}, trying next account",
@@ -431,7 +438,7 @@ public class KiroUpstreamDispatcher {
 				);
 				continue;
 			}
-			if (response.status() == 429 || response.status() == 503) {
+			if (ROTATE_ACCOUNT_STATUSES.contains(response.status())) {
 				log.warn(
 						LogTag.KIRO +
 						"Account {} got {} from {}, trying next account",
